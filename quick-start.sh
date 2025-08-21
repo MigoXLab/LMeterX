@@ -8,16 +8,25 @@ set -e
 echo "🚀 LMeterX Quick Deployment Script"
 echo "=================================="
 
-# Check if Docker and Docker Compose are installed
+# Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo "❌ Error: Docker is not installed, please install Docker first"
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo "❌ Error: Docker Compose is not installed, please install Docker Compose first"
+# Determine which Docker Compose command to use
+COMPOSE_CMD=""
+if command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+elif docker compose version &> /dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+else
+    echo "❌ Error: Docker Compose is not installed or available"
+    echo "   Please install Docker Compose or ensure Docker includes the compose plugin"
     exit 1
 fi
+
+echo "ℹ️  Using Docker Compose command: $COMPOSE_CMD"
 
 # Create necessary directories
 echo "📁 Creating necessary directories..."
@@ -26,7 +35,7 @@ mkdir -p logs
 # Download necessary configuration files (if not exists)
 if [ ! -f "docker-compose.yml" ]; then
     echo "📥 Downloading docker-compose.yml..."
-    curl -o docker-compose.yml https://raw.githubusercontent.com/MigoXLab/LMeterX/main/docker-compose.yml
+    curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/MigoXLab/LMeterX/main/docker-compose.yml
 fi
 
 # Pull latest images
@@ -38,11 +47,11 @@ docker pull charmy1220/lmeterx-fe:latest
 
 # Stop and clean up old containers (if exists)
 echo "🧹 Cleaning up old containers..."
-docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+$COMPOSE_CMD -f docker-compose.yml down --remove-orphans 2>/dev/null || true
 
 # Start services
 echo "🚀 Starting LMeterX services..."
-docker-compose -f docker-compose.yml up -d
+$COMPOSE_CMD -f docker-compose.yml up -d
 
 # Wait for services to start
 echo "⏳ Waiting for services to start..."
@@ -50,7 +59,7 @@ sleep 10
 
 # Check service status
 echo "🔍 Checking service status..."
-docker-compose -f docker-compose.yml ps
+$COMPOSE_CMD -f docker-compose.yml ps
 
 echo ""
 echo "✅ LMeterX deployment completed!"
@@ -61,9 +70,9 @@ echo "  🔧 Backend API: http://localhost:5001"
 echo "  ⚡ Load Testing Engine: http://localhost:5002"
 echo ""
 echo "📝 Common Commands:"
-echo "  Check service status: docker-compose -f docker-compose.yml ps"
-echo "  View logs: docker-compose -f docker-compose.yml logs -f"
-echo "  Stop services: docker-compose -f docker-compose.yml down"
-echo "  Restart services: docker-compose -f docker-compose.yml restart"
+echo "  Check service status: $COMPOSE_CMD -f docker-compose.yml ps"
+echo "  View logs: $COMPOSE_CMD -f docker-compose.yml logs -f"
+echo "  Stop services: $COMPOSE_CMD -f docker-compose.yml down"
+echo "  Restart services: $COMPOSE_CMD -f docker-compose.yml restart"
 echo ""
 echo "🎉 Start using LMeterX for performance testing!"

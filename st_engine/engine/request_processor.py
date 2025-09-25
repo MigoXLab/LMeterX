@@ -66,6 +66,23 @@ class StreamProcessor:
             return ""
 
     @staticmethod
+    def is_sse_event_line(chunk_str: str) -> bool:
+        """Check if the line is an SSE event line (not data line) that should be skipped.
+        Only skip event control lines, not data lines that start with 'data: '.
+        """
+        chunk_str = chunk_str.strip()
+
+        # Check for SSE event control prefixes that should be skipped
+        # Only 'event:', 'id:', 'retry:' are control lines, 'data:' contains actual data
+        control_prefixes = ["event:", "event: ", "id:", "id: ", "retry:", "retry: "]
+
+        for prefix in control_prefixes:
+            if chunk_str.startswith(prefix):
+                return True
+
+        return False
+
+    @staticmethod
     def remove_chunk_prefix(chunk_str: str, field_mapping: FieldMapping) -> str:
         """Remove prefix from chunk string based on field mapping configuration."""
         if field_mapping.end_prefix:
@@ -120,6 +137,12 @@ class StreamProcessor:
             )
 
             if metrics.usage and isinstance(metrics.usage, dict):
+                # has_prompt_tokens = any(
+                #     "prompt" in key and value not in (None, 0)
+                #     for key, value in metrics.usage.items()
+                #     if isinstance(value, (int, float))
+                # )
+
                 has_completion_tokens = any(
                     "completion" in key and value not in (None, 0)
                     for key, value in metrics.usage.items()
@@ -131,6 +154,7 @@ class StreamProcessor:
                     for key, value in metrics.usage.items()
                     if isinstance(value, (int, float))
                 )
+
                 if has_completion_tokens and has_total_tokens:
                     usage_extracted = True
 
@@ -236,6 +260,9 @@ class StreamProcessor:
             return False, None, metrics
 
         if not chunk_str:
+            return False, None, metrics
+
+        if StreamProcessor.is_sse_event_line(chunk_str):
             return False, None, metrics
 
         # Remove prefix if present

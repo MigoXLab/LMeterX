@@ -34,6 +34,15 @@ LMeterX is a professional large language model performance testing platform that
 - **Web Console** - One-stop management for task creation, stopping, status tracking, and full-chain log monitoring
 - **Enterprise-level Deployment** - Docker containerization with elastic scaling and distributed deployment support
 
+### Feature Comparison
+| Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |
+|----------------------|-------------------------------------------------------------------------|---------------------------------------------------------------------------|----------------------------------------------------------|
+| Usage                | Web UI for full-lifecycle task creation, monitoring & stop (load-test) | CLI for ModelScope ecosystem (eval & load-test)                          | CLI, Ray-based (load-test)                              |
+| Concurrency & Stress | Multi-process / multi-task, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
+| Test Report          | Multi-model / multi-version comparison, AI analysis, visual dashboard   | Basic report + visual charts (requires gradio, plotly, etc.)             | Simple report                                            |
+| Model & Data Support | OpenAI-compatible, custom data & model interfaces                       | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
+| Deployment & Scaling | Docker / K8s ready, easy horizontal scaling                             | `pip` install or source code                                             | Source code only                                         |
+
 ## 🏗️ System Architecture
 
 LMeterX adopts a microservices architecture design, consisting of four core components:

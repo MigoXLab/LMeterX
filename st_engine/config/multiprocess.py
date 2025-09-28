@@ -24,7 +24,7 @@ class MultiprocessingConfig:
                 os.environ.get("MULTIPROCESS_THRESHOLD", "1000")
             )
             self.min_users_per_process = int(
-                os.environ.get("MIN_USERS_PER_PROCESS", "600")
+                os.environ.get("MIN_USERS_PER_PROCESS", "500")
             )
             self.force_single_process = (
                 os.environ.get("FORCE_SINGLE_PROCESS", "false").lower() == "true"

@@ -111,7 +111,7 @@ VITE_API_BASE_URL=/api  # Base API URL for frontend requests (supports reverse p
 MULTIPROCESS_THRESHOLD=1000
 
 # Minimum number of concurrent users each child process should handle (prevents excessive processes and resource waste)
-MIN_USERS_PER_PROCESS=600
+MIN_USERS_PER_PROCESS=500
 
 # ⚠️ IMPORTANT NOTES:
 #   - When concurrency ≥ 1000, enabling multi-process mode is strongly recommended for performance.

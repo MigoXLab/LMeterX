@@ -89,7 +89,6 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
     if (apiPath === '/chat/completions') {
       const isStreamMode = streamMode !== false; // Default to streaming if not specified
       return {
-        prompt: 'messages.0.content',
         ...(isStreamMode
           ? CHAT_COMPLETIONS_FIELD_MAPPING.STREAMING
           : CHAT_COMPLETIONS_FIELD_MAPPING.NON_STREAMING),
@@ -98,11 +97,13 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
     // For non-chat/completions APIs, return empty values (only show placeholders)
     return {
       prompt: '',
-      stream_prefix: '',
+      stream_prefix: 'data:',
       data_format: 'json',
       content: '',
       reasoning_content: '',
-      usage: '',
+      prompt_tokens: 'usage.prompt_tokens',
+      completion_tokens: 'usage.completion_tokens',
+      total_tokens: 'usage.total_tokens',
       end_prefix: '',
       stop_flag: '',
       end_field: '',
@@ -2159,8 +2160,79 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                         </Col>
                       </Row>
 
-                      <Row gutter={24} style={{ marginTop: 16 }}>
-                        <Col span={12}>
+                      <Row gutter={16} style={{ marginTop: 16 }}>
+                        <Col span={8}>
+                          <Form.Item
+                            name={['field_mapping', 'prompt_tokens']}
+                            label={
+                              <span>
+                                {t(
+                                  'components.createJobForm.promptTokensFieldPath'
+                                )}
+                                <Tooltip
+                                  title={t(
+                                    'components.createJobForm.promptTokensFieldPathTooltip'
+                                  )}
+                                >
+                                  <InfoCircleOutlined
+                                    style={{ marginLeft: 5 }}
+                                  />
+                                </Tooltip>
+                              </span>
+                            }
+                          >
+                            <Input placeholder='usage.prompt_tokens' />
+                          </Form.Item>
+                        </Col>
+
+                        <Col span={8}>
+                          <Form.Item
+                            name={['field_mapping', 'completion_tokens']}
+                            label={
+                              <span>
+                                {t(
+                                  'components.createJobForm.completionTokensFieldPath'
+                                )}
+                                <Tooltip
+                                  title={t(
+                                    'components.createJobForm.completionTokensFieldPathTooltip'
+                                  )}
+                                >
+                                  <InfoCircleOutlined
+                                    style={{ marginLeft: 5 }}
+                                  />
+                                </Tooltip>
+                              </span>
+                            }
+                          >
+                            <Input placeholder='usage.completion_tokens' />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            name={['field_mapping', 'total_tokens']}
+                            label={
+                              <span>
+                                {t(
+                                  'components.createJobForm.totalTokensFieldPath'
+                                )}
+                                <Tooltip
+                                  title={t(
+                                    'components.createJobForm.totalTokensFieldPathTooltip'
+                                  )}
+                                >
+                                  <InfoCircleOutlined
+                                    style={{ marginLeft: 5 }}
+                                  />
+                                </Tooltip>
+                              </span>
+                            }
+                          >
+                            <Input placeholder='usage.total_tokens' />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      {/* <Col span={12}>
                           <Form.Item
                             name={['field_mapping', 'usage']}
                             label={
@@ -2180,8 +2252,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                           >
                             <Input placeholder='usage' />
                           </Form.Item>
-                        </Col>
-                      </Row>
+                        </Col> */}
                     </>
                   )
                 );
@@ -2271,7 +2342,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                     },
                   ]}
                 >
-                  <Input placeholder='[DONE]' />
+                  <Input placeholder='stop' />
                 </Form.Item>
               </Col>
             </Row>

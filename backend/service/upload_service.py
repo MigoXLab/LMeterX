@@ -206,7 +206,7 @@ async def process_cert_files(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error processing certificate files: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Upload failed")
 
 
 async def process_dataset_files(task_id: str, files: List[UploadFile]):
@@ -275,7 +275,7 @@ async def process_dataset_files(task_id: str, files: List[UploadFile]):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error processing dataset files: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Upload failed")
 
 
 async def upload_file_svc(

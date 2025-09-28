@@ -18,6 +18,7 @@ from engine.core import (
     GlobalStateManager,
     StreamMetrics,
 )
+from utils.common import safe_int_convert
 from utils.error_handler import ErrorResponse
 from utils.event_handler import EventManager
 
@@ -66,6 +67,23 @@ class StreamProcessor:
             return ""
 
     @staticmethod
+    def is_sse_event_line(chunk_str: str) -> bool:
+        """Check if the line is an SSE event line (not data line) that should be skipped.
+        Only skip event control lines, not data lines that start with 'data: '.
+        """
+        chunk_str = chunk_str.strip()
+
+        # Check for SSE event control prefixes that should be skipped
+        # Only 'event:', 'id:', 'retry:' are control lines, 'data:' contains actual data
+        control_prefixes = ["event:", "event: ", "id:", "id: ", "retry:", "retry: "]
+
+        for prefix in control_prefixes:
+            if chunk_str.startswith(prefix):
+                return True
+
+        return False
+
+    @staticmethod
     def remove_chunk_prefix(chunk_str: str, field_mapping: FieldMapping) -> str:
         """Remove prefix from chunk string based on field mapping configuration."""
         if field_mapping.end_prefix:
@@ -112,27 +130,40 @@ class StreamProcessor:
         task_logger,
     ) -> StreamMetrics:
         """Extract and update metrics from chunk data."""
+        # Initialize usage dict if not present
+        if metrics.usage is None:
+            metrics.usage = {}
         # Extract usage tokens
         usage_extracted = False
-        if field_mapping.usage:
-            metrics.usage = StreamProcessor.get_field_value(
-                chunk_data, field_mapping.usage
+
+        # Update prompt tokens if field mapping exists
+        if field_mapping.prompt_tokens:
+            prompt_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(chunk_data, field_mapping.prompt_tokens)
             )
 
-            if metrics.usage and isinstance(metrics.usage, dict):
-                has_completion_tokens = any(
-                    "completion" in key and value not in (None, 0)
-                    for key, value in metrics.usage.items()
-                    if isinstance(value, (int, float))
-                )
+            if prompt_tokens_value > 0:
+                metrics.usage["prompt_tokens"] = prompt_tokens_value
 
-                has_total_tokens = any(
-                    "total" in key and value not in (None, 0)
-                    for key, value in metrics.usage.items()
-                    if isinstance(value, (int, float))
+        # Update completion tokens if field mapping exists
+        if field_mapping.completion_tokens:
+            completion_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(
+                    chunk_data, field_mapping.completion_tokens
                 )
-                if has_completion_tokens and has_total_tokens:
-                    usage_extracted = True
+            )
+            if completion_tokens_value > 0:
+                metrics.usage["completion_tokens"] = completion_tokens_value
+                usage_extracted = True
+
+        # Update total tokens if field mapping exists
+        if field_mapping.total_tokens:
+            total_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(chunk_data, field_mapping.total_tokens)
+            )
+            if total_tokens_value > 0:
+                metrics.usage["total_tokens"] = total_tokens_value
+                usage_extracted = True
 
         # Extract content
         if field_mapping.content:
@@ -236,6 +267,9 @@ class StreamProcessor:
             return False, None, metrics
 
         if not chunk_str:
+            return False, None, metrics
+
+        if StreamProcessor.is_sse_event_line(chunk_str):
             return False, None, metrics
 
         # Remove prefix if present
@@ -585,8 +619,8 @@ class APIClient:
         actual_start_time = 0.0
         request_name = base_request_kwargs.get("name", "failure")
         usage: Dict[str, Optional[int]] = {
-            "completion_tokens": None,
-            "total_tokens": None,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
 
         try:
@@ -729,8 +763,8 @@ class APIClient:
                 "",
                 "",
                 {
-                    "completion_tokens": None,
-                    "total_tokens": None,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
                 },
             )
         self.task_logger.info(f"base_request_kwargs: {base_request_kwargs}")
@@ -742,8 +776,8 @@ class APIClient:
         )
         request_name = base_request_kwargs.get("name", "failure")
         usage: Dict[str, Optional[int]] = {
-            "completion_tokens": None,
-            "total_tokens": None,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
 
         try:

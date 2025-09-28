@@ -461,3 +461,19 @@ def wait_time_for_stats_sync(runner, concurrent_users: int) -> float:
     MIN_WAIT_TIME = 2.0  # Ensure at least 2 seconds
     wait_time = max(wait_time, MIN_WAIT_TIME)
     return wait_time
+
+
+def safe_int_convert(value):
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        value = value.strip()
+        if value == "":
+            return 0
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    elif isinstance(value, (int, float)):
+        return int(value)
+    return 0

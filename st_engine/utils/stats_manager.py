@@ -21,16 +21,16 @@ class StatsManager:
         self.task_logger = self.global_state.get_task_logger()
 
     def update_stats(
-        self, reqs: int = 1, completion_tokens: int = 0, all_tokens: int = 0
+        self, reqs: int = 1, completion_tokens: int = 0, total_tokens: int = 0
     ):
         """Update statistics"""
         # Update statistics in memory in single process or Master mode
         self.global_state.token_stats.reqs_count += reqs
         self.global_state.token_stats.completion_tokens += completion_tokens
-        self.global_state.token_stats.all_tokens += all_tokens
+        self.global_state.token_stats.total_tokens += total_tokens
 
     def send_stats_to_master(
-        self, runner, reqs: int = 1, completion_tokens: int = 0, all_tokens: int = 0
+        self, runner, reqs: int = 1, completion_tokens: int = 0, total_tokens: int = 0
     ):
         """Send statistics to master"""
         try:
@@ -40,7 +40,7 @@ class StatsManager:
                     {
                         "reqs": reqs,
                         "completion_tokens": completion_tokens,
-                        "all_tokens": all_tokens,
+                        "total_tokens": total_tokens,
                     },
                 )
         except Exception as e:
@@ -57,21 +57,23 @@ class StatsManager:
         return {
             "reqs_count": stats.reqs_count,
             "completion_tokens": stats.completion_tokens,
-            "all_tokens": stats.all_tokens,
+            "total_tokens": stats.total_tokens,
             "req_throughput": (
                 stats.reqs_count / execution_time if execution_time > 0 else 0
             ),
             "completion_tps": (
                 stats.completion_tokens / execution_time if execution_time > 0 else 0
             ),
-            "total_tps": stats.all_tokens / execution_time if execution_time > 0 else 0,
+            "total_tps": (
+                stats.total_tokens / execution_time if execution_time > 0 else 0
+            ),
             "avg_completion_tokens_per_req": (
                 stats.completion_tokens / stats.reqs_count
                 if stats.reqs_count > 0
                 else 0
             ),
             "avg_total_tokens_per_req": (
-                stats.all_tokens / stats.reqs_count if stats.reqs_count > 0 else 0
+                stats.total_tokens / stats.reqs_count if stats.reqs_count > 0 else 0
             ),
             "execution_time": execution_time,
         }

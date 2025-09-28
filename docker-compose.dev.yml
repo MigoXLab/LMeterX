@@ -64,7 +64,7 @@ services:
       ENABLE_MULTIPROCESS: auto
       LOCUST_CPU_CORES: 4.0
       MULTIPROCESS_THRESHOLD: 1000           # Enable multiprocess only for 1000+ users
-      MIN_USERS_PER_PROCESS: 600             # Each process handles at least 600 users
+      MIN_USERS_PER_PROCESS: 500             # Each process handles at least 600 users
       # Process management and stability
       PYTHONUNBUFFERED: 1                    # Ensure immediate log output
       LOCUST_WORKER_HEARTBEAT_INTERVAL: 3    # Worker heartbeat interval (seconds)

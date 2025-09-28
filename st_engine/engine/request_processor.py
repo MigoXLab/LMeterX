@@ -18,6 +18,7 @@ from engine.core import (
     GlobalStateManager,
     StreamMetrics,
 )
+from utils.common import safe_int_convert
 from utils.error_handler import ErrorResponse
 from utils.event_handler import EventManager
 
@@ -129,34 +130,40 @@ class StreamProcessor:
         task_logger,
     ) -> StreamMetrics:
         """Extract and update metrics from chunk data."""
+        # Initialize usage dict if not present
+        if metrics.usage is None:
+            metrics.usage = {}
         # Extract usage tokens
         usage_extracted = False
-        if field_mapping.usage:
-            metrics.usage = StreamProcessor.get_field_value(
-                chunk_data, field_mapping.usage
+
+        # Update prompt tokens if field mapping exists
+        if field_mapping.prompt_tokens:
+            prompt_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(chunk_data, field_mapping.prompt_tokens)
             )
 
-            if metrics.usage and isinstance(metrics.usage, dict):
-                # has_prompt_tokens = any(
-                #     "prompt" in key and value not in (None, 0)
-                #     for key, value in metrics.usage.items()
-                #     if isinstance(value, (int, float))
-                # )
+            if prompt_tokens_value > 0:
+                metrics.usage["prompt_tokens"] = prompt_tokens_value
 
-                has_completion_tokens = any(
-                    "completion" in key and value not in (None, 0)
-                    for key, value in metrics.usage.items()
-                    if isinstance(value, (int, float))
+        # Update completion tokens if field mapping exists
+        if field_mapping.completion_tokens:
+            completion_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(
+                    chunk_data, field_mapping.completion_tokens
                 )
+            )
+            if completion_tokens_value > 0:
+                metrics.usage["completion_tokens"] = completion_tokens_value
+                usage_extracted = True
 
-                has_total_tokens = any(
-                    "total" in key and value not in (None, 0)
-                    for key, value in metrics.usage.items()
-                    if isinstance(value, (int, float))
-                )
-
-                if has_completion_tokens and has_total_tokens:
-                    usage_extracted = True
+        # Update total tokens if field mapping exists
+        if field_mapping.total_tokens:
+            total_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(chunk_data, field_mapping.total_tokens)
+            )
+            if total_tokens_value > 0:
+                metrics.usage["total_tokens"] = total_tokens_value
+                usage_extracted = True
 
         # Extract content
         if field_mapping.content:
@@ -612,8 +619,8 @@ class APIClient:
         actual_start_time = 0.0
         request_name = base_request_kwargs.get("name", "failure")
         usage: Dict[str, Optional[int]] = {
-            "completion_tokens": None,
-            "total_tokens": None,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
 
         try:
@@ -756,8 +763,8 @@ class APIClient:
                 "",
                 "",
                 {
-                    "completion_tokens": None,
-                    "total_tokens": None,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
                 },
             )
         self.task_logger.info(f"base_request_kwargs: {base_request_kwargs}")
@@ -769,8 +776,8 @@ class APIClient:
         )
         request_name = base_request_kwargs.get("name", "failure")
         usage: Dict[str, Optional[int]] = {
-            "completion_tokens": None,
-            "total_tokens": None,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
 
         try:

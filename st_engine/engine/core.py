@@ -28,7 +28,7 @@ class StreamMetrics:
     first_thinking_token_time: Optional[float] = None
     content: str = ""
     reasoning_content: str = ""
-    usage: Optional[Dict[str, Optional[int]]] = field(default=None)
+    usage: Optional[Dict[str, Optional[int]]] = field(default_factory=dict)
 
 
 @dataclass
@@ -66,7 +66,9 @@ class FieldMapping:
     content: str = ""
     reasoning_content: str = ""
     prompt: str = ""
-    usage: str = ""
+    prompt_tokens: str = ""
+    completion_tokens: str = ""
+    total_tokens: str = ""
 
 
 @dataclass
@@ -75,7 +77,7 @@ class TokenStats:
 
     reqs_count: int = 0
     completion_tokens: int = 0
-    all_tokens: int = 0
+    total_tokens: int = 0
 
 
 # === GLOBAL STATE MANAGEMENT ===
@@ -243,10 +245,16 @@ class ConfigManager:
                 stop_flag=mapping_dict.get("stop_flag", "[DONE]"),
                 end_prefix=mapping_dict.get("end_prefix", ""),
                 end_field=mapping_dict.get("end_field", ""),
-                content=mapping_dict.get("content", ""),
-                reasoning_content=mapping_dict.get("reasoning_content", ""),
-                prompt=mapping_dict.get("prompt", ""),
-                usage=mapping_dict.get("usage", ""),
+                content=mapping_dict.get("content", "choices.0.delta.content"),
+                reasoning_content=mapping_dict.get(
+                    "reasoning_content", "choices.0.delta.reasoning_content"
+                ),
+                prompt=mapping_dict.get("prompt", "messages.0.content"),
+                prompt_tokens=mapping_dict.get("prompt_tokens", "usage.prompt_tokens"),
+                completion_tokens=mapping_dict.get(
+                    "completion_tokens", "usage.completion_tokens"
+                ),
+                total_tokens=mapping_dict.get("total_tokens", "usage.total_tokens"),
             )
         except (json.JSONDecodeError, TypeError):
             return FieldMapping()

@@ -88,7 +88,7 @@ def graceful_signal_handler(signum, frame):
                         env.runner,
                         reqs=0,  # Do not increment request count
                         completion_tokens=0,
-                        all_tokens=0,
+                        total_tokens=0,
                     )
                     time.sleep(0.5)
                 except Exception as e:
@@ -247,7 +247,7 @@ def on_locust_init(environment, **kwargs):
                     stats_manager.update_stats(
                         reqs=data.get("reqs", 0),
                         completion_tokens=data.get("completion_tokens", 0),
-                        all_tokens=data.get("all_tokens", 0),
+                        total_tokens=data.get("total_tokens", 0),
                     )
                     task_logger.debug(f"[Master] Received stats from worker: {data}")
 
@@ -419,7 +419,8 @@ class LLMTestUser(HttpUser):
                 total_tokens = extract_token_from_usage(usage, ["total", "all"])
 
                 # Ensure total_tokens consistency
-                total_tokens = input_tokens + completion_tokens
+                if total_tokens == 0:
+                    total_tokens = input_tokens + completion_tokens
 
             # If completion_tokens is 0 and there is content to calculate, fallback to manual calculation
             if completion_tokens == 0 and (content or reasoning_content):
@@ -446,12 +447,8 @@ class LLMTestUser(HttpUser):
                         stats_manager.update_stats(
                             reqs=1,
                             completion_tokens=completion_tokens,
-                            all_tokens=total_tokens,
+                            total_tokens=total_tokens,
                         )
-                        if isinstance(runner, LocalRunner):
-                            self.task_logger.debug(
-                                f"[Standalone] Recorded stats: completion_tokens={completion_tokens}, all_tokens={total_tokens}"
-                            )
 
                     elif isinstance(runner, WorkerRunner):
                         # Worker: send message to Master
@@ -459,7 +456,7 @@ class LLMTestUser(HttpUser):
                             runner,
                             reqs=1,
                             completion_tokens=completion_tokens,
-                            all_tokens=total_tokens,
+                            total_tokens=total_tokens,
                         )
 
                     else:
@@ -467,7 +464,7 @@ class LLMTestUser(HttpUser):
                         stats_manager.update_stats(
                             reqs=1,
                             completion_tokens=completion_tokens,
-                            all_tokens=total_tokens,
+                            total_tokens=total_tokens,
                         )
                         self.task_logger.warning(
                             f"[Warning] Unknown runner type: {type(runner)}"
@@ -479,7 +476,7 @@ class LLMTestUser(HttpUser):
                     stats_manager.update_stats(
                         reqs=1,
                         completion_tokens=completion_tokens,
-                        all_tokens=total_tokens,
+                        total_tokens=total_tokens,
                     )
 
         except Exception as e:
@@ -503,7 +500,7 @@ class LLMTestUser(HttpUser):
         start_time = time.time()
         reasoning_content, content = "", ""
         usage: Dict[str, Optional[int]] = {
-            "completion_tokens": None,
+            "completion_tokens": 0,
             "total_tokens": None,
         }
         request_name = base_request_kwargs.get("name", "failure")
@@ -514,7 +511,7 @@ class LLMTestUser(HttpUser):
                         self.client, base_request_kwargs, start_time
                     )
                 )
-                # self.task_logger.debug(f"reasoning_content: {reasoning_content}")
+                self.task_logger.debug(f"chat_request- usage: {usage}")
                 # self.task_logger.debug(f"content: {content}")
             else:
                 reasoning_content, content, usage = (

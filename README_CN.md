@@ -109,7 +109,7 @@ VITE_API_BASE_URL=/api
 # 当并发用户数超过此阈值，系统将自动启用多进程模式（需多核 CPU 支持）
 MULTIPROCESS_THRESHOLD: 1000
 # 每个子进程至少承载的并发用户数（避免进程过多导致资源浪费）
-MIN_USERS_PER_PROCESS: 600
+MIN_USERS_PER_PROCESS: 500
 # ⚠️ 重要提示：
 #   - 当并发量 ≥ 1000 时，强烈建议启用多进程以提升性能。
 #   - 多进程模式依赖多核 CPU 资源，请确保部署环境满足资源要求

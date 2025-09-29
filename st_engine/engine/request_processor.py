@@ -316,7 +316,7 @@ class StreamProcessor:
                     EventManager.fire_metric_event(
                         "Time_to_first_output_token", ttfot, 0
                     )
-        return False, None, metrics  # Continue processing
+        return False, None, metrics
 
 
 # === REQUEST HANDLERS ===
@@ -735,6 +735,81 @@ class APIClient:
             return "", "", usage
         return metrics.reasoning_content, metrics.content, metrics.usage
 
+    @staticmethod
+    def _extract_usage_from_response(
+        resp_json: Dict[str, Any], field_mapping: FieldMapping
+    ) -> Dict[str, Optional[int]]:
+        """
+        Extract usage from response JSON using FieldMapping.
+        Similar to extract_metrics_from_chunk but for non-streaming responses.
+        """
+        usage: Dict[str, Optional[int]] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+
+        # Update prompt tokens if field mapping exists
+        if field_mapping.prompt_tokens:
+            prompt_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(resp_json, field_mapping.prompt_tokens)
+            )
+            if prompt_tokens_value > 0:
+                usage["prompt_tokens"] = prompt_tokens_value
+
+        # Update completion tokens if field mapping exists
+        if field_mapping.completion_tokens:
+            completion_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(
+                    resp_json, field_mapping.completion_tokens
+                )
+            )
+            if completion_tokens_value > 0:
+                usage["completion_tokens"] = completion_tokens_value
+
+        # Update total tokens if field mapping exists
+        if field_mapping.total_tokens:
+            total_tokens_value = safe_int_convert(
+                StreamProcessor.get_field_value(resp_json, field_mapping.total_tokens)
+            )
+            if total_tokens_value > 0:
+                usage["total_tokens"] = total_tokens_value
+
+        # Fallback: try to extract from usage field if mappings are not provided
+        if (
+            usage["prompt_tokens"] == 0
+            and usage["completion_tokens"] == 0
+            and usage["total_tokens"] == 0
+        ):
+            if "usage" in resp_json and isinstance(resp_json["usage"], dict):
+                response_usage = resp_json["usage"]
+                if "prompt_tokens" in response_usage:
+                    usage["prompt_tokens"] = safe_int_convert(
+                        response_usage["prompt_tokens"]
+                    )
+                if "input_tokens" in response_usage:
+                    usage["prompt_tokens"] = safe_int_convert(
+                        response_usage["input_tokens"]
+                    )
+                if "completion_tokens" in response_usage:
+                    usage["completion_tokens"] = safe_int_convert(
+                        response_usage["completion_tokens"]
+                    )
+                if "output_tokens" in response_usage:
+                    usage["completion_tokens"] = safe_int_convert(
+                        response_usage["output_tokens"]
+                    )
+                if "total_tokens" in response_usage:
+                    usage["total_tokens"] = safe_int_convert(
+                        response_usage["total_tokens"]
+                    )
+                if "all_tokens" in response_usage:
+                    usage["total_tokens"] = safe_int_convert(
+                        response_usage["all_tokens"]
+                    )
+
+        return usage
+
     def handle_non_stream_request(
         self, client, base_request_kwargs: Dict[str, Any], start_time: float
     ) -> Tuple[str, str, Dict[str, Optional[int]]]:
@@ -767,7 +842,6 @@ class APIClient:
                     "total_tokens": 0,
                 },
             )
-        self.task_logger.info(f"base_request_kwargs: {base_request_kwargs}")
 
         request_kwargs = {**base_request_kwargs, "stream": False}
         content, reasoning_content = "", ""
@@ -827,30 +901,16 @@ class APIClient:
                     0,
                 )
 
-                # Extract token counts from usage field if available
-                if "usage" in resp_json and isinstance(resp_json["usage"], dict):
-                    usage = resp_json["usage"]
-                self.task_logger.debug(f"usage: {usage}")
+                # Extract usage and content using FieldMapping
+                usage = self._extract_usage_from_response(resp_json, field_mapping)
 
-                if usage["total_tokens"] is None:
-                    content = (
-                        StreamProcessor.get_field_value(
-                            resp_json, field_mapping.content
-                        )
-                        if field_mapping.content
-                        else ""
+                if field_mapping.content:
+                    content = StreamProcessor.get_field_value(
+                        resp_json, field_mapping.content
                     )
-                    content = str(content) if content else ""
-
-                    reasoning_content = (
-                        StreamProcessor.get_field_value(
-                            resp_json, field_mapping.reasoning_content
-                        )
-                        if field_mapping.reasoning_content
-                        else ""
-                    )
-                    reasoning_content = (
-                        str(reasoning_content) if reasoning_content else ""
+                if field_mapping.reasoning_content:
+                    reasoning_content = StreamProcessor.get_field_value(
+                        resp_json, field_mapping.reasoning_content
                     )
                 response.success()
                 return reasoning_content, content, usage

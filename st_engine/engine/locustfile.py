@@ -425,14 +425,16 @@ class LLMTestUser(HttpUser):
             # If completion_tokens is 0 and there is content to calculate, fallback to manual calculation
             if completion_tokens == 0 and (content or reasoning_content):
                 input_tokens = (
-                    count_tokens(user_prompt, model_name) if user_prompt else 0
+                    count_tokens(str(user_prompt), model_name) if user_prompt else 0
                 )
                 reasoning_content_tokens = (
-                    count_tokens(reasoning_content, model_name)
+                    count_tokens(str(reasoning_content), model_name)
                     if reasoning_content
                     else 0
                 )
-                content_tokens = count_tokens(content, model_name) if content else 0
+                content_tokens = (
+                    count_tokens(str(content), model_name) if content else 0
+                )
                 completion_tokens = reasoning_content_tokens + content_tokens
                 total_tokens = input_tokens + completion_tokens
 

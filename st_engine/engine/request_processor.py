@@ -86,14 +86,18 @@ class StreamProcessor:
     @staticmethod
     def remove_chunk_prefix(chunk_str: str, field_mapping: FieldMapping) -> str:
         """Remove prefix from chunk string based on field mapping configuration."""
+        result = chunk_str.strip()
         if field_mapping.end_prefix:
-            return chunk_str.replace(field_mapping.end_prefix, "").strip()
+            result = result[len(field_mapping.end_prefix) :].strip()
         elif field_mapping.stream_prefix and chunk_str.startswith(
             field_mapping.stream_prefix
         ):
-            return chunk_str[len(field_mapping.stream_prefix) :].strip()
-        else:
-            return chunk_str.strip()
+            result = result[len(field_mapping.stream_prefix) :].strip()
+        elif chunk_str.startswith("data: "):
+            result = result[len("data: ") :].strip()
+        elif chunk_str.startswith("event: "):
+            result = result[len("event: ") :].strip()
+        return result
 
     @staticmethod
     def check_stop_flag(processed_chunk: str, field_mapping: FieldMapping) -> bool:
@@ -269,9 +273,6 @@ class StreamProcessor:
         if not chunk_str:
             return False, None, metrics
 
-        if StreamProcessor.is_sse_event_line(chunk_str):
-            return False, None, metrics
-
         # Remove prefix if present
         processed_chunk = StreamProcessor.remove_chunk_prefix(chunk_str, field_mapping)
 
@@ -282,6 +283,8 @@ class StreamProcessor:
         if StreamProcessor.check_stop_flag(processed_chunk, field_mapping):
             return True, None, metrics  # Normal stream end
 
+        if StreamProcessor.is_sse_event_line(chunk_str):
+            return False, None, metrics
         # Check if data format is JSON
         if field_mapping.data_format == "json":
             try:

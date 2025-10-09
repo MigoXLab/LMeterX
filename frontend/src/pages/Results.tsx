@@ -222,11 +222,11 @@ const TaskResults: React.FC = () => {
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
       render: (text: number, record: any) => {
-        if (!text) return '0.00';
+        if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
-        return (text / 1000).toFixed(2);
+        return (text / 1000).toFixed(3);
       },
     },
     {
@@ -234,12 +234,12 @@ const TaskResults: React.FC = () => {
       dataIndex: 'max_response_time',
       key: 'max_response_time',
       render: (text: number, record: any) => {
-        if (!text) return '0.00';
+        if (!text) return '0.000';
 
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
-        return (text / 1000).toFixed(2);
+        return (text / 1000).toFixed(3);
       },
     },
     {
@@ -247,12 +247,12 @@ const TaskResults: React.FC = () => {
       dataIndex: 'min_response_time',
       key: 'min_response_time',
       render: (text: number, record: any) => {
-        if (!text) return '0.00';
+        if (!text) return '0.000';
 
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
-        return (text / 1000).toFixed(2);
+        return (text / 1000).toFixed(3);
       },
     },
     {
@@ -260,11 +260,11 @@ const TaskResults: React.FC = () => {
       dataIndex: 'percentile_90_response_time',
       key: 'percentile_90_response_time',
       render: (text: number, record: any) => {
-        if (!text) return '0.00';
+        if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
-        return (text / 1000).toFixed(2);
+        return (text / 1000).toFixed(3);
       },
     },
     {
@@ -272,19 +272,19 @@ const TaskResults: React.FC = () => {
       dataIndex: 'median_response_time',
       key: 'median_response_time',
       render: (text: number, record: any) => {
-        if (!text) return '0.00';
+        if (!text) return '0.000';
 
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
-        return (text / 1000).toFixed(2);
+        return (text / 1000).toFixed(3);
       },
     },
     {
       title: t('pages.results.rpsCol'),
       dataIndex: 'rps',
       key: 'rps',
-      render: (text: number) => (text ? text.toFixed(2) : '0.00'),
+      render: (text: number) => (text ? text.toFixed(3) : '0.000'),
     },
   ];
 
@@ -801,7 +801,7 @@ const TaskResults: React.FC = () => {
                       <Statistic
                         title={t('pages.results.successRate')}
                         value={actualSuccessRate}
-                        precision={2}
+                        precision={3}
                         suffix='%'
                       />
                     </Col>
@@ -820,9 +820,9 @@ const TaskResults: React.FC = () => {
                         value={(() => {
                           const rpsValue =
                             CompletionResult?.rps || firstTokenResult?.rps;
-                          return rpsValue ? Number(rpsValue).toFixed(2) : '-';
+                          return rpsValue ? Number(rpsValue).toFixed(3) : '-';
                         })()}
-                        precision={2}
+                        precision={3}
                       />
                     </Col>
                     <Col span={6}>
@@ -841,7 +841,7 @@ const TaskResults: React.FC = () => {
                           firstTokenResult?.avg_response_time
                             ? (
                                 firstTokenResult.avg_response_time / 1000
-                              ).toFixed(2)
+                              ).toFixed(3)
                             : '-'
                         }
                       />
@@ -865,7 +865,7 @@ const TaskResults: React.FC = () => {
                           </span>
                         }
                         value={TpsResult?.total_tps || '-'}
-                        precision={2}
+                        precision={3}
                       />
                     </Col>
                     <Col span={6}>
@@ -885,7 +885,7 @@ const TaskResults: React.FC = () => {
                           </span>
                         }
                         value={TpsResult?.completion_tps || '-'}
-                        precision={2}
+                        precision={3}
                       />
                     </Col>
                     <Col span={6}>
@@ -905,7 +905,7 @@ const TaskResults: React.FC = () => {
                           </span>
                         }
                         value={TpsResult?.avg_total_tokens_per_req || '-'}
-                        precision={2}
+                        precision={3}
                       />
                     </Col>
                     <Col span={6}>
@@ -925,7 +925,7 @@ const TaskResults: React.FC = () => {
                           </span>
                         }
                         value={TpsResult?.avg_completion_tokens_per_req || '-'}
-                        precision={2}
+                        precision={3}
                       />
                     </Col>
                   </Row>

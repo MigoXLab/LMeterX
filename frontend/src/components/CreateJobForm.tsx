@@ -94,6 +94,22 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           : CHAT_COMPLETIONS_FIELD_MAPPING.NON_STREAMING),
       };
     }
+    if (apiPath === '/embeddings') {
+      // embeddings use non-stream mode, and no content field
+      return {
+        prompt: 'input',
+        stream_prefix: '',
+        data_format: 'json',
+        content: '',
+        reasoning_content: '',
+        prompt_tokens: '',
+        completion_tokens: '',
+        total_tokens: '',
+        end_prefix: '',
+        stop_flag: '',
+        end_field: '',
+      };
+    }
     // For non-chat/completions APIs, return empty values (only show placeholders)
     return {
       prompt: '',
@@ -111,18 +127,35 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   };
 
   // Generate default request payload based on model and stream mode
-  const generateDefaultPayload = (model: string, streamMode: boolean) => {
-    const payload = {
-      model: model || 'your-model-name',
-      stream: streamMode,
-      messages: [
+  const generateDefaultPayload = (
+    model: string,
+    streamMode: boolean,
+    apiPath?: string
+  ) => {
+    if (apiPath === '/embeddings') {
+      return JSON.stringify(
         {
-          role: 'user',
-          content: 'Hi',
+          model: model || 'your-model-name',
+          input: 'Hi',
         },
-      ],
-    };
-    return JSON.stringify(payload, null, 2);
+        null,
+        2
+      );
+    }
+    return JSON.stringify(
+      {
+        model: model || 'your-model-name',
+        stream: streamMode,
+        messages: [
+          {
+            role: 'user',
+            content: 'Hi',
+          },
+        ],
+      },
+      null,
+      2
+    );
   };
 
   // Tab navigation functions
@@ -233,6 +266,21 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         currentStreamMode
       );
       form.setFieldsValue({ field_mapping: defaultFieldMapping });
+
+      // If API path is /embeddings, set stream_mode to false
+      if (currentApiPath === '/embeddings' && currentStreamMode !== false) {
+        form.setFieldsValue({ stream_mode: false });
+        setStreamMode(false);
+
+        // Update request_payload for embeddings API
+        const currentModel = form.getFieldValue('model') || '';
+        const newPayload = generateDefaultPayload(
+          currentModel,
+          false,
+          currentApiPath
+        );
+        form.setFieldsValue({ request_payload: newPayload });
+      }
     }
   }, [isFormReady, isCopyMode, initialData, form]);
 
@@ -449,7 +497,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       if (file.size > maxSize) {
         message.error(
           t('components.createJobForm.fileSizeExceedsLimitWithSize', {
-            size: (file.size / (1024 * 1024)).toFixed(2),
+            size: (file.size / (1024 * 1024)).toFixed(3),
           })
         );
         onError();
@@ -481,7 +529,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       if (file.size > maxSize) {
         message.error(
           t('components.createJobForm.fileSizeExceedsLimitWithSize', {
-            size: (file.size / (1024 * 1024)).toFixed(2),
+            size: (file.size / (1024 * 1024)).toFixed(3),
           })
         );
         onError();
@@ -514,7 +562,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       if (file.size > maxSize) {
         message.error(
           t('components.createJobForm.fileSizeExceedsLimitWithSize', {
-            size: (file.size / (1024 * 1024)).toFixed(2),
+            size: (file.size / (1024 * 1024)).toFixed(3),
           })
         );
         onError();
@@ -562,9 +610,11 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         const currentModel = values.model || '';
         const currentStreamMode =
           values.stream_mode !== undefined ? values.stream_mode : true;
+        const currentApiPath = values.api_path || '';
         values.request_payload = generateDefaultPayload(
           currentModel,
-          currentStreamMode
+          currentStreamMode,
+          currentApiPath
         );
         // Update form with generated payload
         form.setFieldsValue({ request_payload: values.request_payload });
@@ -680,9 +730,11 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         const currentModel = values.model || '';
         const currentStreamMode =
           values.stream_mode !== undefined ? values.stream_mode : true;
+        const currentApiPath = values.api_path || '';
         values.request_payload = generateDefaultPayload(
           currentModel,
-          currentStreamMode
+          currentStreamMode,
+          currentApiPath
         );
       }
 
@@ -1551,7 +1603,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                     form.getFieldValue('model') || '',
                     form.getFieldValue('stream_mode') !== undefined
                       ? form.getFieldValue('stream_mode')
-                      : true
+                      : true,
+                    form.getFieldValue('api_path') || ''
                   )
                 ) {
                   setUserModifiedPayload(true);
@@ -2126,10 +2179,25 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                             }
                             rules={[
                               {
-                                required: dataFormat === 'json',
-                                message: t(
-                                  'components.createJobForm.pleaseSpecifyContentFieldPath'
-                                ),
+                                validator: (_, value) => {
+                                  const currentApiPath =
+                                    form.getFieldValue('api_path') ||
+                                    '/chat/completions';
+                                  // content field is not required for /embeddings API
+                                  if (currentApiPath === '/embeddings') {
+                                    return Promise.resolve();
+                                  }
+                                  if (dataFormat === 'json' && !value) {
+                                    return Promise.reject(
+                                      new Error(
+                                        t(
+                                          'components.createJobForm.pleaseSpecifyContentFieldPath'
+                                        )
+                                      )
+                                    );
+                                  }
+                                  return Promise.resolve();
+                                },
                               },
                             ]}
                           >
@@ -2366,10 +2434,24 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 }
                 rules={[
                   {
-                    required: true,
-                    message: t(
-                      'components.createJobForm.pleaseSpecifyContentFieldPath'
-                    ),
+                    validator: (_, value) => {
+                      const currentApiPath =
+                        form.getFieldValue('api_path') || '/chat/completions';
+                      // content field is not required for /embeddings API
+                      if (currentApiPath === '/embeddings') {
+                        return Promise.resolve();
+                      }
+                      if (!value) {
+                        return Promise.reject(
+                          new Error(
+                            t(
+                              'components.createJobForm.pleaseSpecifyContentFieldPath'
+                            )
+                          )
+                        );
+                      }
+                      return Promise.resolve();
+                    },
                   },
                 ]}
               >
@@ -2599,7 +2681,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           model: '',
           request_payload: generateDefaultPayload(
             form.getFieldValue('model') || '',
-            form.getFieldValue('stream_mode') || true
+            form.getFieldValue('stream_mode') || true,
+            form.getFieldValue('api_path') || ''
           ),
           field_mapping: getDefaultFieldMapping('/chat/completions', true),
         }}
@@ -2623,7 +2706,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               const currentModel = form.getFieldValue('model') || '';
               const newPayload = generateDefaultPayload(
                 currentModel,
-                changedValues.stream_mode
+                changedValues.stream_mode,
+                form.getFieldValue('api_path') || ''
               );
               form.setFieldsValue({ request_payload: newPayload });
             }
@@ -2641,6 +2725,30 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 currentStreamMode
               );
               form.setFieldsValue({ field_mapping: newFieldMapping });
+
+              // If API path is /embeddings, set stream_mode to false
+              if (
+                changedValues.api_path === '/embeddings' &&
+                currentStreamMode !== false
+              ) {
+                form.setFieldsValue({ stream_mode: false });
+                setStreamMode(false);
+              }
+
+              // Auto-fill request_payload when api_path changes (only if user hasn't manually modified it)
+              if (!userModifiedPayload) {
+                const currentModel = form.getFieldValue('model') || '';
+                const finalStreamMode =
+                  changedValues.api_path === '/embeddings'
+                    ? false
+                    : currentStreamMode;
+                const newPayload = generateDefaultPayload(
+                  currentModel,
+                  finalStreamMode,
+                  changedValues.api_path
+                );
+                form.setFieldsValue({ request_payload: newPayload });
+              }
             }
           }
 
@@ -2650,9 +2758,11 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               form.getFieldValue('stream_mode') !== undefined
                 ? form.getFieldValue('stream_mode')
                 : true;
+            const currentApiPath = form.getFieldValue('api_path') || '';
             const newPayload = generateDefaultPayload(
               changedValues.model || '',
-              currentStreamMode
+              currentStreamMode,
+              currentApiPath
             );
             form.setFieldsValue({ request_payload: newPayload });
           }

@@ -464,7 +464,7 @@ const ResultComparison: React.FC = () => {
     label: {
       visible: true,
       position: 'top',
-      formatter: (text: string) => `${parseFloat(text).toFixed(2)}`,
+      formatter: (text: string) => `${parseFloat(text).toFixed(3)}`,
     },
     meta: {
       value: {

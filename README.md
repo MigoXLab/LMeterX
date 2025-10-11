@@ -177,7 +177,6 @@ LMeterX/
 
 ### Planned
 - [ ] CLI command-line tool
-- [ ] Support for `/v1/embedding` and `/v1/rerank` API stress testing
 
 ## 📚 Related Documentation
 

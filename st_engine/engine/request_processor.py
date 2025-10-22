@@ -87,7 +87,7 @@ class StreamProcessor:
     def remove_chunk_prefix(chunk_str: str, field_mapping: FieldMapping) -> str:
         """Remove prefix from chunk string based on field mapping configuration."""
         result = chunk_str.strip()
-        if field_mapping.end_prefix:
+        if field_mapping.end_prefix and result.startswith(field_mapping.end_prefix):
             result = result[len(field_mapping.end_prefix) :].strip()
         elif field_mapping.stream_prefix and chunk_str.startswith(
             field_mapping.stream_prefix

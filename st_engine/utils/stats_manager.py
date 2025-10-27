@@ -8,7 +8,7 @@ import os
 import time
 from typing import Any, Dict, List
 
-from core import GlobalStateManager, TokenStats
+from engine.core import GlobalStateManager
 
 from utils.logger import logger
 
@@ -52,7 +52,29 @@ class StatsManager:
         start_time = self.global_state.start_time
         end_time = time.time()
 
-        execution_time = max(end_time - start_time, 0.001) if start_time else 60.0
+        # Calculate execution time with fallback strategy
+        execution_time = 0.0
+        if start_time:
+            # Priority 1: Use start_time to calculate actual execution time
+            execution_time = max(end_time - start_time, 0.001)
+        else:
+            # Priority 2: Use task.duration as fallback
+            try:
+                duration = self.global_state.config.duration
+                if duration and duration > 0:
+                    execution_time = float(duration)
+                else:
+                    # Both start_time and duration are invalid
+                    execution_time = 0.0
+                    self.task_logger.error(
+                        "Failed to calculate execution_time: both start_time and task.duration are invalid"
+                    )
+            except Exception as e:
+                # Exception occurred while getting duration
+                execution_time = 0.0
+                self.task_logger.error(
+                    f"Failed to calculate execution_time: start_time is invalid and error getting task.duration: {e}"
+                )
 
         return {
             "reqs_count": stats.reqs_count,

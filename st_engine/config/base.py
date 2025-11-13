@@ -9,23 +9,25 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ST_ENGINE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# === LOG PATHS ===
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-LOG_TASK_DIR = os.path.join(LOG_DIR, "task")
 
-# === DATA PATHS ===
-DATA_DIR = os.path.join(BASE_DIR, "data")
-PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
-IMAGES_DIR = os.path.join(DATA_DIR, "pic")
-
-# === UPLOAD PATHS ===
 # Handle different environments: Docker vs local development
 if os.path.exists("/app") and os.getcwd().startswith("/app"):
-    # Docker environment: use /app/upload_files
+    # Docker environment: use /app/xxx
+    LOG_DIR = "/app/logs"
     UPLOAD_FOLDER = "/app/upload_files"
+    DATA_DIR = "/app/data"
+
 else:
-    # Local development: use project root upload_files
+    # Local development
+    LOG_DIR = os.path.join(BASE_DIR, "logs")
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "upload_files")
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+
+# === LOG PATHS ===
+LOG_TASK_DIR = os.path.join(LOG_DIR, "task")
+# === DATA PATHS ===
+PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
+IMAGES_DIR = os.path.join(DATA_DIR, "pic")
 
 # === HTTP CONSTANTS ===
 HTTP_OK = 200

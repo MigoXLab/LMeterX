@@ -393,7 +393,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
         )
     except Exception as e:
         await db.rollback()
-        error_msg = f"Failed to create task in database: {str(e)}"
+        error_msg = "Failed to create task in database"
         logger.error("Failed to create task in database: {}", e, exc_info=True)
         return ErrorResponse.internal_server_error(error_msg)
 

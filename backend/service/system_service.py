@@ -77,7 +77,7 @@ async def get_system_configs_svc(request: Request) -> SystemConfigListResponse:
         )
 
     except Exception as e:
-        logger.warning(f"Failed to get system configs: {str(e)}")
+        logger.warning("Failed to get system configs: {}", e)
         return SystemConfigListResponse(
             data=[],
             status="success",
@@ -135,7 +135,7 @@ async def get_system_configs_internal_svc(request: Request) -> SystemConfigListR
         )
 
     except Exception as e:
-        logger.error(f"Failed to get system configs: {str(e)}")
+        logger.error("Failed to get system configs: {}", e)
         return SystemConfigListResponse(
             data=[],
             status="error",
@@ -207,7 +207,7 @@ async def create_system_config_svc(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create system config: {str(e)}")
+        logger.error("Failed to create system config: {}", e)
         raise HTTPException(status_code=500, detail=ErrorMessages.TASK_CREATION_FAILED)
 
 
@@ -269,7 +269,7 @@ async def update_system_config_svc(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update system config: {str(e)}")
+        logger.error("Failed to update system config: {}", e)
         raise HTTPException(status_code=500, detail=ErrorMessages.TASK_UPDATE_FAILED)
 
 
@@ -307,7 +307,7 @@ async def delete_system_config_svc(request: Request, config_key: str) -> Dict:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete system config: {str(e)}")
+        logger.error("Failed to delete system config: {}", e)
         raise HTTPException(status_code=500, detail=ErrorMessages.TASK_DELETION_FAILED)
 
 
@@ -368,7 +368,7 @@ async def get_ai_service_config_svc(request: Request) -> AIServiceConfig:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get AI service config: {str(e)}")
+        logger.error("Failed to get AI service config: {}", e)
         raise HTTPException(status_code=500, detail=ErrorMessages.DATABASE_ERROR)
 
 
@@ -428,7 +428,7 @@ async def get_ai_service_config_internal_svc(request: Request) -> AIServiceConfi
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get AI service config: {str(e)}")
+        logger.error("Failed to get AI service config: {}", e)
         raise HTTPException(status_code=500, detail=ErrorMessages.DATABASE_ERROR)
 
 
@@ -520,7 +520,7 @@ async def batch_upsert_system_configs_svc(
         )
 
     except Exception as e:
-        logger.error(f"Failed to batch upsert system configs: {str(e)}")
+        logger.error("Failed to batch upsert system configs: {}", e)
         return BatchSystemConfigResponse(
             data=[],
             status="error",

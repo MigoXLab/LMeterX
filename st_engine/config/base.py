@@ -14,7 +14,7 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_TASK_DIR = os.path.join(LOG_DIR, "task")
 
 # === DATA PATHS ===
-DATA_DIR = os.path.join(ST_ENGINE_DIR, "data")
+DATA_DIR = os.path.join(BASE_DIR, "data")
 PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
 IMAGES_DIR = os.path.join(DATA_DIR, "pic")
 
@@ -35,7 +35,7 @@ DEFAULT_WAIT_TIME_MAX = 2
 
 # === DEFAULT VALUES ===
 DEFAULT_PROMPT = "Tell me about the history of Artificial Intelligence."
-DEFAULT_API_PATH = "/chat/completions"
+DEFAULT_API_PATH = "/v1/chat/completions"
 DEFAULT_CONTENT_TYPE = "application/json"
 
 # === LOCUST CONFIGURATION ===

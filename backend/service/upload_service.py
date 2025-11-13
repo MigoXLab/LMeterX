@@ -125,7 +125,7 @@ def determine_cert_config(
         # Updates only the key file, preserving the certificate file.
         config["key_file"] = files[0]["path"]
     else:
-        logger.warning(f"Certificate type not specified or invalid: {cert_type}")
+        logger.warning("Certificate type not specified or invalid: {}", cert_type)
 
     return config
 
@@ -185,7 +185,9 @@ async def process_cert_files(
                 }
                 uploaded_files_info.append(file_info)
                 logger.info(
-                    f"Certificate file uploaded successfully, type: {cert_type}, size: {file_size} bytes"
+                    "Certificate file uploaded successfully, type: {}, size: {} bytes",
+                    cert_type,
+                    file_size,
                 )
 
         # Retrieve existing config for the task, if any.
@@ -205,7 +207,7 @@ async def process_cert_files(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error processing certificate files: {e}")
+        logger.error("Error processing certificate files: {}", e)
         raise HTTPException(status_code=500, detail="Upload failed")
 
 
@@ -267,14 +269,16 @@ async def process_dataset_files(task_id: str, files: List[UploadFile]):
                 uploaded_files_info.append(file_info)
                 file_path = absolute_file_path  # Use absolute path for test_data
                 logger.info(
-                    f"Dataset file uploaded successfully: {filename}, size: {file_size} bytes"
+                    "Dataset file uploaded successfully: {}, size: {} bytes",
+                    filename,
+                    file_size,
                 )
 
         return uploaded_files_info, file_path
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error processing dataset files: {e}")
+        logger.error("Error processing dataset files: {}", e)
         raise HTTPException(status_code=500, detail="Upload failed")
 
 
@@ -292,7 +296,7 @@ async def upload_file_svc(
     the processing to the appropriate handler based on the file type.
     """
     if files and files[0].filename:
-        logger.info(f"Uploading file: {files[0].filename}")
+        logger.info("Uploading file: {}", files[0].filename)
 
     if not files or not files[0].filename:
         return ErrorResponse.bad_request(ErrorMessages.NO_FILES_PROVIDED)
@@ -306,7 +310,7 @@ async def upload_file_svc(
             effective_task_id = validate_task_id(task_id)
             # logger.info(f"Validated task_id: {effective_task_id}")
         except ValueError as e:
-            logger.error(f"Task ID validation failed: {e}")
+            logger.error("Task ID validation failed: {}", e)
             return ErrorResponse.bad_request(str(e))
 
     if not file_type:

@@ -127,7 +127,7 @@ class ErrorResponse:
                 response_text = getattr(
                     response, "text", "Unable to retrieve response text"
                 )
-                error_msg = f"Request failed with status {status_code}. Response: {response_text}"
+                error_msg = f"Request failed with status_code {status_code}. Response: {response_text}"
                 response_time = (
                     (time.time() - start_time) * 1000 if start_time > 0 else 0
                 )

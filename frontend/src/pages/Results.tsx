@@ -27,7 +27,7 @@ import {
   Tooltip,
 } from 'antd';
 import html2canvas from 'html2canvas';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { analysisApi, benchmarkJobApi, resultApi } from '../api/services';
@@ -37,6 +37,17 @@ import { LoadingSpinner } from '../components/ui/LoadingState';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useLanguage } from '../contexts/LanguageContext';
+
+const SUMMARY_METRIC_TYPES = new Set([
+  'token_metrics',
+  'Total_time',
+  'Time_to_first_reasoning_token',
+  'Time_to_first_output_token',
+  'Time_to_output_completion',
+  'failure',
+  'total_tokens_per_second',
+  'completion_tokens_per_second',
+]);
 
 const TaskResults: React.FC = () => {
   const { t } = useTranslation();
@@ -56,6 +67,17 @@ const TaskResults: React.FC = () => {
   const overviewCardRef = useRef<HTMLDivElement | null>(null);
   const detailsCardRef = useRef<HTMLDivElement | null>(null);
   const responseTimeCardRef = useRef<HTMLDivElement | null>(null);
+
+  const getBuiltInDatasetLabel = (value?: number | null) => {
+    switch (value) {
+      case 1:
+        return t('pages.results.datasetOptionShareGPTPartial');
+      case 2:
+        return t('pages.results.datasetOptionVisionSelfBuilt');
+      default:
+        return t('pages.results.datasetOptionTextSelfBuilt');
+    }
+  };
 
   // Function to fetch analysis result
   const fetchAnalysisResult = async () => {
@@ -152,23 +174,45 @@ const TaskResults: React.FC = () => {
   );
   const failResult = results.find(item => item.metric_type === 'failure');
 
+  const requestMetricTypeSet = useMemo(() => {
+    const typeSet = new Set<string>();
+
+    if (taskInfo?.api_path) {
+      typeSet.add(taskInfo.api_path);
+    }
+
+    results.forEach(item => {
+      if (
+        item?.metric_type &&
+        !SUMMARY_METRIC_TYPES.has(item.metric_type) &&
+        Number.isFinite(Number(item?.failure_count))
+      ) {
+        typeSet.add(item.metric_type);
+      }
+    });
+
+    return typeSet;
+  }, [results, taskInfo?.api_path]);
+
   // Calculate total failed requests from multiple sources
   const calculateFailedRequests = () => {
     // Get failure requests from 'failure' metric type
     const failureMetricRequests = failResult?.request_count || 0;
 
-    // Get failure count from chat_completions or custom_api metric types
-    const chatCompletionsResult = results.find(
-      item => item.metric_type === 'chat_completions'
-    );
-    const customApiResult = results.find(
-      item => item.metric_type === 'custom_api'
-    );
+    // Sum failure counts from request-specific metrics
+    const requestFailures = results.reduce((total, item) => {
+      if (
+        !item?.metric_type ||
+        SUMMARY_METRIC_TYPES.has(item.metric_type) ||
+        !Number.isFinite(Number(item?.failure_count))
+      ) {
+        return total;
+      }
 
-    const chatCompletionsFailures = chatCompletionsResult?.failure_count || 0;
-    const customApiFailures = customApiResult?.failure_count || 0;
+      return total + Number(item.failure_count);
+    }, 0);
 
-    return failureMetricRequests + chatCompletionsFailures + customApiFailures;
+    return failureMetricRequests + requestFailures;
   };
 
   // Check if we have any valid test results
@@ -211,12 +255,7 @@ const TaskResults: React.FC = () => {
       key: 'request_count',
       render: (text: number) => text || 0,
     },
-    // {
-    //     title: 'Failed Requests',
-    //     dataIndex: 'failure_count',
-    //     key: 'failure_count',
-    //     render: (text: number) => text || 0,
-    // },
+
     {
       title: t('pages.results.avgResponseTimeCol'),
       dataIndex: 'avg_response_time',
@@ -725,16 +764,13 @@ const TaskResults: React.FC = () => {
               <Descriptions.Item label={t('pages.results.datasetType')}>
                 {(() => {
                   if (taskInfo?.test_data === 'default') {
-                    if (taskInfo?.chat_type === 1) {
-                      return t('pages.results.multimodalTextImage');
-                    }
-                    return t('pages.results.textOnlyConversations');
+                    return getBuiltInDatasetLabel(taskInfo?.chat_type);
                   }
                   return '-';
                 })()}
               </Descriptions.Item>
               <Descriptions.Item label={t('pages.results.modelName')}>
-                {taskInfo?.model || 'N/A'}
+                {taskInfo?.model || 'none'}
               </Descriptions.Item>
               <Descriptions.Item label={t('pages.results.concurrentUsers')}>
                 {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
@@ -787,17 +823,70 @@ const TaskResults: React.FC = () => {
                   ? (baseRequestCount / actualTotalRequests) * 100
                   : 0;
 
+              // Helper function to check if a value is valid (not empty/0/-/null/undefined)
+              const isValidValue = (value: any): boolean => {
+                if (value === null || value === undefined || value === '-') {
+                  return false;
+                }
+                if (typeof value === 'number' && value === 0) {
+                  return false;
+                }
+                if (
+                  typeof value === 'string' &&
+                  (value.trim() === '' || value === '0')
+                ) {
+                  return false;
+                }
+                return true;
+              };
+
+              // Check TTFT validity
+              const ttftValue = firstTokenResult?.avg_response_time
+                ? (firstTokenResult.avg_response_time / 1000).toFixed(3)
+                : null;
+              const hasTtft =
+                isValidValue(ttftValue) &&
+                isValidValue(firstTokenResult?.avg_response_time);
+
+              // Check second row metrics validity
+              const hasTotalTps = isValidValue(TpsResult?.total_tps);
+              const hasCompletionTps = isValidValue(TpsResult?.completion_tps);
+              const hasAvgTotalTpr = isValidValue(
+                TpsResult?.avg_total_tokens_per_req
+              );
+              const hasAvgCompletionTpr = isValidValue(
+                TpsResult?.avg_completion_tokens_per_req
+              );
+
+              // Calculate spans for first row
+              const firstRowMetricsCount = hasTtft ? 4 : 3;
+              const firstRowSpan = Math.floor(24 / firstRowMetricsCount);
+
+              // Calculate spans for second row
+              const secondRowMetrics = [
+                hasTotalTps,
+                hasCompletionTps,
+                hasAvgTotalTpr,
+                hasAvgCompletionTpr,
+              ];
+              const secondRowMetricsCount =
+                secondRowMetrics.filter(Boolean).length;
+              const secondRowSpan =
+                secondRowMetricsCount > 0
+                  ? Math.floor(24 / secondRowMetricsCount)
+                  : 6;
+
               return (
                 <>
-                  {/* First row: request count, success rate, RPS */}
+                  {/* First row: request count, success rate, RPS, TTFT (conditional) */}
                   <Row gutter={16} className='mb-16'>
-                    <Col span={6}>
+                    <Col span={firstRowSpan}>
                       <Statistic
                         title={t('pages.results.totalRequests')}
                         value={actualTotalRequests}
                       />
                     </Col>
-                    <Col span={6}>
+                    <Col span={firstRowSpan}>
                       <Statistic
                         title={t('pages.results.successRate')}
                         value={actualSuccessRate}
@@ -805,7 +894,7 @@ const TaskResults: React.FC = () => {
                         suffix='%'
                       />
                     </Col>
-                    <Col span={6}>
+                    <Col span={firstRowSpan}>
                       <Statistic
                         title={
                           <span>
@@ -825,110 +914,120 @@ const TaskResults: React.FC = () => {
                         precision={3}
                       />
                     </Col>
-                    <Col span={6}>
-                      <Statistic
-                        title={
-                          <span>
-                            {t('pages.results.ttft')}
-                            <IconTooltip
-                              title={statisticExplanations['TTFT (s)']}
-                              className='ml-4'
-                              color='#1890ff'
-                            />
-                          </span>
-                        }
-                        value={
-                          firstTokenResult?.avg_response_time
-                            ? (
-                                firstTokenResult.avg_response_time / 1000
-                              ).toFixed(3)
-                            : '-'
-                        }
-                      />
-                    </Col>
+                    {hasTtft && (
+                      <Col span={firstRowSpan}>
+                        <Statistic
+                          title={
+                            <span>
+                              {t('pages.results.ttft')}
+                              <IconTooltip
+                                title={statisticExplanations['TTFT (s)']}
+                                className='ml-4'
+                                color='#1890ff'
+                              />
+                            </span>
+                          }
+                          value={ttftValue || '-'}
+                        />
+                      </Col>
+                    )}
                   </Row>
 
-                  {/* Second row: Total TPS, Completion TPS, Avg. Total TPR, Avg. Completion TPR */}
-                  <Row gutter={16}>
-                    <Col span={6}>
-                      <Statistic
-                        title={
-                          <span>
-                            {t('pages.results.totalTps')}
-                            <IconTooltip
-                              title={
-                                statisticExplanations['Total TPS (tokens/s)']
-                              }
-                              className='ml-4'
-                              color='#1890ff'
-                            />
-                          </span>
-                        }
-                        value={TpsResult?.total_tps || '-'}
-                        precision={3}
-                      />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic
-                        title={
-                          <span>
-                            {t('pages.results.completionTps')}
-                            <IconTooltip
-                              title={
-                                statisticExplanations[
-                                  'Completion TPS (tokens/s)'
-                                ]
-                              }
-                              className='ml-4'
-                              color='#1890ff'
-                            />
-                          </span>
-                        }
-                        value={TpsResult?.completion_tps || '-'}
-                        precision={3}
-                      />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic
-                        title={
-                          <span>
-                            {t('pages.results.avgTotalTpr')}
-                            <IconTooltip
-                              title={
-                                statisticExplanations[
-                                  'Avg. Total TPR (tokens/req)'
-                                ]
-                              }
-                              className='ml-4'
-                              color='#1890ff'
-                            />
-                          </span>
-                        }
-                        value={TpsResult?.avg_total_tokens_per_req || '-'}
-                        precision={3}
-                      />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic
-                        title={
-                          <span>
-                            {t('pages.results.avgCompletionTpr')}
-                            <IconTooltip
-                              title={
-                                statisticExplanations[
-                                  'Avg. Completion TPR (tokens/req)'
-                                ]
-                              }
-                              className='ml-4'
-                              color='#1890ff'
-                            />
-                          </span>
-                        }
-                        value={TpsResult?.avg_completion_tokens_per_req || '-'}
-                        precision={3}
-                      />
-                    </Col>
-                  </Row>
+                  {/* Second row: Total TPS, Completion TPS, Avg. Total TPR, Avg. Completion TPR (all conditional) */}
+                  {secondRowMetricsCount > 0 && (
+                    <Row gutter={16}>
+                      {hasTotalTps && (
+                        <Col span={secondRowSpan}>
+                          <Statistic
+                            title={
+                              <span>
+                                {t('pages.results.totalTps')}
+                                <IconTooltip
+                                  title={
+                                    statisticExplanations[
+                                      'Total TPS (tokens/s)'
+                                    ]
+                                  }
+                                  className='ml-4'
+                                  color='#1890ff'
+                                />
+                              </span>
+                            }
+                            value={TpsResult?.total_tps || '-'}
+                            precision={3}
+                          />
+                        </Col>
+                      )}
+                      {hasCompletionTps && (
+                        <Col span={secondRowSpan}>
+                          <Statistic
+                            title={
+                              <span>
+                                {t('pages.results.completionTps')}
+                                <IconTooltip
+                                  title={
+                                    statisticExplanations[
+                                      'Completion TPS (tokens/s)'
+                                    ]
+                                  }
+                                  className='ml-4'
+                                  color='#1890ff'
+                                />
+                              </span>
+                            }
+                            value={TpsResult?.completion_tps || '-'}
+                            precision={3}
+                          />
+                        </Col>
+                      )}
+                      {hasAvgTotalTpr && (
+                        <Col span={secondRowSpan}>
+                          <Statistic
+                            title={
+                              <span>
+                                {t('pages.results.avgTotalTpr')}
+                                <IconTooltip
+                                  title={
+                                    statisticExplanations[
+                                      'Avg. Total TPR (tokens/req)'
+                                    ]
+                                  }
+                                  className='ml-4'
+                                  color='#1890ff'
+                                />
+                              </span>
+                            }
+                            value={TpsResult?.avg_total_tokens_per_req || '-'}
+                            precision={3}
+                          />
+                        </Col>
+                      )}
+                      {hasAvgCompletionTpr && (
+                        <Col span={secondRowSpan}>
+                          <Statistic
+                            title={
+                              <span>
+                                {t('pages.results.avgCompletionTpr')}
+                                <IconTooltip
+                                  title={
+                                    statisticExplanations[
+                                      'Avg. Completion TPR (tokens/req)'
+                                    ]
+                                  }
+                                  className='ml-4'
+                                  color='#1890ff'
+                                />
+                              </span>
+                            }
+                            value={
+                              TpsResult?.avg_completion_tokens_per_req || '-'
+                            }
+                            precision={3}
+                          />
+                        </Col>
+                      )}
+                    </Row>
+                  )}
                 </>
               );
             })()}
@@ -957,8 +1056,7 @@ const TaskResults: React.FC = () => {
                   item.metric_type !== 'completion_tokens_per_second' &&
                   item.metric_type !== 'token_metrics' &&
                   (results.length <= 1 ||
-                    (item.metric_type !== 'chat_completions' &&
-                      item.metric_type !== 'custom_api'))
+                    !requestMetricTypeSet.has(item.metric_type))
               )}
               columns={columns}
               rowKey='metric_type'

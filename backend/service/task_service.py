@@ -204,6 +204,7 @@ async def get_tasks_svc(
                 "model": task.model,
                 "request_payload": task.request_payload,
                 "field_mapping": field_mapping_dict,
+                "api_type": task.api_type or "openai-chat",
                 "concurrent_users": task.concurrent_users,
                 "duration": task.duration,
                 "spawn_rate": task.spawn_rate,
@@ -218,7 +219,7 @@ async def get_tasks_svc(
             }
             task_list.append(task_data)
     except Exception as e:
-        logger.error(f"Error getting tasks: {e}", exc_info=True)
+        logger.error("Error getting tasks: {}", e, exc_info=True)
         return TaskResponse(data=[], pagination=Pagination(), status="error")
 
     return TaskResponse(data=task_list, pagination=pagination, status="success")
@@ -250,7 +251,7 @@ async def get_tasks_status_svc(request: Request, page_size: int):
         result = await db.execute(query, {"limit": page_size})
         status_list = result.mappings().all()
     except Exception as e:
-        logger.error(f"Error getting tasks status: {e}", exc_info=True)
+        logger.error("Error getting tasks status: {}", e, exc_info=True)
 
     return TaskStatusRsp(data=status_list, timestamp=int(time.time()), status="success")
 
@@ -270,7 +271,7 @@ async def stop_task_svc(request: Request, task_id: str):
         db = request.state.db
         task = await db.get(Task, task_id)
         if not task:
-            logger.warning(f"Stop request for non-existent task ID: {task_id}")
+            logger.warning("Stop request for non-existent task ID: {}", task_id)
             return TaskCreateRsp(
                 status="unknown", task_id=task_id, message="Task not found"
             )
@@ -287,7 +288,7 @@ async def stop_task_svc(request: Request, task_id: str):
             status="stopping", task_id=task_id, message="Task is being stopped."
         )
     except Exception as e:
-        logger.error(f"Failed to stop task {task_id}: {str(e)}", exc_info=True)
+        logger.error("Failed to stop task {}: {}", task_id, e, exc_info=True)
         return TaskCreateRsp(
             status="error", task_id=task_id, message="Failed to stop task."
         )
@@ -298,7 +299,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
     Creates a new performance testing task and saves it to the database.
     """
     task_id = str(uuid.uuid4())
-    logger.info(f"Creating task '{body.name}' with ID: {task_id}")
+    logger.info("Creating task '{}' with ID: {}", body.name, task_id)
     if body.model and len(body.model) > 255:
         return ErrorResponse.bad_request("Model name must be less than 255 characters")
 
@@ -343,9 +344,18 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
     db = request.state.db
     try:
         # Convert field_mapping to JSON string if provided
-        field_mapping_json = ""
-        if body.field_mapping:
-            field_mapping_json = json.dumps(body.field_mapping)
+        # For standard chat APIs (openai-chat, claude-chat), empty field_mapping is acceptable
+        # as st_engine will auto-generate it based on api_type
+        api_type = body.api_type or "openai-chat"
+        field_mapping_data = body.field_mapping or {}
+        field_mapping_json = json.dumps(field_mapping_data)
+
+        if not field_mapping_data and api_type not in ("openai-chat", "claude-chat"):
+            # For custom-chat and embeddings, field_mapping should be provided
+            logger.warning(
+                "Creating task with api_type '{}' but no field_mapping provided",
+                api_type,
+            )
 
         # Create a new Task ORM instance.
         new_task = Task(
@@ -367,13 +377,14 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             api_path=body.api_path,
             request_payload=request_payload,
             field_mapping=field_mapping_json,
+            api_type=api_type,
             test_data=test_data,
         )
 
         db.add(new_task)
         await db.flush()
         await db.commit()
-        logger.info(f"Task created successfully: {new_task.id}")
+        logger.info("Task created successfully: {}", new_task.id)
 
         return TaskCreateRsp(
             task_id=str(new_task.id),
@@ -383,7 +394,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
     except Exception as e:
         await db.rollback()
         error_msg = f"Failed to create task in database: {str(e)}"
-        logger.error(error_msg, exc_info=True)
+        logger.error("Failed to create task in database: {}", e, exc_info=True)
         return ErrorResponse.internal_server_error(error_msg)
 
 
@@ -401,7 +412,7 @@ async def get_task_result_svc(request: Request, task_id: str):
     if not task_id:
         return ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
     if not await is_task_exist(request, task_id):
-        logger.warning(f"Attempted to get results for non-existent task: {task_id}")
+        logger.warning("Attempted to get results for non-existent task: {}", task_id)
         return TaskResultRsp(error="Task not found", status="not_found", results=[])
 
     query_task_result = (
@@ -441,7 +452,9 @@ async def is_task_exist(request: Request, task_id: str) -> bool:
         return result.scalar_one_or_none() is not None
     except Exception as e:
         logger.error(
-            f"Failed to query for task existence (id={task_id}): {str(e)}",
+            "Failed to query for task existence (id={}): {}",
+            task_id,
+            e,
             exc_info=True,
         )
         return False
@@ -462,7 +475,7 @@ async def get_task_svc(request: Request, task_id: str):
     try:
         task = await db.get(Task, task_id)
         if not task:
-            logger.warning(f"Get request for non-existent task ID: {task_id}")
+            logger.warning("Get request for non-existent task ID: {}", task_id)
             raise HTTPException(status_code=404, detail="Task not found")
 
         # Convert headers from JSON string back to a list of objects for the frontend.
@@ -473,7 +486,9 @@ async def get_task_svc(request: Request, task_id: str):
                 headers_list = [{"key": k, "value": v} for k, v in headers_dict.items()]
             except json.JSONDecodeError:
                 logger.warning(
-                    f"Could not parse headers JSON for task {task_id}: {task.headers}"
+                    "Could not parse headers JSON for task {}: {}",
+                    task_id,
+                    task.headers,
                 )
 
         # Convert cookies from JSON string back to a list of objects for the frontend.
@@ -484,7 +499,9 @@ async def get_task_svc(request: Request, task_id: str):
                 cookies_list = [{"key": k, "value": v} for k, v in cookies_dict.items()]
             except json.JSONDecodeError:
                 logger.warning(
-                    f"Could not parse cookies JSON for task {task_id}: {task.cookies}"
+                    "Could not parse cookies JSON for task {}: {}",
+                    task_id,
+                    task.cookies,
                 )
 
         # Parse field_mapping from JSON string back to dictionary
@@ -494,7 +511,9 @@ async def get_task_svc(request: Request, task_id: str):
                 field_mapping_dict = json.loads(task.field_mapping)
             except json.JSONDecodeError:
                 logger.warning(
-                    f"Could not parse field_mapping JSON for task {task_id}: {task.field_mapping}"
+                    "Could not parse field_mapping JSON for task {}: {}",
+                    task_id,
+                    task.field_mapping,
                 )
 
         # Convert the SQLAlchemy model to a dictionary for the response.
@@ -515,6 +534,7 @@ async def get_task_svc(request: Request, task_id: str):
             "api_path": task.api_path,
             "request_payload": task.request_payload,
             "field_mapping": field_mapping_dict,
+            "api_type": task.api_type or "openai-chat",
             "test_data": task.test_data or "",
             "error_message": task.error_message,
             "created_at": task.created_at.isoformat() if task.created_at else None,
@@ -525,7 +545,7 @@ async def get_task_svc(request: Request, task_id: str):
         # Re-raise HTTPException to let FastAPI handle it.
         raise
     except Exception as e:
-        logger.error(f"Failed to retrieve task {task_id}: {str(e)}", exc_info=True)
+        logger.error("Failed to retrieve task {}: {}", task_id, e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="An internal error occurred while retrieving the task.",
@@ -553,7 +573,7 @@ async def get_task_status_svc(request: Request, task_id: str):
         task_data = result.first()
 
         if not task_data:
-            logger.warning(f"Status request for non-existent task ID: {task_id}")
+            logger.warning("Status request for non-existent task ID: {}", task_id)
             raise HTTPException(status_code=404, detail="Task not found")
 
         # Return lightweight status information
@@ -571,9 +591,7 @@ async def get_task_status_svc(request: Request, task_id: str):
         # Re-raise HTTPException to let FastAPI handle it.
         raise
     except Exception as e:
-        logger.error(
-            f"Failed to retrieve task status {task_id}: {str(e)}", exc_info=True
-        )
+        logger.error("Failed to retrieve task status {}: {}", task_id, e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="An internal error occurred while retrieving the task status.",
@@ -632,9 +650,7 @@ async def get_model_tasks_for_comparison_svc(request: Request):
         return ModelTasksResponse(data=model_tasks, status="success", error=None)
 
     except Exception as e:
-        logger.error(
-            f"Failed to get model tasks for comparison: {str(e)}", exc_info=True
-        )
+        logger.error("Failed to get model tasks for comparison: {}", e, exc_info=True)
         return ModelTasksResponse(
             data=[],
             status="error",
@@ -706,7 +722,9 @@ async def compare_performance_svc(
 
         # Log metrics extraction results for debugging
         logger.info(
-            f"Extracted metrics for {len(metrics_data_list)} out of {len(task_ids)} tasks"
+            "Extracted metrics for {} out of {} tasks",
+            len(metrics_data_list),
+            len(task_ids),
         )
 
         # Check if we have any valid metrics
@@ -745,7 +763,9 @@ async def compare_performance_svc(
                     comparison_metrics.append(metrics)
                 except Exception as e:
                     logger.error(
-                        f"Failed to create ComparisonMetrics for task {metrics_data.get('task_id', 'unknown')}: {str(e)}"
+                        "Failed to create ComparisonMetrics for task {}: {}",
+                        metrics_data.get("task_id", "unknown"),
+                        e,
                     )
                     continue
 
@@ -759,7 +779,7 @@ async def compare_performance_svc(
         return ComparisonResponse(data=comparison_metrics, status="success", error=None)
 
     except Exception as e:
-        logger.error(f"Failed to compare performance: {str(e)}", exc_info=True)
+        logger.error("Failed to compare performance: {}", e, exc_info=True)
         return ComparisonResponse(
             data=[], status="error", error="Failed to perform performance comparison"
         )
@@ -907,7 +927,7 @@ def _prepare_client_cert(body: TaskCreateReq):
         try:
             is_valid, err_msg = _validate_certificate_files(cert_file, key_file or None)
             if not is_valid:
-                logger.error(f"Invalid client certificate configuration: {err_msg}")
+                logger.error("Invalid client certificate configuration: {}", err_msg)
                 return None
 
             if cert_file and key_file:
@@ -917,7 +937,7 @@ def _prepare_client_cert(body: TaskCreateReq):
                 # Only cert file provided (combined cert+key file)
                 client_cert = cert_file
         except Exception as e:
-            logger.error(f"Error preparing certificate configuration: {str(e)}")
+            logger.error("Error preparing certificate configuration: {}", e)
             return None
 
     return client_cert
@@ -1026,7 +1046,7 @@ async def test_api_endpoint_svc(request: Request, body: TaskCreateReq):
             hint = (
                 "No valid certificate content found, please confirm the file is correct"
             )
-        logger.error(f"SSL error when testing API endpoint: {e}")
+        logger.error("SSL error when testing API endpoint: {}", e)
         return {
             "status": "error",
             "error": f"SSL error: {msg}. {hint}",
@@ -1054,7 +1074,7 @@ async def test_api_endpoint_svc(request: Request, body: TaskCreateReq):
             "response": None,
         }
     except Exception as e:
-        logger.error(f"Error testing API endpoint: {str(e)}", exc_info=True)
+        logger.error("Error testing API endpoint: {}", e, exc_info=True)
         return {
             "status": "error",
             "error": f"Unexpected error: {str(e)}",

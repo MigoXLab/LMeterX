@@ -70,6 +70,8 @@ services:
     volumes:
       - ./logs:/logs
       - ./upload_files:/app/upload_files
+      # Mount image directory for ShareGPT dataset
+      - ./data:/app/data
     # Resource limits for the container
     deploy:
       resources:

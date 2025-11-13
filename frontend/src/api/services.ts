@@ -8,6 +8,86 @@
 import { BenchmarkJob, BenchmarkResult, Dataset } from '../types';
 import api, { uploadFiles } from './apiClient';
 
+type BasicFileLike =
+  | File
+  | Blob
+  | {
+      originFileObj?: File;
+      file?: File;
+      blobFile?: Blob;
+      name?: string;
+    }
+  | FileList
+  | null
+  | undefined;
+
+type FileLike = BasicFileLike | BasicFileLike[];
+
+const isFileList = (
+  value: BasicFileLike | BasicFileLike[]
+): value is FileList => {
+  return (
+    typeof FileList !== 'undefined' &&
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    'length' in value &&
+    typeof (value as FileList).item === 'function'
+  );
+};
+
+const extractFile = (fileLike: FileLike): File => {
+  if (!fileLike) {
+    throw new Error(
+      'No file provided. Please reselect the file and try again.'
+    );
+  }
+
+  if (fileLike instanceof File) {
+    return fileLike;
+  }
+
+  if (fileLike instanceof Blob) {
+    return new File([fileLike], 'upload.bin', { type: fileLike.type });
+  }
+
+  if (isFileList(fileLike)) {
+    if (!fileLike.length) {
+      throw new Error(
+        'No file provided. Please reselect the file and try again.'
+      );
+    }
+    return extractFile(fileLike[0]);
+  }
+
+  if (Array.isArray(fileLike)) {
+    if (!fileLike.length) {
+      throw new Error(
+        'No file provided. Please reselect the file and try again.'
+      );
+    }
+    return extractFile(fileLike[0]);
+  }
+
+  const possibleFile =
+    (fileLike as any)?.originFileObj ??
+    (fileLike as any)?.file ??
+    (fileLike as any)?.blobFile;
+
+  if (possibleFile instanceof File) {
+    return possibleFile;
+  }
+
+  if (possibleFile instanceof Blob) {
+    const name = (fileLike as any)?.name || 'upload.bin';
+    return new File([possibleFile], name, { type: possibleFile.type });
+  }
+
+  throw new Error(
+    'Invalid file data received. Please remove the file and select it again.'
+  );
+};
+
 // Dataset API methods
 export const datasetApi = {
   // Get all datasets
@@ -222,8 +302,8 @@ export const systemApi = {
 
 // Define the upload service
 export const uploadCertificateFiles = async (
-  certFile: File | null,
-  keyFile: File | null,
+  certFile: FileLike,
+  keyFile: FileLike,
   taskId: string,
   certType: string = 'combined'
 ) => {
@@ -232,10 +312,13 @@ export const uploadCertificateFiles = async (
   }
 
   // Process upload based on certificate type
-  if (certType === 'combined' && certFile) {
+  const normalizedCertFile = certFile ? extractFile(certFile) : null;
+  const normalizedKeyFile = keyFile ? extractFile(keyFile) : null;
+
+  if (certType === 'combined' && normalizedCertFile) {
     // Combined certificate mode
     const formData = new FormData();
-    formData.append('files', certFile);
+    formData.append('files', normalizedCertFile, normalizedCertFile.name);
     return uploadFiles(formData, 'cert', taskId, certType);
   }
   if (certType === 'separate') {
@@ -243,9 +326,9 @@ export const uploadCertificateFiles = async (
     let certConfig = {};
 
     // If there is a certificate file, upload it first
-    if (certFile) {
+    if (normalizedCertFile) {
       const certFormData = new FormData();
-      certFormData.append('files', certFile);
+      certFormData.append('files', normalizedCertFile, normalizedCertFile.name);
       const certResult = await uploadFiles(
         certFormData,
         'cert',
@@ -256,9 +339,9 @@ export const uploadCertificateFiles = async (
     }
 
     // If there is a key file, upload it
-    if (keyFile) {
+    if (normalizedKeyFile) {
       const keyFormData = new FormData();
-      keyFormData.append('files', keyFile);
+      keyFormData.append('files', normalizedKeyFile, normalizedKeyFile.name);
       const keyResult = await uploadFiles(
         keyFormData,
         'cert',
@@ -275,12 +358,16 @@ export const uploadCertificateFiles = async (
 };
 
 // Upload dataset file
-export const uploadDatasetFile = async (datasetFile: File, taskId: string) => {
+export const uploadDatasetFile = async (
+  datasetFile: FileLike,
+  taskId: string
+) => {
   if (!taskId) {
     taskId = `temp-${Date.now()}`;
   }
 
+  const normalizedDatasetFile = extractFile(datasetFile);
   const formData = new FormData();
-  formData.append('files', datasetFile);
+  formData.append('files', normalizedDatasetFile, normalizedDatasetFile.name);
   return uploadFiles(formData, 'dataset', taskId);
 };

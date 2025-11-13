@@ -406,22 +406,6 @@ body {
 }
 
 /* Table text ellipsis styles with proper overflow handling */
-.table-ellipsis-150 {
-  max-width: 150px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: inline-block;
-}
-
-.table-ellipsis-220 {
-  max-width: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: inline-block;
-}
-
 /* Table cell with copy button layout */
 .table-cell-with-copy {
   display: flex;
@@ -433,6 +417,9 @@ body {
 .table-cell-text {
   flex: 1;
   min-width: 0; /* Allow text to shrink */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .table-cell-action {

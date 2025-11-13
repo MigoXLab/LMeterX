@@ -90,8 +90,9 @@ docker compose up -d --scale backend=2 --scale engine=2
 1. **Access Web Interface**: Open http://localhost:8080
 2. **Create Test Task**: Navigate to Test Tasks → Create Task, configure LLM API request information, test data, and request-response field mapping
    - 2.1 Basic Information: For `/chat/completions` API, you only need to configure API path, model, and response mode. You can also supplement the complete payload in request parameters.
-   - 2.2 Data Payload: Select built-in text datasets/multimodal datasets as needed, or upload custom JSONL data files.
+   - 2.2 Data Payload: Select built-in text datasets/multimodal datasets as needed, or upload custom JSONL/ShareGPT dataset files.
    - 2.3 Field Mapping: Configure the prompt field path in payload, and response data paths for model output content, reasoning_content fields, usage fields, etc. This field mapping is crucial for updating request parameters with datasets and correctly parsing streaming/non-streaming responses.
+   > 💡 **Tip**: For custom multimodal dataset load tests, follow the [Dataset Guide](docs/DATASET_GUIDE.md) for data preparation, mounting, and troubleshooting.
 3. **API Testing**: In Test Tasks → Create Task, click the "Test" button in the Basic Information panel to quickly test API connectivity
    **Note**: For quick API response, it's recommended to use simple prompts when testing API connectivity.
 4. **Real-time Monitoring**: Navigate to Test Tasks → Logs/Monitoring Center to view full-chain test logs and troubleshoot exceptions
@@ -182,6 +183,7 @@ LMeterX/
 
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Detailed deployment instructions and configuration guide
 - [Contributing Guide](docs/CONTRIBUTING.md) - How to participate in project development and contribute code
+- [Dataset Guide](docs/DATASET_GUIDE.md) - Instructions for preparing and using custom multimodal datasets
 
 ## 👥 Contributors
 

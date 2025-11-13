@@ -160,17 +160,66 @@ export const uploadFiles = async (
 
   if (!response.ok) {
     const errorText = await response.text();
-    let errorMessage = `Upload failed: ${response.statusText}`;
+    let errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
+    let errorPayload: any = null;
 
     try {
-      const errorData = JSON.parse(errorText);
-      errorMessage = errorData.detail || errorData.error || errorMessage;
+      errorPayload = JSON.parse(errorText);
+      const detail = errorPayload?.detail;
+      if (Array.isArray(detail)) {
+        errorMessage =
+          detail
+            .map(item => {
+              if (!item) {
+                return '';
+              }
+              if (typeof item === 'string') {
+                return item;
+              }
+              if (item.msg) {
+                const msg: string = item.msg;
+                if (/Expected UploadFile/i.test(msg)) {
+                  return 'Server did not receive the uploaded file. Please reselect the file and try again.';
+                }
+                return msg;
+              }
+              if (item.message) {
+                return item.message;
+              }
+              if (item.type) {
+                return `${item.type}`;
+              }
+              return JSON.stringify(item);
+            })
+            .filter(Boolean)
+            .join('; ') || errorMessage;
+      } else if (typeof detail === 'string') {
+        errorMessage = detail;
+      } else if (detail?.msg) {
+        const msg: string = detail.msg;
+        errorMessage = /Expected UploadFile/i.test(msg)
+          ? 'Server did not receive the uploaded file. Please reselect the file and try again.'
+          : msg;
+      } else if (typeof errorPayload?.error === 'string') {
+        const errMsg = errorPayload.error;
+        errorMessage = /Expected UploadFile/i.test(errMsg)
+          ? 'Server did not receive the uploaded file. Please reselect the file and try again.'
+          : errMsg;
+      }
     } catch {
       // If not JSON, use the text as is
-      errorMessage = errorText || errorMessage;
+      errorMessage = errorText?.trim() || errorMessage;
     }
 
-    throw new Error(errorMessage);
+    const error = new Error(errorMessage) as Error & {
+      status?: number;
+      responseData?: unknown;
+      raw?: string;
+    };
+    error.status = response.status;
+    error.responseData = errorPayload ?? errorText;
+    error.raw = errorText;
+    throw error;
   }
 
   return response.json();

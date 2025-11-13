@@ -1,5 +1,5 @@
 """
-Unit tests for LLMeter Backend API
+Unit tests for LMeterX Backend API
 Covers all major API interfaces
 """
 

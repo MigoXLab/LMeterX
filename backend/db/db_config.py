@@ -5,8 +5,13 @@ Copyright (c) 2025, All Rights Reserved.
 
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+# Resolve project directories so .env can be found regardless of cwd
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE_PATH = BACKEND_DIR / ".env"
 
 
 class MySqlSettings(BaseSettings):
@@ -33,7 +38,7 @@ class MySqlSettings(BaseSettings):
         Pydantic settings configuration.
         """
 
-        env_file = ".env"
+        env_file = str(ENV_FILE_PATH)
         case_sensitive = True
         extra = "ignore"
 

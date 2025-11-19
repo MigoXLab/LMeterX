@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import orjson
 
-from config.base import DEFAULT_API_PATH, DEFAULT_PROMPT
+from config.base import DEFAULT_PROMPT
 from config.business import METRIC_TTOC, METRIC_TTT
 from engine.core import (
     ConfigManager,
@@ -324,7 +324,22 @@ class StreamProcessor:
 
 # === REQUEST HANDLERS ===
 class PayloadBuilder:
-    """Handles different types of API requests."""
+    """Handles different types of API requests with dataset integration.
+
+    Architecture:
+    - Type-specific updaters: Each API type (openai-chat, claude-chat, embeddings)
+      has a dedicated method that understands its specific payload format
+    - Preservation of user config: All methods preserve original payload parameters
+      (model, stream, max_tokens, etc.) and only update dataset-related fields
+    - Separation of concerns: Each updater method handles one API type independently
+    - Fallback support: Custom-chat uses field mapping for flexible API support
+
+    Payload Update Strategy by API Type:
+    1. openai-chat: Updates messages array, preserves system messages, adds/updates user message
+    2. claude-chat: Updates messages array, preserves all params, adds/updates user message
+    3. embeddings: Only updates input field, preserves model and other params
+    4. custom-chat: Uses field_mapping for flexible field updates
+    """
 
     def __init__(self, config: GlobalConfig, task_logger) -> None:
         """Initialize the PayloadBuilder with configuration and logger.
@@ -380,21 +395,11 @@ class PayloadBuilder:
                     return None, None
 
                 user_prompt = prompt_data.get("prompt", DEFAULT_PROMPT)
-                # Special handling for chat/completions API
-                if self.config.api_path == DEFAULT_API_PATH:
-                    self._handle_chat_completions_payload(
-                        payload, prompt_data, user_prompt
-                    )
-                else:
-                    # For other APIs, use field mapping to update prompt
-                    self._handle_custom_api_payload(payload, user_prompt)
+                # Unified payload handling for all APIs
+                self._update_payload_with_prompt_data(payload, prompt_data)
 
             # Set request name based on API path
-            request_name = (
-                "chat_completions"
-                if self.config.api_path == DEFAULT_API_PATH
-                else "custom_api"
-            )
+            request_name = self.config.api_path
 
             base_request_kwargs = {
                 "json": payload,
@@ -415,88 +420,254 @@ class PayloadBuilder:
             )
             return None, None
 
-    def _handle_chat_completions_payload(
-        self, payload: Dict[str, Any], prompt_data: Dict[str, Any], user_prompt: str
+    def _update_payload_with_prompt_data(
+        self, payload: Dict[str, Any], prompt_data: Dict[str, Any]
     ) -> None:
-        """Handle chat/completions API payload with image support."""
+        """Unified method to update payload with prompt data based on API type.
+
+        Strategy (prioritized):
+        1. For standard API types (openai-chat, claude-chat, embeddings): Use type-specific updaters
+        2. For custom-chat: Use field mapping to update payload
+        3. Fallback: Use original payload without dataset integration
+
+        Args:
+            payload: The request payload to update
+            prompt_data: Dictionary containing prompt, image_url, and image_base64
+        """
         try:
-            # Build messages list
-            messages: List[Dict[str, Any]] = []
-
-            # Check for image data in prompt_data
-            image_base64 = prompt_data.get("image_base64", "")
+            # Extract prompt data
+            user_prompt = prompt_data.get("prompt", DEFAULT_PROMPT)
             image_url = prompt_data.get("image_url", "")
+            image_base64 = prompt_data.get("image_base64", "")
 
-            if image_base64:
+            # Get API type
+            api_type = getattr(self.config, "api_type", "")
+
+            # Route to appropriate updater based on API type
+            if api_type == "openai-chat":
+                self._update_openai_chat_payload(
+                    payload, user_prompt, image_url, image_base64
+                )
+            elif api_type == "claude-chat":
+                self._update_claude_chat_payload(
+                    payload, user_prompt, image_url, image_base64
+                )
+            elif api_type == "embeddings":
+                self._update_embeddings_payload(payload, user_prompt)
+            elif api_type == "custom-chat":
+                # For custom-chat, use field mapping
+                field_mapping = ConfigManager.parse_field_mapping(
+                    self.config.field_mapping or ""
+                )
+                if field_mapping.prompt or field_mapping.image:
+                    self._update_payload_by_field_mapping(
+                        payload, user_prompt, image_url, image_base64, field_mapping
+                    )
+                else:
+                    self.task_logger.warning(
+                        "custom-chat requires field_mapping configuration for dataset integration"
+                    )
+            else:
+                # Fallback: No dataset integration for unknown types
+                self.task_logger.debug(
+                    f"Unknown api_type '{api_type}', using original request_payload without dataset integration"
+                )
+
+        except Exception as e:
+            self.task_logger.error(f"Failed to update payload with prompt data: {e}")
+
+    def _update_payload_by_field_mapping(
+        self,
+        payload: Dict[str, Any],
+        user_prompt: str,
+        image_url: str,
+        image_base64: str,
+        field_mapping: FieldMapping,
+    ) -> None:
+        """Update payload using field mapping configuration.
+
+        Args:
+            payload: The request payload to update
+            user_prompt: The prompt text
+            image_url: Image URL if available
+            image_base64: Base64 encoded image if available
+            field_mapping: Parsed field mapping configuration
+        """
+        # Update prompt field
+        if field_mapping.prompt:
+            try:
+                self._set_field_value(payload, field_mapping.prompt, user_prompt)
+            except Exception as e:
+                self.task_logger.warning(f"Failed to update prompt in payload: {e}")
+        else:
+            self.task_logger.debug("No prompt field mapping configured")
+
+        # Update image field
+        if field_mapping.image:
+            if image_url:
+                # Use image URL
+                try:
+                    self._set_field_value(payload, field_mapping.image, image_url)
+                except Exception as e:
+                    self.task_logger.warning(
+                        f"Failed to update image URL in payload: {e}"
+                    )
+            elif image_base64:
                 # Use base64 encoded image
-                content_list = [
-                    {"type": "text", "text": user_prompt},
+                try:
+                    image_data_uri = f"data:image/jpeg;base64,{image_base64}"
+                    self._set_field_value(payload, field_mapping.image, image_data_uri)
+                except Exception as e:
+                    self.task_logger.warning(
+                        f"Failed to update image base64 in payload: {e}"
+                    )
+
+    def _update_openai_chat_payload(
+        self,
+        payload: Dict[str, Any],
+        user_prompt: str,
+        image_url: str,
+        image_base64: str,
+    ) -> None:
+        """Update payload for OpenAI Chat API format.
+
+        Preserves existing payload parameters (model, stream, etc.) and only updates
+        the messages array to include user content from dataset.
+
+        Args:
+            payload: The request payload to update
+            user_prompt: The prompt text from dataset
+            image_url: Image URL from dataset if available
+            image_base64: Base64 encoded image from dataset if available
+        """
+        # Get existing messages or create new list
+        messages = payload.get("messages", [])
+        if not isinstance(messages, list):
+            messages = []
+
+        # Build user message content based on whether images are present
+        has_image = bool(image_base64 or image_url)
+
+        if has_image:
+            # Multimodal: use array format with text and image
+            user_content: List[Dict[str, Any]] = [{"type": "text", "text": user_prompt}]
+
+            # Add image (prioritize base64 over URL)
+            if image_base64:
+                user_content.append(
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    },
-                ]
-                messages.append({"role": "user", "content": content_list})
+                    }
+                )
             elif image_url:
-                # Use image URL
-                content_list = [
-                    {"type": "text", "text": user_prompt},
+                user_content.append(
                     {
                         "type": "image_url",
                         "image_url": {"url": image_url},
+                    }
+                )
+
+            user_message = {"role": "user", "content": user_content}
+        else:
+            # Text-only: use simple string format
+            user_message = {"role": "user", "content": user_prompt}
+
+        # Find and update existing user message, or append new one
+        user_message_found = False
+        for i, msg in enumerate(messages):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                # Update existing user message
+                messages[i] = user_message
+                user_message_found = True
+                break
+
+        if not user_message_found:
+            # Append new user message
+            messages.append(user_message)
+
+        # Update messages in payload (preserves all other parameters)
+        payload["messages"] = messages
+
+    def _update_claude_chat_payload(
+        self,
+        payload: Dict[str, Any],
+        user_prompt: str,
+        image_url: str,
+        image_base64: str,
+    ) -> None:
+        """Update payload for Claude Chat API format.
+
+        Preserves existing payload parameters (model, max_tokens, etc.) and only updates
+        the messages array to include user content from dataset.
+
+        Args:
+            payload: The request payload to update
+            user_prompt: The prompt text from dataset
+            image_url: Image URL from dataset if available
+            image_base64: Base64 encoded image from dataset if available
+        """
+        # Get existing messages or create new list
+        messages = payload.get("messages", [])
+        if not isinstance(messages, list):
+            messages = []
+
+        # Build user message content
+        user_content: List[Dict[str, Any]] = [{"type": "text", "text": user_prompt}]
+
+        # Add images if available
+        if image_url:
+            user_content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "url",
+                        "url": image_url,
                     },
-                ]
-                messages.append({"role": "user", "content": content_list})
-            else:
-                # Text-only message
-                messages.append({"role": "user", "content": user_prompt})
+                }
+            )
 
-            # Update the messages field in payload
-            payload["messages"] = messages
+        if image_base64:
+            user_content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": image_base64,
+                    },
+                }
+            )
 
-            # Auto-supplement stream field if missing or empty
-            if (
-                "stream" not in payload
-                or payload.get("stream") is None
-                or payload.get("stream") == ""
-            ):
-                payload["stream"] = self.config.stream_mode
+        # Find and update existing user message, or append new one
+        user_message_found = False
+        for i, msg in enumerate(messages):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                # Update existing user message
+                messages[i]["content"] = user_content
+                user_message_found = True
+                break
 
-            # Auto-supplement model field if missing or empty
-            if (
-                "model" not in payload
-                or payload.get("model") is None
-                or payload.get("model") == ""
-            ):
-                if self.config.model_name:
-                    payload["model"] = self.config.model_name
+        if not user_message_found:
+            # Append new user message
+            messages.append({"role": "user", "content": user_content})
 
-        except Exception as e:
-            self.task_logger.warning(f"Failed to update chat/completions payload: {e}")
-            # Fallback to simple field mapping
-            self._handle_custom_api_payload(payload, user_prompt)
+        # Update messages in payload (preserves all other parameters)
+        payload["messages"] = messages
 
-    def _handle_custom_api_payload(
+    def _update_embeddings_payload(
         self, payload: Dict[str, Any], user_prompt: str
     ) -> None:
-        """Handle custom API payload using field mapping."""
-        try:
-            # Parse field mapping to get prompt field path
-            field_mapping = ConfigManager.parse_field_mapping(
-                self.config.field_mapping or ""
-            )
-            # Update payload with current prompt data if field mapping is configured
-            if field_mapping.prompt:
-                try:
-                    self._set_field_value(payload, field_mapping.prompt, user_prompt)
-                except Exception as e:
-                    self.task_logger.warning(f"Failed to update prompt in payload: {e}")
-            else:
-                self.task_logger.warning(
-                    "No prompt field mapping configured, using original payload"
-                )
-        except Exception as e:
-            self.task_logger.warning(f"Failed to handle custom API payload: {e}")
+        """Update payload for Embeddings API format.
+
+        Only updates the input/prompt field, preserves all other parameters.
+
+        Args:
+            payload: The request payload to update
+            user_prompt: The prompt text from dataset
+        """
+        # Update input field (most embeddings APIs use "input")
+        payload["input"] = user_prompt
 
     def _extract_prompt_from_payload(self, payload: Dict[str, Any]) -> str:
         """Extract prompt content from custom payload using field mapping."""
@@ -504,6 +675,15 @@ class PayloadBuilder:
             field_mapping = ConfigManager.parse_field_mapping(
                 self.config.field_mapping or ""
             )
+
+            # Auto-generate field mapping for standard API types if not configured
+            if not field_mapping.prompt and hasattr(self.config, "api_type"):
+                api_type = getattr(self.config, "api_type", "")
+                if api_type in ("openai-chat", "claude-chat", "embeddings"):
+                    field_mapping = ConfigManager.generate_field_mapping_by_api_type(
+                        api_type, self.config.stream_mode
+                    )
+
             if field_mapping.prompt:
                 prompt_value = StreamProcessor.get_field_value(
                     payload, field_mapping.prompt
@@ -606,8 +786,8 @@ class APIClient:
                 yield line
         except Exception as e:
             self.task_logger.error(f"Error iterating over stream lines: {e}")
-            # Yield any remaining buffer if possible, but don't let it crash the whole test.
-            pass
+            # Propagate the exception so callers can record the failure properly.
+            raise
 
     def handle_stream_request(
         self, client, base_request_kwargs: Dict[str, Any], start_time: float
@@ -618,6 +798,15 @@ class APIClient:
         field_mapping = ConfigManager.parse_field_mapping(
             self.config.field_mapping or ""
         )
+
+        # Auto-generate field mapping for standard API types if not configured
+        if not field_mapping.prompt and hasattr(self.config, "api_type"):
+            api_type = getattr(self.config, "api_type", "")
+            self.task_logger.debug(f"handle_stream_request-api_type: {api_type}")
+            if api_type in ("openai-chat", "claude-chat", "embeddings"):
+                field_mapping = ConfigManager.generate_field_mapping_by_api_type(
+                    api_type, self.config.stream_mode
+                )
         response = None
         actual_start_time = 0.0
         request_name = base_request_kwargs.get("name", "failure")
@@ -684,7 +873,9 @@ class APIClient:
                             completion_time = (
                                 current_time - metrics.first_output_token_time
                             ) * 1000
-                        EventManager.fire_metric_event(METRIC_TTOC, completion_time, 0)
+                            EventManager.fire_metric_event(
+                                METRIC_TTOC, completion_time, 0
+                            )
                         EventManager.fire_metric_event(METRIC_TTT, total_time, 0)
                         response.success()
 
@@ -851,6 +1042,14 @@ class APIClient:
         field_mapping = ConfigManager.parse_field_mapping(
             self.config.field_mapping or ""
         )
+
+        # Auto-generate field mapping for standard API types if not configured
+        if not field_mapping.prompt and hasattr(self.config, "api_type"):
+            api_type = getattr(self.config, "api_type", "")
+            if api_type in ("openai-chat", "claude-chat", "embeddings"):
+                field_mapping = ConfigManager.generate_field_mapping_by_api_type(
+                    api_type, self.config.stream_mode
+                )
         request_name = base_request_kwargs.get("name", "failure")
         usage: Dict[str, Optional[int]] = {
             "completion_tokens": 0,

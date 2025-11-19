@@ -17,8 +17,8 @@ from api.api_upload import router as upload
 from middleware.db_middleware import DBSessionMiddleware
 
 app = FastAPI(
-    title="LLMeter Backend API",
-    description="LLMeter Backend",
+    title="LMeterX Backend API",
+    description="LMeterX Backend",
     version="1.0.0",
 )
 
@@ -44,7 +44,7 @@ def health_check():
 @app.get("/")
 def read_root():
     """Root endpoint."""
-    return {"message": "LLMeter Backend API"}
+    return {"message": "LMeterX Backend API"}
 
 
 # add api routers

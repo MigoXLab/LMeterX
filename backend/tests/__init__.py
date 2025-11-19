@@ -1,1 +1,1 @@
-"""Tests package for LLMeter Backend."""
+"""Tests package for LMeterX Backend."""

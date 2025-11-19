@@ -36,6 +36,7 @@ class GlobalConfig:
     """Global configuration for all users."""
 
     task_id: str = ""
+    api_type: str = "openai-chat"  # API type for auto-generating field mapping
     api_path: str = DEFAULT_API_PATH
     headers: Dict[str, str] = field(
         default_factory=lambda: {"Content-Type": DEFAULT_CONTENT_TYPE}
@@ -45,7 +46,7 @@ class GlobalConfig:
     model_name: Optional[str] = None
     user_prompt: Optional[str] = None
     stream_mode: bool = True
-    chat_type: int = 0
+    chat_type: int = 0  # Built-in dataset selector (0=text, 1=ShareGPT, 2=vision)
     cert_file: Optional[str] = None
     key_file: Optional[str] = None
     cert_config: Optional[Union[str, Tuple[str, str]]] = None
@@ -66,6 +67,7 @@ class FieldMapping:
     content: str = ""
     reasoning_content: str = ""
     prompt: str = ""
+    image: str = ""
     prompt_tokens: str = ""
     completion_tokens: str = ""
     total_tokens: str = ""
@@ -239,24 +241,88 @@ class ConfigManager:
 
         try:
             mapping_dict = json.loads(str(field_mapping_str))
-            return FieldMapping(
-                stream_prefix=mapping_dict.get("stream_prefix", "data:"),
-                data_format=mapping_dict.get("data_format", "json"),
-                stop_flag=mapping_dict.get("stop_flag", "[DONE]"),
-                end_prefix=mapping_dict.get("end_prefix", ""),
-                end_field=mapping_dict.get("end_field", ""),
-                content=mapping_dict.get("content", "choices.0.delta.content"),
-                reasoning_content=mapping_dict.get(
-                    "reasoning_content", "choices.0.delta.reasoning_content"
-                ),
-                prompt=mapping_dict.get("prompt", "messages.0.content"),
-                prompt_tokens=mapping_dict.get("prompt_tokens", "usage.prompt_tokens"),
-                completion_tokens=mapping_dict.get(
-                    "completion_tokens", "usage.completion_tokens"
-                ),
-                total_tokens=mapping_dict.get("total_tokens", "usage.total_tokens"),
-            )
+            if not isinstance(mapping_dict, dict):
+                return FieldMapping()
+
+            field_mapping = FieldMapping()
+            for key, value in mapping_dict.items():
+                if hasattr(field_mapping, key) and value is not None:
+                    setattr(field_mapping, key, value)
+
+            return field_mapping
         except (json.JSONDecodeError, TypeError):
+            return FieldMapping()
+
+    @staticmethod
+    def generate_field_mapping_by_api_type(
+        api_type: str, stream_mode: bool = True
+    ) -> FieldMapping:
+        """Generate default field mapping based on API type.
+
+        Args:
+            api_type: The API type (openai-chat, claude-chat, embeddings, custom-chat)
+            stream_mode: Whether the API is in streaming mode
+
+        Returns:
+            FieldMapping with appropriate defaults for the API type
+        """
+        if api_type == "openai-chat":
+            return FieldMapping(
+                stream_prefix="data:",
+                data_format="json",
+                stop_flag="[DONE]",
+                end_prefix="data:",
+                end_field="",
+                content=(
+                    "choices.0.delta.content"
+                    if stream_mode
+                    else "choices.0.message.content"
+                ),
+                reasoning_content=(
+                    "choices.0.delta.reasoning_content"
+                    if stream_mode
+                    else "choices.0.message.reasoning_content"
+                ),
+                prompt="messages.0.content.0.text",
+                image="messages.0.content.-1.image_url.url",
+                prompt_tokens="usage.prompt_tokens",
+                completion_tokens="usage.completion_tokens",
+                total_tokens="usage.total_tokens",
+            )
+        elif api_type == "claude-chat":
+            return FieldMapping(
+                stream_prefix="data:",
+                data_format="json",
+                stop_flag="message_stop",
+                end_prefix="data:",
+                end_field="type",
+                content="delta.text" if stream_mode else "content.-1.text",
+                reasoning_content=(
+                    "delta.thinking" if stream_mode else "content.0.thinking"
+                ),
+                prompt="messages.0.content.0.text",
+                image="messages.0.content.-1.source.data",
+                prompt_tokens="usage.input_tokens",
+                completion_tokens="usage.output_tokens",
+                total_tokens="",
+            )
+        elif api_type == "embeddings":
+            return FieldMapping(
+                stream_prefix="",
+                data_format="json",
+                stop_flag="",
+                end_prefix="",
+                end_field="",
+                content="",
+                reasoning_content="",
+                prompt="input",
+                image="",
+                prompt_tokens="",
+                completion_tokens="",
+                total_tokens="",
+            )
+        else:
+            # For custom-chat or unknown types, return empty field mapping
             return FieldMapping()
 
 

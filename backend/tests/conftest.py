@@ -5,12 +5,19 @@ Copyright (c) 2025, All Rights Reserved.
 
 import asyncio
 import os
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 # Set testing environment variables before any imports
 os.environ["TESTING"] = "1"
+
+# Ensure backend package is importable when tests run from project root
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 
 # Setup async test event loop
@@ -27,12 +34,24 @@ def mock_db_session():
     """Mock database session"""
     mock_session = AsyncMock()
     mock_session.execute = AsyncMock()
+    mock_session.execute.return_value = Mock()
+    mock_session.execute.return_value.scalars.return_value.all.return_value = []
+    mock_session.execute.return_value.scalar_one_or_none.return_value = None
     mock_session.scalar = AsyncMock()
     mock_session.add = Mock()
     mock_session.flush = AsyncMock()
     mock_session.commit = AsyncMock()
     mock_session.rollback = AsyncMock()
     mock_session.close = AsyncMock()
+
+    class _AsyncTransaction:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    mock_session.begin = Mock(return_value=_AsyncTransaction())
     return mock_session
 
 

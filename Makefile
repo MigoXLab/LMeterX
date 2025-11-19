@@ -2,7 +2,7 @@
 
 # 默认目标
 help:
-	@echo "LLMeter 项目管理命令:"
+	@echo "LMeterX 项目管理命令:"
 	@echo ""
 	@echo "全局命令:"
 	@echo "  help        - 显示此帮助信息"

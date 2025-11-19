@@ -98,7 +98,7 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
             return result
 
     except Exception as e:
-        logger.error(f"Failed to read log file: {str(e)}")
+        logger.error("Failed to read log file: {}", e)
         return ""
 
 
@@ -155,7 +155,7 @@ async def get_service_log_svc(service_name: str, offset: int, tail: int):
         file_size = os.path.getsize(log_file_path)
         return LogContentResponse(content=content, file_size=file_size)
     except Exception as e:
-        logger.error(f"Failed to read log file {log_file_path}: {str(e)}")
+        logger.error("Failed to read log file {}: {}", log_file_path, e)
         return ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)
 
 
@@ -182,5 +182,5 @@ async def get_task_log_svc(task_id: str, offset: int, tail: int):
         file_size = os.path.getsize(log_file_path)
         return LogContentResponse(content=content, file_size=file_size)
     except Exception as e:
-        logger.error(f"Failed to read log file {log_file_path}: {str(e)}")
+        logger.error("Failed to read log file {}: {}", log_file_path, e)
         return ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)

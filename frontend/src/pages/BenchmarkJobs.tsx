@@ -191,7 +191,7 @@ const BenchmarkJobs: React.FC = () => {
         render: (id: string) => (
           <div className='table-cell-with-copy'>
             <Tooltip title={id} placement='topLeft'>
-              <Text className='table-cell-text table-ellipsis-150'>{id}</Text>
+              <Text className='table-cell-text'>{id}</Text>
             </Tooltip>
             <div className='table-cell-action'>
               <CopyButton text={id} />
@@ -204,22 +204,20 @@ const BenchmarkJobs: React.FC = () => {
         dataIndex: 'name',
         key: 'name',
         ellipsis: true,
-        width: 150,
+        width: 250,
       },
       {
         title: t('pages.benchmarkJobs.targetUrl'),
         dataIndex: 'target_host',
         key: 'target_host',
-        width: 280,
+        width: 250,
         render: (target_host: string, record: BenchmarkJob) => {
           const apiPath = record.api_path || '/chat/completions';
           const fullUrl = target_host + apiPath;
           return (
             <div className='table-cell-with-copy'>
               <Tooltip title={fullUrl} placement='topLeft'>
-                <Text className='table-cell-text table-ellipsis-220'>
-                  {fullUrl}
-                </Text>
+                <Text className='table-cell-text'>{fullUrl}</Text>
               </Tooltip>
               <div className='table-cell-action'>
                 <CopyButton text={fullUrl} />
@@ -233,25 +231,25 @@ const BenchmarkJobs: React.FC = () => {
         dataIndex: 'model',
         key: 'model',
         ellipsis: true,
-        width: 150,
+        width: 120,
       },
       {
         title: t('pages.benchmarkJobs.concurrentUsers'),
         dataIndex: 'concurrent_users',
         key: 'concurrent_users',
-        width: 120,
+        width: 60,
       },
       {
         title: t('pages.benchmarkJobs.duration'),
         dataIndex: 'duration',
         key: 'duration',
-        width: 120,
+        width: 60,
       },
       {
         title: t('pages.benchmarkJobs.status'),
         dataIndex: 'status',
         key: 'status',
-        width: 120,
+        width: 60,
         filters: Object.entries(TASK_STATUS_MAP).map(([key]) => ({
           text: t(`status.${key}`),
           value: key,

@@ -3,7 +3,7 @@
 # LMeterX Quick Deployment Script
 # Use pre-built Docker images to quickly start all services
 
-set -e
+set -eo pipefail
 
 echo "🚀 LMeterX Quick Deployment Script"
 echo "=================================="
@@ -37,6 +37,30 @@ if [ ! -f "docker-compose.yml" ]; then
     echo "📥 Downloading docker-compose.yml..."
     curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/MigoXLab/LMeterX/main/docker-compose.yml
 fi
+
+# Download and sync data directory
+echo "📁 Syncing data directory..."
+DATA_DIR="data"
+ARCHIVE_URL="https://codeload.github.com/MigoXLab/LMeterX/tar.gz/refs/heads/main"
+TMP_DIR="$(mktemp -d)"
+
+cleanup_tmp_dir() {
+    if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
+        rm -rf "$TMP_DIR"
+    fi
+}
+trap cleanup_tmp_dir EXIT
+
+curl -fsSL "$ARCHIVE_URL" | tar -xz --strip-components=1 -C "$TMP_DIR" LMeterX-main/data
+
+if [ ! -d "$TMP_DIR/data" ]; then
+    echo "❌ Error: Failed to locate data directory in repository archive"
+    exit 1
+fi
+
+rm -rf "$DATA_DIR"
+mkdir -p "$DATA_DIR"
+cp -R "$TMP_DIR/data/." "$DATA_DIR/"
 
 # Pull latest images
 echo "📦 Pulling latest Docker images..."

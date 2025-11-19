@@ -47,10 +47,12 @@ import {
 } from '@/api/services';
 import { useI18n } from '@/hooks/useI18n';
 import { BenchmarkJob } from '@/types/benchmark';
-import { CHAT_COMPLETIONS_FIELD_MAPPING } from '@/utils/constants';
 
 const { TextArea } = Input;
 const { Text } = Typography;
+
+// API Type definitions
+type ApiType = 'openai-chat' | 'claude-chat' | 'embeddings' | 'custom-chat';
 
 interface CreateJobFormProps {
   onSubmit: (values: any) => Promise<void>;
@@ -81,92 +83,167 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   const [activeTabKey, setActiveTabKey] = useState('1');
   // Add state to track upload loading
   const [uploading, setUploading] = useState(false);
+  const [datasetFile, setDatasetFile] = useState<File | null>(null);
   // Add state to track if user manually modified request_payload
   const [userModifiedPayload, setUserModifiedPayload] = useState(false);
 
-  // Get default field_mapping based on API path and stream mode
-  const getDefaultFieldMapping = (apiPath: string, streamMode?: boolean) => {
-    if (apiPath === '/chat/completions') {
-      const isStreamMode = streamMode !== false; // Default to streaming if not specified
-      return {
-        ...(isStreamMode
-          ? CHAT_COMPLETIONS_FIELD_MAPPING.STREAMING
-          : CHAT_COMPLETIONS_FIELD_MAPPING.NON_STREAMING),
-      };
+  // Get default API path based on API type
+  const getDefaultApiPath = (type: ApiType): string => {
+    switch (type) {
+      case 'openai-chat':
+        return '/v1/chat/completions';
+      case 'claude-chat':
+        return '/v1/messages';
+      case 'embeddings':
+        return '/v1/embeddings';
+      case 'custom-chat':
+        return '/v1/custom-model-path';
+      default:
+        return '/v1/chat/completions';
     }
-    if (apiPath === '/embeddings') {
-      // embeddings use non-stream mode, and no content field
-      return {
-        prompt: 'input',
-        stream_prefix: '',
-        data_format: 'json',
-        content: '',
-        reasoning_content: '',
-        prompt_tokens: '',
-        completion_tokens: '',
-        total_tokens: '',
-        end_prefix: '',
-        stop_flag: '',
-        end_field: '',
-      };
-    }
-    // For non-chat/completions APIs, return empty values (only show placeholders)
-    return {
-      prompt: '',
-      stream_prefix: 'data:',
-      data_format: 'json',
-      content: '',
-      reasoning_content: '',
-      prompt_tokens: 'usage.prompt_tokens',
-      completion_tokens: 'usage.completion_tokens',
-      total_tokens: 'usage.total_tokens',
-      end_prefix: '',
-      stop_flag: '',
-      end_field: '',
-    };
   };
 
-  // Generate default request payload based on model and stream mode
-  const generateDefaultPayload = (
-    model: string,
-    streamMode: boolean,
-    apiPath?: string
-  ) => {
-    if (apiPath === '/embeddings') {
-      return JSON.stringify(
-        {
-          model: model || 'your-model-name',
-          input: 'Hi',
-        },
-        null,
-        2
-      );
+  // Get default field_mapping based on API type and stream mode
+  const getDefaultFieldMapping = (type: ApiType) => {
+    switch (type) {
+      case 'openai-chat':
+      case 'claude-chat':
+        // For standard chat APIs, backend will auto-generate field mapping
+        return {};
+
+      case 'embeddings':
+        return {
+          prompt: 'input',
+          image: '',
+          stream_prefix: '',
+          data_format: 'json',
+          content: '',
+          reasoning_content: '',
+          prompt_tokens: '',
+          completion_tokens: '',
+          total_tokens: '',
+          end_prefix: '',
+          stop_flag: '',
+          end_field: '',
+        };
+
+      case 'custom-chat':
+        return {
+          prompt: '',
+          image: '',
+          stream_prefix: 'data:',
+          data_format: 'json',
+          content: '',
+          reasoning_content: '',
+          prompt_tokens: '',
+          completion_tokens: '',
+          total_tokens: '',
+          end_prefix: 'data:',
+          stop_flag: '[DONE]',
+          end_field: '',
+        };
+
+      default:
+        return {};
     }
-    return JSON.stringify(
-      {
-        model: model || 'your-model-name',
-        stream: streamMode,
-        messages: [
+  };
+
+  // Generate default request payload based on API type, model and stream mode
+  const generateDefaultPayload = (
+    type: ApiType,
+    model: string,
+    streamMode: boolean
+  ) => {
+    switch (type) {
+      case 'openai-chat':
+        return JSON.stringify(
           {
-            role: 'user',
-            content: 'Hi',
+            model: model || 'none',
+            stream: streamMode,
+            messages: [
+              {
+                role: 'user',
+                content: 'Hi',
+              },
+            ],
           },
-        ],
-      },
-      null,
-      2
-    );
+          null,
+          2
+        );
+
+      case 'claude-chat':
+        return JSON.stringify(
+          {
+            model: model || 'none',
+            max_tokens: 8192,
+            stream: streamMode,
+            messages: [
+              {
+                role: 'user',
+                content: 'Hi',
+              },
+            ],
+          },
+          null,
+          2
+        );
+
+      case 'embeddings':
+        return JSON.stringify(
+          {
+            input: 'The food was delicious and the waiter...',
+            model: model || 'none',
+          },
+          null,
+          2
+        );
+
+      case 'custom-chat':
+        return JSON.stringify({}, null, 2);
+
+      default:
+        return JSON.stringify(
+          {
+            model: model || 'none',
+            stream: streamMode,
+            messages: [
+              {
+                role: 'user',
+                content: 'Hi',
+              },
+            ],
+          },
+          null,
+          2
+        );
+    }
   };
 
   // Tab navigation functions
   const goToNextTab = () => {
-    if (activeTabKey === '1') setActiveTabKey('2');
-    else if (activeTabKey === '2') setActiveTabKey('3');
+    const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
+    const isStandardChatApi =
+      currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+
+    if (activeTabKey === '1') {
+      setActiveTabKey('2');
+    } else if (!isStandardChatApi && activeTabKey === '2') {
+      // For custom-chat and embeddings: Tab2 (Field Mapping) -> Tab3 (Data/Load)
+      setActiveTabKey('3');
+    }
   };
 
   const goToPreviousTab = () => {
-    if (activeTabKey === '3') setActiveTabKey('2');
-    else if (activeTabKey === '2') setActiveTabKey('1');
+    const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
+    const isStandardChatApi =
+      currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+
+    if (activeTabKey === '2') {
+      setActiveTabKey('1');
+    } else if (!isStandardChatApi && activeTabKey === '3') {
+      // For custom-chat and embeddings: Tab3 (Data/Load) -> Tab2 (Field Mapping)
+      setActiveTabKey('2');
+    }
   };
 
   // Check if current tab is valid for navigation
@@ -176,6 +253,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         // Tab 1: Basic Configuration and Request Configuration
         const requiredFields = [
           'name',
+          'api_type',
           'target_host',
           'api_path',
           'model',
@@ -186,7 +264,36 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         return true;
       }
       if (activeTabKey === '2') {
-        // Tab 2: Test Data and Load Configuration
+        // Tab 2: Field Mapping
+        const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
+        const isEmbedType = currentApiType === 'embeddings';
+        const isStandardChatApi =
+          currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+        const currentStreamMode = form.getFieldValue('stream_mode');
+
+        // Skip validation for standard chat APIs (backend will handle field mapping)
+        if (isStandardChatApi) {
+          return true;
+        }
+
+        const requiredFields = [['field_mapping', 'prompt']];
+
+        // Add stop_flag validation for non-embed streaming types
+        if (!isEmbedType && currentStreamMode) {
+          requiredFields.push(['field_mapping', 'stop_flag']);
+        }
+
+        await form.validateFields(requiredFields);
+        return true;
+      }
+      // Data/Load configuration tab (key '2' for standard APIs, '3' for others)
+      const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
+      const isStandardChatApi =
+        currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+      const dataLoadTabKey = isStandardChatApi ? '2' : '3';
+
+      if (activeTabKey === dataLoadTabKey) {
+        // Test Data and Load Configuration
         const requiredFields = [
           'test_data_input_type',
           'duration',
@@ -194,14 +301,12 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           'spawn_rate',
         ];
 
-        // Add chat_type validation when using default dataset and chat/completions API
+        // Add chat_type validation when using default dataset and chat API
         const currentTestDataInputType =
           form.getFieldValue('test_data_input_type') || 'default';
-        const currentApiPath =
-          form.getFieldValue('api_path') || '/chat/completions';
         if (
           currentTestDataInputType === 'default' &&
-          currentApiPath === '/chat/completions'
+          (currentApiType === 'openai-chat' || currentApiType === 'claude-chat')
         ) {
           requiredFields.push('chat_type');
         }
@@ -255,29 +360,25 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
     setIsFormReady(true);
   }, []);
 
-  // Initialize field_mapping based on current API path when not in copy mode
+  // Initialize field_mapping based on current API type when not in copy mode
   useEffect(() => {
     if (isFormReady && !isCopyMode && !initialData) {
-      const currentApiPath =
-        form.getFieldValue('api_path') || '/chat/completions';
-      const currentStreamMode = form.getFieldValue('stream_mode');
-      const defaultFieldMapping = getDefaultFieldMapping(
-        currentApiPath,
-        currentStreamMode
-      );
+      const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
+      const defaultFieldMapping = getDefaultFieldMapping(currentApiType);
       form.setFieldsValue({ field_mapping: defaultFieldMapping });
 
-      // If API path is /embeddings, set stream_mode to false
-      if (currentApiPath === '/embeddings' && currentStreamMode !== false) {
+      // If API type is embeddings, set stream_mode to false
+      const currentStreamMode = form.getFieldValue('stream_mode');
+      if (currentApiType === 'embeddings' && currentStreamMode !== false) {
         form.setFieldsValue({ stream_mode: false });
         setStreamMode(false);
 
         // Update request_payload for embeddings API
         const currentModel = form.getFieldValue('model') || '';
         const newPayload = generateDefaultPayload(
+          currentApiType,
           currentModel,
-          false,
-          currentApiPath
+          false
         );
         form.setFieldsValue({ request_payload: newPayload });
       }
@@ -449,6 +550,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const currentTempTaskId = form.getFieldValue('temp_task_id');
       if (currentTempTaskId !== tempTaskId) {
         form.resetFields();
+        setDatasetFile(null);
         const currentConcurrentUsers =
           form.getFieldValue('concurrent_users') || 1;
         form.setFieldsValue({
@@ -569,9 +671,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         return;
       }
 
+      setDatasetFile(file as File);
       form.setFieldsValue({
         temp_task_id: tempTaskId,
-        test_data_file: file,
+        test_data_file: file.name,
       });
       message.success(
         t('components.createJobForm.fileSelected', { fileName: file.name })
@@ -583,6 +686,14 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       );
       onError();
     }
+  };
+
+  const handleDatasetFileRemove = () => {
+    setDatasetFile(null);
+    form.setFieldsValue({
+      test_data_file: undefined,
+    });
+    return true;
   };
 
   // Test API endpoint
@@ -604,17 +715,19 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
 
       // Get all form values after validation
       const values = form.getFieldsValue();
+      const sanitizedModel = values.model?.trim();
+      values.model = sanitizedModel || 'none';
 
       // Ensure request_payload is available - auto-generate if empty
       if (!values.request_payload || !values.request_payload.trim()) {
+        const currentApiType = values.api_type || 'openai-chat';
         const currentModel = values.model || '';
         const currentStreamMode =
           values.stream_mode !== undefined ? values.stream_mode : true;
-        const currentApiPath = values.api_path || '';
         values.request_payload = generateDefaultPayload(
+          currentApiType,
           currentModel,
-          currentStreamMode,
-          currentApiPath
+          currentStreamMode
         );
         // Update form with generated payload
         form.setFieldsValue({ request_payload: values.request_payload });
@@ -724,17 +837,19 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
     try {
       setSubmitting(true);
       const values = await form.validateFields();
+      const sanitizedModel = values.model?.trim();
+      values.model = sanitizedModel || 'none';
 
       // Ensure request_payload is available - auto-generate if empty
       if (!values.request_payload || !values.request_payload.trim()) {
+        const currentApiType = values.api_type || 'openai-chat';
         const currentModel = values.model || '';
         const currentStreamMode =
           values.stream_mode !== undefined ? values.stream_mode : true;
-        const currentApiPath = values.api_path || '';
         values.request_payload = generateDefaultPayload(
+          currentApiType,
           currentModel,
-          currentStreamMode,
-          currentApiPath
+          currentStreamMode
         );
       }
 
@@ -780,15 +895,19 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         }
       }
 
-      if (values.test_data_file) {
+      // Handle test data input type
+      const inputType = values.test_data_input_type || 'default';
+      if (inputType === 'upload') {
+        if (!datasetFile) {
+          message.error(t('components.createJobForm.pleaseUploadDatasetFile'));
+          setSubmitting(false);
+          setUploading(false);
+          return;
+        }
         try {
           setUploading(true);
-          const result = await uploadDatasetFile(
-            values.test_data_file,
-            tempTaskId
-          );
+          const result = await uploadDatasetFile(datasetFile, tempTaskId);
           values.test_data = result.test_data;
-          delete values.test_data_file;
           values.temp_task_id = tempTaskId;
         } catch (error: any) {
           let errorMessage = t('components.createJobForm.testDataUploadFailed');
@@ -810,8 +929,9 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         }
       }
 
-      // Handle test data input type
-      const inputType = values.test_data_input_type || 'default';
+      // Clean up temporary dataset holder
+      delete values.test_data_file;
+
       if (inputType === 'default') {
         values.test_data = 'default'; // use default dataset
       } else if (inputType === 'input') {
@@ -1282,18 +1402,6 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 max: 100,
                 message: t('components.createJobForm.taskNameLengthLimit'),
               },
-              {
-                validator: (_, value) => {
-                  if (!value || !value.trim()) {
-                    return Promise.reject(
-                      new Error(
-                        t('components.createJobForm.taskNameCannotBeEmpty')
-                      )
-                    );
-                  }
-                  return Promise.resolve();
-                },
-              },
             ]}
             normalize={value => value?.trim() || ''}
           >
@@ -1302,6 +1410,51 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               maxLength={100}
               showCount
             />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={24}>
+        <Col span={12}>
+          <Form.Item
+            name='api_type'
+            label={t('components.createJobForm.apiType')}
+            rules={[
+              {
+                required: true,
+                message: t('components.createJobForm.pleaseSelectApiType'),
+              },
+            ]}
+            required
+          >
+            <Select placeholder={t('components.createJobForm.apiType')}>
+              <Select.Option value='openai-chat'>OpenAI Chat</Select.Option>
+              <Select.Option value='claude-chat'>Claude Chat</Select.Option>
+              <Select.Option value='embeddings'>Embeddings</Select.Option>
+              <Select.Option value='custom-chat'>Custom Chat</Select.Option>
+            </Select>
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            name='model'
+            label={
+              <span>
+                {t('components.createJobForm.modelName')}
+                <Tooltip title={t('components.createJobForm.modelNameTooltip')}>
+                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                </Tooltip>
+              </span>
+            }
+            rules={[
+              {
+                max: 255,
+                message: t('components.createJobForm.modelNameLengthLimit'),
+              },
+            ]}
+            normalize={value => value?.trim() || ''}
+          >
+            <Input placeholder='e.g. gpt-4' maxLength={255} showCount />
           </Form.Item>
         </Col>
       </Row>
@@ -1435,52 +1588,6 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         </Col>
       </Row>
 
-      <Row gutter={24}>
-        <Col span={24}>
-          <Form.Item
-            name='model'
-            label={
-              <span>
-                {t('components.createJobForm.modelName')}
-                <Tooltip title={t('components.createJobForm.modelNameTooltip')}>
-                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                </Tooltip>
-              </span>
-            }
-            rules={[
-              {
-                required: true,
-                message: t('components.createJobForm.pleaseEnterModelName'),
-              },
-              {
-                max: 255,
-                message: t('components.createJobForm.modelNameLengthLimit'),
-              },
-              {
-                validator: (_, value) => {
-                  if (!value || !value.trim()) {
-                    return Promise.reject(
-                      new Error(
-                        t('components.createJobForm.modelNameCannotBeEmpty')
-                      )
-                    );
-                  }
-                  return Promise.resolve();
-                },
-              },
-            ]}
-            normalize={value => value?.trim() || ''}
-            required
-          >
-            <Input
-              placeholder='e.g. gpt-4, claude-3, internlm3-latest'
-              maxLength={255}
-              showCount
-            />
-          </Form.Item>
-        </Col>
-      </Row>
-
       {/* Section 2: Request Configuration */}
       <div
         style={{
@@ -1520,33 +1627,49 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           </Form.Item>
         </Col>
         <Col span={12}>
-          <Form.Item
-            name='stream_mode'
-            label={
-              <span>
-                {t('components.createJobForm.responseMode')}
-                <Tooltip
-                  title={t('components.createJobForm.responseModeTooltip')}
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => {
+              const currentApiType = getFieldValue('api_type') || 'openai-chat';
+              const isEmbedType = currentApiType === 'embeddings';
+
+              return (
+                <Form.Item
+                  name='stream_mode'
+                  label={
+                    <span>
+                      {t('components.createJobForm.responseMode')}
+                      <Tooltip
+                        title={t(
+                          'components.createJobForm.responseModeTooltip'
+                        )}
+                      >
+                        <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                      </Tooltip>
+                    </span>
+                  }
+                  rules={[
+                    {
+                      required: true,
+                      message: t(
+                        'components.createJobForm.pleaseSelectResponseMode'
+                      ),
+                    },
+                  ]}
                 >
-                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                </Tooltip>
-              </span>
-            }
-            rules={[
-              {
-                required: true,
-                message: t('components.createJobForm.pleaseSelectResponseMode'),
-              },
-            ]}
-          >
-            <Select placeholder={t('components.createJobForm.responseMode')}>
-              <Select.Option value>
-                {t('components.createJobForm.stream')}
-              </Select.Option>
-              <Select.Option value={false}>
-                {t('components.createJobForm.nonStreaming')}
-              </Select.Option>
-            </Select>
+                  <Select
+                    placeholder={t('components.createJobForm.responseMode')}
+                    disabled={isEmbedType}
+                  >
+                    <Select.Option value>
+                      {t('components.createJobForm.stream')}
+                    </Select.Option>
+                    <Select.Option value={false}>
+                      {t('components.createJobForm.nonStreaming')}
+                    </Select.Option>
+                  </Select>
+                </Form.Item>
+              );
+            }}
           </Form.Item>
         </Col>
       </Row>
@@ -1659,229 +1782,243 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       <Form.Item noStyle shouldUpdate>
         {({ getFieldValue }) => {
           const inputType = getFieldValue('test_data_input_type');
-          const currentApiPath =
-            getFieldValue('api_path') || '/chat/completions';
-          const isChatCompletionsApi = currentApiPath === '/chat/completions';
+          const currentApiType = getFieldValue('api_type') || 'openai-chat';
+          const isChatApi =
+            currentApiType === 'openai-chat' ||
+            currentApiType === 'claude-chat';
 
-          return (
-            <div>
-              <Row gutter={24}>
-                <Col span={8}>
-                  <Form.Item
-                    name='test_data_input_type'
-                    label={
-                      <span>
-                        {t('components.createJobForm.datasetSource')}
-                        <Tooltip
-                          title={t(
-                            'components.createJobForm.datasetSourceTooltip'
-                          )}
-                        >
-                          <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                        </Tooltip>
-                      </span>
-                    }
-                    rules={[
-                      {
-                        required: true,
-                        message: t(
-                          'components.createJobForm.pleaseSelectDatasetSource'
-                        ),
-                      },
-                    ]}
-                  >
-                    <Select
-                      placeholder={t('components.createJobForm.datasetSource')}
-                    >
-                      <Select.Option value='default'>
-                        {t('components.createJobForm.builtInDataset')}
-                      </Select.Option>
-                      <Select.Option value='input'>
-                        {t('components.createJobForm.customJsonlData')}
-                      </Select.Option>
-                      <Select.Option value='upload'>
-                        {t('components.createJobForm.uploadJsonlFile')}
-                      </Select.Option>
-                      <Select.Option value='none'>
-                        {t('components.createJobForm.noDataset')}
-                      </Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
+          const cardStyle = {
+            background: token.colorFillAlter,
+            borderRadius: 12,
+            boxShadow: token.boxShadowTertiary,
+            border: `1px solid ${token.colorBorder}`,
+          };
 
-                {/* Dataset Type - only show when using built-in dataset and chat completions API */}
-                {inputType === 'default' && (
-                  <Col span={8}>
-                    <Form.Item
-                      name='chat_type'
-                      label={
-                        <span>
-                          {t('components.createJobForm.datasetType')}
-                          <Tooltip
-                            title={t(
-                              'components.createJobForm.datasetTypeTooltip'
-                            )}
-                          >
-                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                          </Tooltip>
-                        </span>
-                      }
-                      rules={[
-                        {
-                          type: 'number',
-                          min: 0,
-                          max: 1,
-                          message: t(
-                            'components.createJobForm.chatTypeRangeLimit'
-                          ),
-                        },
-                      ]}
-                      style={{
-                        display: isChatCompletionsApi ? 'block' : 'none',
-                      }}
-                    >
-                      <Select
-                        placeholder={t('components.createJobForm.datasetType')}
-                      >
-                        <Select.Option value={0}>
-                          {t('components.createJobForm.textOnlyConversations')}
-                        </Select.Option>
-                        <Select.Option value={1}>
-                          {t('components.createJobForm.multimodalTextImage')}
-                        </Select.Option>
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                )}
+          const cardBodyStyle = { padding: '16px 20px' };
+          const cardProps = {
+            bordered: false,
+            style: cardStyle,
+            bodyStyle: cardBodyStyle,
+          };
 
-                {/* Dataset File - only show when upload is selected */}
-                {inputType === 'upload' && (
-                  <Col span={8}>
-                    <Form.Item
-                      name='test_data_file'
-                      label={
-                        <span>
-                          {t('components.createJobForm.datasetFile')}
-                          <Tooltip
-                            title={t(
-                              'components.createJobForm.datasetFileTooltip'
-                            )}
-                          >
-                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                          </Tooltip>
-                        </span>
-                      }
-                      rules={[
-                        {
-                          required: inputType === 'upload',
-                          message: t(
-                            'components.createJobForm.pleaseUploadDatasetFile'
-                          ),
-                        },
-                      ]}
-                    >
-                      <Upload
-                        maxCount={1}
-                        accept='.jsonl'
-                        customRequest={handleDatasetFileUpload}
-                        listType='text'
-                        style={{ width: '100%' }}
-                      >
-                        <Button
-                          icon={<UploadOutlined />}
-                          size='middle'
-                          style={{ width: '200px', height: '40px' }}
-                        >
-                          {t('components.createJobForm.selectJsonlFile')}
-                        </Button>
-                      </Upload>
-                      <div
-                        style={{
-                          marginTop: 8,
-                          color: token.colorTextSecondary,
-                          fontSize: '12px',
-                        }}
-                      >
-                        {t('components.createJobForm.jsonlFormatDescription')}
-                      </div>
-                    </Form.Item>
-                  </Col>
-                )}
-              </Row>
+          const renderBuiltInDatasetPanel = () => {
+            if (!isChatApi) {
+              return null;
+            }
 
-              {/* Custom JSONL Data Input */}
-              {inputType === 'input' && (
-                <Row gutter={24}>
-                  <Col span={24}>
-                    <Form.Item
-                      name='test_data'
-                      label={
-                        <span>
-                          {t('components.createJobForm.jsonlData')}
-                          <Tooltip
-                            title={t(
-                              'components.createJobForm.jsonlDataTooltip'
-                            )}
-                          >
-                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                          </Tooltip>
-                        </span>
-                      }
-                      rules={[
-                        {
-                          required: inputType === 'input',
-                          message: t(
-                            'components.createJobForm.pleaseEnterJsonlData'
-                          ),
-                        },
-                        {
-                          validator: (_, value) => {
-                            if (inputType !== 'input' || !value)
-                              return Promise.resolve();
-                            try {
-                              const lines = value
-                                .trim()
-                                .split('\n')
-                                .filter(line => line.trim());
-                              lines.forEach(line => {
-                                const jsonObj = JSON.parse(line);
-                                if (!jsonObj.id || !jsonObj.prompt) {
-                                  throw new Error(
-                                    t(
-                                      'components.createJobForm.eachLineMustContainFields'
-                                    )
-                                  );
-                                }
-                              });
-                              return Promise.resolve();
-                            } catch (e) {
-                              return Promise.reject(
-                                new Error(
-                                  t(
-                                    'components.createJobForm.invalidJsonlFormat'
-                                  )
+            return (
+              <Form.Item
+                name='chat_type'
+                label={
+                  <Space size={6}>
+                    <span>{t('components.createJobForm.datasetType')}</span>
+                  </Space>
+                }
+                rules={[
+                  {
+                    required: true,
+                    message: t(
+                      'components.createJobForm.pleaseSelectDatasetType'
+                    ),
+                  },
+                  {
+                    type: 'number',
+                    min: 0,
+                    max: 2,
+                    message: t('components.createJobForm.chatTypeRangeLimit'),
+                  },
+                ]}
+              >
+                <Select
+                  size='large'
+                  placeholder={t('components.createJobForm.datasetType')}
+                >
+                  <Select.Option value={0}>
+                    {t('components.createJobForm.datasetOptionTextSelfBuilt')}
+                  </Select.Option>
+                  <Select.Option value={1}>
+                    {t('components.createJobForm.datasetOptionShareGPTPartial')}
+                  </Select.Option>
+                  <Select.Option value={2}>
+                    {t('components.createJobForm.datasetOptionVisionSelfBuilt')}
+                  </Select.Option>
+                </Select>
+              </Form.Item>
+            );
+          };
+
+          const renderUploadDatasetPanel = () => (
+            <Form.Item
+              name='test_data_file'
+              style={{ marginBottom: 0 }}
+              rules={[
+                {
+                  required: inputType === 'upload',
+                  message: t(
+                    'components.createJobForm.pleaseUploadDatasetFile'
+                  ),
+                },
+              ]}
+            >
+              <Upload.Dragger
+                maxCount={1}
+                accept='.json,.jsonl'
+                customRequest={handleDatasetFileUpload}
+                onRemove={handleDatasetFileRemove}
+                style={{
+                  borderRadius: 12,
+                  borderColor: token.colorBorderSecondary,
+                  background: token.colorFillAlter,
+                }}
+              >
+                <p
+                  className='ant-upload-drag-icon'
+                  style={{ marginBottom: 12 }}
+                >
+                  <UploadOutlined
+                    style={{ color: token.colorPrimary, fontSize: 24 }}
+                  />
+                </p>
+                <Text strong style={{ fontSize: 16 }}>
+                  {t('components.createJobForm.selectDatasetFile')}
+                </Text>
+                <p
+                  style={{
+                    marginTop: 12,
+                    color: token.colorTextSecondary,
+                    fontSize: 12,
+                  }}
+                >
+                  {t('components.createJobForm.datasetFileFormatDescription')}
+                  <br />
+                  {t('components.createJobForm.datasetImageMountWarning')}
+                </p>
+              </Upload.Dragger>
+            </Form.Item>
+          );
+
+          const renderManualDatasetPanel = () => (
+            <Card {...cardProps}>
+              <Space direction='vertical' size={12} style={{ width: '100%' }}>
+                <Text strong>{t('components.createJobForm.jsonlData')}</Text>
+                <Text type='secondary' style={{ fontSize: 12 }}>
+                  {t('components.createJobForm.jsonlDataTooltip')}
+                </Text>
+                <Form.Item
+                  name='test_data'
+                  style={{ marginBottom: 0 }}
+                  rules={[
+                    {
+                      required: inputType === 'input',
+                      message: t(
+                        'components.createJobForm.pleaseEnterJsonlData'
+                      ),
+                    },
+                    {
+                      validator: (_, value) => {
+                        if (inputType !== 'input' || !value) {
+                          return Promise.resolve();
+                        }
+                        try {
+                          const lines = value
+                            .trim()
+                            .split('\n')
+                            .filter(line => line.trim());
+                          lines.forEach(line => {
+                            const jsonObj = JSON.parse(line);
+                            if (!jsonObj.id || !jsonObj.prompt) {
+                              throw new Error(
+                                t(
+                                  'components.createJobForm.eachLineMustContainFields'
                                 )
                               );
                             }
-                          },
-                        },
-                      ]}
-                    >
-                      <TextArea
-                        rows={4}
-                        placeholder={`{"id": "1", "prompt": "Hello, how are you?"}\n{"id": "2", "prompt": "What is artificial intelligence?"}\n{"id": "3", "prompt": "Explain machine learning in simple terms"}`}
-                        maxLength={50000}
-                        showCount
-                        style={{
-                          fontFamily:
-                            'Monaco, Consolas, "Courier New", monospace',
-                        }}
-                      />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              )}
-            </div>
+                          });
+                          return Promise.resolve();
+                        } catch (e) {
+                          return Promise.reject(
+                            new Error(
+                              t('components.createJobForm.invalidJsonlFormat')
+                            )
+                          );
+                        }
+                      },
+                    },
+                  ]}
+                >
+                  <TextArea
+                    rows={6}
+                    placeholder={`{"id": "1", "prompt": "Hello, how are you?"}\n{"id": "2", "prompt": "What is artificial intelligence?"}\n{"id": "3", "prompt": "Explain machine learning in simple terms"}`}
+                    maxLength={50000}
+                    showCount
+                    style={{
+                      fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                    }}
+                  />
+                </Form.Item>
+              </Space>
+            </Card>
+          );
+
+          let additionalContent: React.ReactNode = null;
+          if (inputType === 'default') {
+            additionalContent = renderBuiltInDatasetPanel();
+          } else if (inputType === 'upload') {
+            additionalContent = renderUploadDatasetPanel();
+          } else if (inputType === 'input') {
+            additionalContent = renderManualDatasetPanel();
+          }
+
+          const datasetSourceTooltip = t(
+            'components.createJobForm.datasetSourceTooltip'
+          );
+
+          return (
+            <Space
+              direction='vertical'
+              size={16}
+              style={{ display: 'flex', width: '100%' }}
+            >
+              <Form.Item
+                name='test_data_input_type'
+                label={
+                  <span>
+                    {t('components.createJobForm.datasetSource')}
+                    <Tooltip title={datasetSourceTooltip}>
+                      <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                    </Tooltip>
+                  </span>
+                }
+                rules={[
+                  {
+                    required: true,
+                    message: t(
+                      'components.createJobForm.pleaseSelectDatasetSource'
+                    ),
+                  },
+                ]}
+                style={{ marginBottom: 0 }}
+              >
+                <Select
+                  size='large'
+                  placeholder={t('components.createJobForm.datasetSource')}
+                >
+                  <Select.Option value='default'>
+                    {t('components.createJobForm.builtInDataset')}
+                  </Select.Option>
+                  <Select.Option value='input'>
+                    {t('components.createJobForm.customJsonlData')}
+                  </Select.Option>
+                  <Select.Option value='upload'>
+                    {t('components.createJobForm.uploadJsonlFile')}
+                  </Select.Option>
+                  <Select.Option value='none'>
+                    {t('components.createJobForm.noDataset')}
+                  </Select.Option>
+                </Select>
+              </Form.Item>
+              {additionalContent}
+            </Space>
           );
         }}
       </Form.Item>
@@ -2031,515 +2168,607 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       </div>
 
       {/* Prompt Field Path - always show for all APIs */}
-      <div
-        style={{
-          marginBottom: 24,
-          padding: '16px',
-          backgroundColor: token.colorFillAlter,
-          borderRadius: '8px',
+      <Form.Item noStyle shouldUpdate>
+        {({ getFieldValue }) => {
+          const currentApiType = getFieldValue('api_type') || 'openai-chat';
+          const isEmbedType = currentApiType === 'embeddings';
+
+          // Get placeholder based on API type
+          const getPromptPlaceholder = () => {
+            switch (currentApiType) {
+              case 'openai-chat':
+                return 'messages.0.content.-1.text';
+              case 'claude-chat':
+                return 'messages.0.content.-1.text';
+              case 'embeddings':
+                return 'input';
+              case 'custom-chat':
+                return 'e.g. query, prompt, input';
+              default:
+                return 'e.g. query, prompt, input, message';
+            }
+          };
+
+          const getImagePlaceholder = () => {
+            switch (currentApiType) {
+              case 'openai-chat':
+                return 'messages.0.content.0.image_url';
+              case 'claude-chat':
+                return 'messages.0.content.0.source.data';
+              case 'custom-chat':
+                return 'e.g. image, image_url, image_base64';
+              default:
+                return '';
+            }
+          };
+
+          return (
+            <div
+              style={{
+                marginBottom: 24,
+                padding: '16px',
+                backgroundColor: token.colorFillAlter,
+                borderRadius: '8px',
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: 12,
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                }}
+              >
+                {t('components.createJobForm.requestFieldMapping')}
+              </div>
+              <Row gutter={24}>
+                <Col span={isEmbedType ? 24 : 12}>
+                  <Form.Item
+                    name={['field_mapping', 'prompt']}
+                    label={
+                      <span>
+                        {t('components.createJobForm.promptFieldPath')}
+                        <Tooltip
+                          title={t(
+                            'components.createJobForm.promptFieldPathTooltip'
+                          )}
+                        >
+                          <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    rules={[
+                      {
+                        required: true,
+                        message: t(
+                          'components.createJobForm.pleaseSpecifyPromptFieldPath'
+                        ),
+                      },
+                    ]}
+                    required
+                  >
+                    <Input placeholder={getPromptPlaceholder()} />
+                  </Form.Item>
+                </Col>
+                {!isEmbedType && (
+                  <Col span={12}>
+                    <Form.Item
+                      name={['field_mapping', 'image']}
+                      label={
+                        <span>
+                          {t('components.createJobForm.imageFieldPath')}
+                          <Tooltip
+                            title={t(
+                              'components.createJobForm.imageFieldPathTooltip'
+                            )}
+                          >
+                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                          </Tooltip>
+                        </span>
+                      }
+                    >
+                      <Input placeholder={getImagePlaceholder()} />
+                    </Form.Item>
+                  </Col>
+                )}
+              </Row>
+            </div>
+          );
         }}
-      >
-        <div style={{ marginBottom: 12, fontWeight: 'bold', fontSize: '14px' }}>
-          {t('components.createJobForm.requestFieldMapping')}
-        </div>
-        <Row gutter={24}>
-          <Col span={24}>
-            <Form.Item
-              name={['field_mapping', 'prompt']}
-              label={
-                <span>
-                  {t('components.createJobForm.promptFieldPath')}
-                  <Tooltip
-                    title={t('components.createJobForm.promptFieldPathTooltip')}
-                  >
-                    <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                  </Tooltip>
-                </span>
-              }
-              rules={[
-                {
-                  required: true,
-                  message: t(
-                    'components.createJobForm.pleaseSpecifyPromptFieldPath'
-                  ),
-                },
-              ]}
-            >
-              <Input placeholder='e.g. query, prompt, input, message' />
-            </Form.Item>
-          </Col>
-        </Row>
-      </div>
+      </Form.Item>
 
-      {streamMode ? (
-        // Streaming mode configuration
-        <>
-          {/* Stream Data Configuration */}
-          <div
-            style={{
-              marginBottom: 24,
-              padding: '16px',
-              backgroundColor: token.colorFillAlter,
-              borderRadius: '8px',
-            }}
-          >
+      {/* Only show response field mapping for non-embed types */}
+      <Form.Item noStyle shouldUpdate>
+        {({ getFieldValue }) => {
+          const currentApiType = getFieldValue('api_type') || 'openai-chat';
+          const isEmbedType = currentApiType === 'embeddings';
+
+          // Get placeholders based on API type
+          const getContentPlaceholder = () => {
+            if (currentApiType === 'claude-chat') {
+              return streamMode ? 'content.-1.text' : 'content.-1.text';
+            }
+            return streamMode
+              ? 'choices.0.delta.content'
+              : 'choices.0.message.content';
+          };
+
+          const getReasoningPlaceholder = () => {
+            if (currentApiType === 'claude-chat') {
+              return streamMode ? 'content.0.thinking' : 'content.0.thinking';
+            }
+            return streamMode
+              ? 'choices.0.delta.reasoning_content'
+              : 'choices.0.message.reasoning_content';
+          };
+
+          const getPromptTokensPlaceholder = () => {
+            return currentApiType === 'claude-chat'
+              ? 'usage.input_tokens'
+              : 'usage.prompt_tokens';
+          };
+
+          const getCompletionTokensPlaceholder = () => {
+            return currentApiType === 'claude-chat'
+              ? 'usage.output_tokens'
+              : 'usage.completion_tokens';
+          };
+
+          const getEndFieldPlaceholder = () => {
+            return currentApiType === 'claude-chat'
+              ? 'type'
+              : 'choices.0.finish_reason';
+          };
+
+          const getStopFlagPlaceholder = () => {
+            return currentApiType === 'claude-chat' ? 'message_stop' : 'stop';
+          };
+
+          // Don't show response fields for embed types
+          if (isEmbedType) {
+            return null;
+          }
+
+          return streamMode ? (
+            // Streaming mode configuration
+            <>
+              {/* Stream Data Configuration */}
+              <div
+                style={{
+                  marginBottom: 24,
+                  padding: '16px',
+                  backgroundColor: token.colorFillAlter,
+                  borderRadius: '8px',
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom: 16,
+                    fontWeight: 'bold',
+                    fontSize: '14px',
+                    color: token.colorText,
+                  }}
+                >
+                  {t('components.createJobForm.streamingResponseConfiguration')}
+                </div>
+
+                <Row gutter={16} style={{ marginBottom: 16 }}>
+                  <Col span={12}>
+                    <Form.Item
+                      name={['field_mapping', 'stream_prefix']}
+                      label={
+                        <span>
+                          {t('components.createJobForm.streamLinePrefix')}
+                          <Tooltip
+                            title={t(
+                              'components.createJobForm.streamLinePrefixTooltip'
+                            )}
+                          >
+                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                          </Tooltip>
+                        </span>
+                      }
+                    >
+                      <Input placeholder='data:' />
+                    </Form.Item>
+                  </Col>
+
+                  <Col span={12}>
+                    <Form.Item
+                      name={['field_mapping', 'data_format']}
+                      label={
+                        <span>
+                          {t('components.createJobForm.dataFormat')}
+                          <Tooltip
+                            title={t(
+                              'components.createJobForm.dataFormatTooltip'
+                            )}
+                          >
+                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                          </Tooltip>
+                        </span>
+                      }
+                      rules={[
+                        {
+                          required: true,
+                          message: t(
+                            'components.createJobForm.pleaseSelectDataFormat'
+                          ),
+                        },
+                      ]}
+                    >
+                      <Select
+                        placeholder={t('components.createJobForm.dataFormat')}
+                      >
+                        <Select.Option value='json'>
+                          {t('components.createJobForm.jsonFormat')}
+                        </Select.Option>
+                        <Select.Option value='non-json'>
+                          {t('components.createJobForm.plainText')}
+                        </Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                {/* Content Field Configuration - only show when data format is JSON */}
+                <Form.Item noStyle shouldUpdate>
+                  {({ getFieldValue }) => {
+                    const dataFormat =
+                      getFieldValue(['field_mapping', 'data_format']) || 'json';
+                    return (
+                      dataFormat === 'json' && (
+                        <>
+                          <Row gutter={24}>
+                            <Col span={12}>
+                              <Form.Item
+                                name={['field_mapping', 'content']}
+                                label={
+                                  <span>
+                                    {t(
+                                      'components.createJobForm.contentFieldPath'
+                                    )}
+                                    <Tooltip
+                                      title={t(
+                                        'components.createJobForm.contentFieldPathTooltip'
+                                      )}
+                                    >
+                                      <InfoCircleOutlined
+                                        style={{ marginLeft: 5 }}
+                                      />
+                                    </Tooltip>
+                                  </span>
+                                }
+                              >
+                                <Input placeholder={getContentPlaceholder()} />
+                              </Form.Item>
+                            </Col>
+
+                            <Col span={12}>
+                              <Form.Item
+                                name={['field_mapping', 'reasoning_content']}
+                                label={
+                                  <span>
+                                    {t(
+                                      'components.createJobForm.reasoningFieldPath'
+                                    )}
+                                    <Tooltip
+                                      title={t(
+                                        'components.createJobForm.reasoningFieldPathTooltip'
+                                      )}
+                                    >
+                                      <InfoCircleOutlined
+                                        style={{ marginLeft: 5 }}
+                                      />
+                                    </Tooltip>
+                                  </span>
+                                }
+                              >
+                                <Input
+                                  placeholder={getReasoningPlaceholder()}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+
+                          <Row gutter={16} style={{ marginTop: 16 }}>
+                            <Col span={8}>
+                              <Form.Item
+                                name={['field_mapping', 'prompt_tokens']}
+                                label={
+                                  <span>
+                                    {t(
+                                      'components.createJobForm.promptTokensFieldPath'
+                                    )}
+                                    <Tooltip
+                                      title={t(
+                                        'components.createJobForm.promptTokensFieldPathTooltip'
+                                      )}
+                                    >
+                                      <InfoCircleOutlined
+                                        style={{ marginLeft: 5 }}
+                                      />
+                                    </Tooltip>
+                                  </span>
+                                }
+                              >
+                                <Input
+                                  placeholder={getPromptTokensPlaceholder()}
+                                />
+                              </Form.Item>
+                            </Col>
+
+                            <Col span={8}>
+                              <Form.Item
+                                name={['field_mapping', 'completion_tokens']}
+                                label={
+                                  <span>
+                                    {t(
+                                      'components.createJobForm.completionTokensFieldPath'
+                                    )}
+                                    <Tooltip
+                                      title={t(
+                                        'components.createJobForm.completionTokensFieldPathTooltip'
+                                      )}
+                                    >
+                                      <InfoCircleOutlined
+                                        style={{ marginLeft: 5 }}
+                                      />
+                                    </Tooltip>
+                                  </span>
+                                }
+                              >
+                                <Input
+                                  placeholder={getCompletionTokensPlaceholder()}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item
+                                name={['field_mapping', 'total_tokens']}
+                                label={
+                                  <span>
+                                    {t(
+                                      'components.createJobForm.totalTokensFieldPath'
+                                    )}
+                                    <Tooltip
+                                      title={t(
+                                        'components.createJobForm.totalTokensFieldPathTooltip'
+                                      )}
+                                    >
+                                      <InfoCircleOutlined
+                                        style={{ marginLeft: 5 }}
+                                      />
+                                    </Tooltip>
+                                  </span>
+                                }
+                              >
+                                <Input placeholder='usage.total_tokens' />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                        </>
+                      )
+                    );
+                  }}
+                </Form.Item>
+              </div>
+
+              {/* End Condition Configuration */}
+              <div
+                style={{
+                  marginBottom: 24,
+                  padding: '16px',
+                  backgroundColor: token.colorFillAlter,
+                  borderRadius: '8px',
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom: 16,
+                    fontWeight: 'bold',
+                    fontSize: '14px',
+                    color: token.colorText,
+                  }}
+                >
+                  {t('components.createJobForm.streamTerminationConfiguration')}
+                </div>
+
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Form.Item
+                      name={['field_mapping', 'end_prefix']}
+                      label={
+                        <span>
+                          {t('components.createJobForm.endLinePrefix')}
+                          <Tooltip
+                            title={t(
+                              'components.createJobForm.endLinePrefixTooltip'
+                            )}
+                          >
+                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                          </Tooltip>
+                        </span>
+                      }
+                    >
+                      <Input placeholder='data:' />
+                    </Form.Item>
+                  </Col>
+
+                  <Col span={8}>
+                    <Form.Item
+                      name={['field_mapping', 'end_field']}
+                      label={
+                        <span>
+                          {t('components.createJobForm.endFieldPath')}
+                          <Tooltip
+                            title={t(
+                              'components.createJobForm.endFieldPathTooltip'
+                            )}
+                          >
+                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                          </Tooltip>
+                        </span>
+                      }
+                    >
+                      <Input placeholder={getEndFieldPlaceholder()} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item
+                      name={['field_mapping', 'stop_flag']}
+                      label={
+                        <span>
+                          {t('components.createJobForm.stopSignal')}
+                          <Tooltip
+                            title={t(
+                              'components.createJobForm.stopSignalTooltip'
+                            )}
+                          >
+                            <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                          </Tooltip>
+                        </span>
+                      }
+                      rules={[
+                        {
+                          required: true,
+                          message: t(
+                            'components.createJobForm.pleaseSpecifyStopSignal'
+                          ),
+                        },
+                      ]}
+                      required
+                    >
+                      <Input placeholder={getStopFlagPlaceholder()} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
+            </>
+          ) : (
+            // Non-streaming mode configuration
             <div
               style={{
-                marginBottom: 16,
-                fontWeight: 'bold',
-                fontSize: '14px',
-                color: token.colorText,
+                padding: '16px',
+                backgroundColor: token.colorFillAlter,
+                borderRadius: '8px',
               }}
             >
-              {t('components.createJobForm.streamingResponseConfiguration')}
-            </div>
-
-            <Row gutter={16} style={{ marginBottom: 16 }}>
-              <Col span={12}>
-                <Form.Item
-                  name={['field_mapping', 'stream_prefix']}
-                  label={
-                    <span>
-                      {t('components.createJobForm.streamLinePrefix')}
-                      <Tooltip
-                        title={t(
-                          'components.createJobForm.streamLinePrefixTooltip'
-                        )}
-                      >
-                        <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                      </Tooltip>
-                    </span>
-                  }
-                >
-                  <Input placeholder='data:' />
-                </Form.Item>
-              </Col>
-
-              <Col span={12}>
-                <Form.Item
-                  name={['field_mapping', 'data_format']}
-                  label={
-                    <span>
-                      {t('components.createJobForm.dataFormat')}
-                      <Tooltip
-                        title={t('components.createJobForm.dataFormatTooltip')}
-                      >
-                        <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  rules={[
-                    {
-                      required: true,
-                      message: t(
-                        'components.createJobForm.pleaseSelectDataFormat'
-                      ),
-                    },
-                  ]}
-                >
-                  <Select
-                    placeholder={t('components.createJobForm.dataFormat')}
+              <div
+                style={{
+                  marginBottom: 16,
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  color: token.colorText,
+                }}
+              >
+                {t(
+                  'components.createJobForm.nonStreamingResponseConfiguration'
+                )}
+              </div>
+              <Row gutter={24}>
+                <Col span={12}>
+                  <Form.Item
+                    name={['field_mapping', 'content']}
+                    label={
+                      <span>
+                        {t('components.createJobForm.contentFieldPath')}
+                        <Tooltip
+                          title={t(
+                            'components.createJobForm.nonStreamingContentFieldPathTooltip'
+                          )}
+                        >
+                          <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                        </Tooltip>
+                      </span>
+                    }
                   >
-                    <Select.Option value='json'>
-                      {t('components.createJobForm.jsonFormat')}
-                    </Select.Option>
-                    <Select.Option value='non-json'>
-                      {t('components.createJobForm.plainText')}
-                    </Select.Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
+                    <Input placeholder={getContentPlaceholder()} />
+                  </Form.Item>
+                </Col>
 
-            {/* Content Field Configuration - only show when data format is JSON */}
-            <Form.Item noStyle shouldUpdate>
-              {({ getFieldValue }) => {
-                const dataFormat =
-                  getFieldValue(['field_mapping', 'data_format']) || 'json';
-                return (
-                  dataFormat === 'json' && (
-                    <>
-                      <Row gutter={24}>
-                        <Col span={12}>
-                          <Form.Item
-                            name={['field_mapping', 'content']}
-                            label={
-                              <span>
-                                {t('components.createJobForm.contentFieldPath')}
-                                <Tooltip
-                                  title={t(
-                                    'components.createJobForm.contentFieldPathTooltip'
-                                  )}
-                                >
-                                  <InfoCircleOutlined
-                                    style={{ marginLeft: 5 }}
-                                  />
-                                </Tooltip>
-                              </span>
-                            }
-                            rules={[
-                              {
-                                validator: (_, value) => {
-                                  const currentApiPath =
-                                    form.getFieldValue('api_path') ||
-                                    '/chat/completions';
-                                  // content field is not required for /embeddings API
-                                  if (currentApiPath === '/embeddings') {
-                                    return Promise.resolve();
-                                  }
-                                  if (dataFormat === 'json' && !value) {
-                                    return Promise.reject(
-                                      new Error(
-                                        t(
-                                          'components.createJobForm.pleaseSpecifyContentFieldPath'
-                                        )
-                                      )
-                                    );
-                                  }
-                                  return Promise.resolve();
-                                },
-                              },
-                            ]}
-                          >
-                            <Input placeholder='choices.0.delta.content' />
-                          </Form.Item>
-                        </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name={['field_mapping', 'reasoning_content']}
+                    label={
+                      <span>
+                        {t('components.createJobForm.reasoningFieldPath')}
+                        <Tooltip
+                          title={t(
+                            'components.createJobForm.nonStreamingReasoningFieldPathTooltip'
+                          )}
+                        >
+                          <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                        </Tooltip>
+                      </span>
+                    }
+                  >
+                    <Input placeholder={getReasoningPlaceholder()} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16} style={{ marginTop: 16 }}>
+                <Col span={8}>
+                  <Form.Item
+                    name={['field_mapping', 'prompt_tokens']}
+                    label={
+                      <span>
+                        {t('components.createJobForm.promptTokensFieldPath')}
+                        <Tooltip
+                          title={t(
+                            'components.createJobForm.promptTokensFieldPathTooltip'
+                          )}
+                        >
+                          <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                        </Tooltip>
+                      </span>
+                    }
+                  >
+                    <Input placeholder={getPromptTokensPlaceholder()} />
+                  </Form.Item>
+                </Col>
 
-                        <Col span={12}>
-                          <Form.Item
-                            name={['field_mapping', 'reasoning_content']}
-                            label={
-                              <span>
-                                {t(
-                                  'components.createJobForm.reasoningFieldPath'
-                                )}
-                                <Tooltip
-                                  title={t(
-                                    'components.createJobForm.reasoningFieldPathTooltip'
-                                  )}
-                                >
-                                  <InfoCircleOutlined
-                                    style={{ marginLeft: 5 }}
-                                  />
-                                </Tooltip>
-                              </span>
-                            }
-                          >
-                            <Input placeholder='choices.0.delta.reasoning_content' />
-                          </Form.Item>
-                        </Col>
-                      </Row>
-
-                      <Row gutter={16} style={{ marginTop: 16 }}>
-                        <Col span={8}>
-                          <Form.Item
-                            name={['field_mapping', 'prompt_tokens']}
-                            label={
-                              <span>
-                                {t(
-                                  'components.createJobForm.promptTokensFieldPath'
-                                )}
-                                <Tooltip
-                                  title={t(
-                                    'components.createJobForm.promptTokensFieldPathTooltip'
-                                  )}
-                                >
-                                  <InfoCircleOutlined
-                                    style={{ marginLeft: 5 }}
-                                  />
-                                </Tooltip>
-                              </span>
-                            }
-                          >
-                            <Input placeholder='usage.prompt_tokens' />
-                          </Form.Item>
-                        </Col>
-
-                        <Col span={8}>
-                          <Form.Item
-                            name={['field_mapping', 'completion_tokens']}
-                            label={
-                              <span>
-                                {t(
-                                  'components.createJobForm.completionTokensFieldPath'
-                                )}
-                                <Tooltip
-                                  title={t(
-                                    'components.createJobForm.completionTokensFieldPathTooltip'
-                                  )}
-                                >
-                                  <InfoCircleOutlined
-                                    style={{ marginLeft: 5 }}
-                                  />
-                                </Tooltip>
-                              </span>
-                            }
-                          >
-                            <Input placeholder='usage.completion_tokens' />
-                          </Form.Item>
-                        </Col>
-                        <Col span={8}>
-                          <Form.Item
-                            name={['field_mapping', 'total_tokens']}
-                            label={
-                              <span>
-                                {t(
-                                  'components.createJobForm.totalTokensFieldPath'
-                                )}
-                                <Tooltip
-                                  title={t(
-                                    'components.createJobForm.totalTokensFieldPathTooltip'
-                                  )}
-                                >
-                                  <InfoCircleOutlined
-                                    style={{ marginLeft: 5 }}
-                                  />
-                                </Tooltip>
-                              </span>
-                            }
-                          >
-                            <Input placeholder='usage.total_tokens' />
-                          </Form.Item>
-                        </Col>
-                      </Row>
-                    </>
-                  )
-                );
-              }}
-            </Form.Item>
-          </div>
-
-          {/* End Condition Configuration */}
-          <div
-            style={{
-              marginBottom: 24,
-              padding: '16px',
-              backgroundColor: token.colorFillAlter,
-              borderRadius: '8px',
-            }}
-          >
-            <div
-              style={{
-                marginBottom: 16,
-                fontWeight: 'bold',
-                fontSize: '14px',
-                color: token.colorText,
-              }}
-            >
-              {t('components.createJobForm.streamTerminationConfiguration')}
-            </div>
-
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item
-                  name={['field_mapping', 'end_prefix']}
-                  label={
-                    <span>
-                      {t('components.createJobForm.endLinePrefix')}
-                      <Tooltip
-                        title={t(
-                          'components.createJobForm.endLinePrefixTooltip'
+                <Col span={8}>
+                  <Form.Item
+                    name={['field_mapping', 'completion_tokens']}
+                    label={
+                      <span>
+                        {t(
+                          'components.createJobForm.completionTokensFieldPath'
                         )}
-                      >
-                        <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                      </Tooltip>
-                    </span>
-                  }
-                >
-                  <Input placeholder='data:' />
-                </Form.Item>
-              </Col>
-
-              <Col span={8}>
-                <Form.Item
-                  name={['field_mapping', 'end_field']}
-                  label={
-                    <span>
-                      {t('components.createJobForm.endFieldPath')}
-                      <Tooltip
-                        title={t(
-                          'components.createJobForm.endFieldPathTooltip'
-                        )}
-                      >
-                        <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                      </Tooltip>
-                    </span>
-                  }
-                >
-                  <Input placeholder='choices.0.finish_reason' />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item
-                  name={['field_mapping', 'stop_flag']}
-                  label={
-                    <span>
-                      {t('components.createJobForm.stopSignal')}
-                      <Tooltip
-                        title={t('components.createJobForm.stopSignalTooltip')}
-                      >
-                        <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  rules={[
-                    {
-                      required: true,
-                      message: t(
-                        'components.createJobForm.pleaseSpecifyStopSignal'
-                      ),
-                    },
-                  ]}
-                >
-                  <Input placeholder='stop' />
-                </Form.Item>
-              </Col>
-            </Row>
-          </div>
-        </>
-      ) : (
-        // Non-streaming mode configuration
-        <div
-          style={{
-            padding: '16px',
-            backgroundColor: token.colorFillAlter,
-            borderRadius: '8px',
-          }}
-        >
-          <div
-            style={{
-              marginBottom: 16,
-              fontWeight: 'bold',
-              fontSize: '14px',
-              color: token.colorText,
-            }}
-          >
-            {t('components.createJobForm.nonStreamingResponseConfiguration')}
-          </div>
-          <Row gutter={24}>
-            <Col span={12}>
-              <Form.Item
-                name={['field_mapping', 'content']}
-                label={
-                  <span>
-                    {t('components.createJobForm.contentFieldPath')}
-                    <Tooltip
-                      title={t(
-                        'components.createJobForm.nonStreamingContentFieldPathTooltip'
-                      )}
-                    >
-                      <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                    </Tooltip>
-                  </span>
-                }
-                rules={[
-                  {
-                    validator: (_, value) => {
-                      const currentApiPath =
-                        form.getFieldValue('api_path') || '/chat/completions';
-                      // content field is not required for /embeddings API
-                      if (currentApiPath === '/embeddings') {
-                        return Promise.resolve();
-                      }
-                      if (!value) {
-                        return Promise.reject(
-                          new Error(
-                            t(
-                              'components.createJobForm.pleaseSpecifyContentFieldPath'
-                            )
-                          )
-                        );
-                      }
-                      return Promise.resolve();
-                    },
-                  },
-                ]}
-              >
-                <Input placeholder='choices.0.message.content' />
-              </Form.Item>
-            </Col>
-
-            <Col span={12}>
-              <Form.Item
-                name={['field_mapping', 'reasoning_content']}
-                label={
-                  <span>
-                    {t('components.createJobForm.reasoningFieldPath')}
-                    <Tooltip
-                      title={t(
-                        'components.createJobForm.nonStreamingReasoningFieldPathTooltip'
-                      )}
-                    >
-                      <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                    </Tooltip>
-                  </span>
-                }
-              >
-                <Input placeholder='choices.0.message.reasoning_content' />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16} style={{ marginTop: 16 }}>
-            <Col span={8}>
-              <Form.Item
-                name={['field_mapping', 'prompt_tokens']}
-                label={
-                  <span>
-                    {t('components.createJobForm.promptTokensFieldPath')}
-                    <Tooltip
-                      title={t(
-                        'components.createJobForm.promptTokensFieldPathTooltip'
-                      )}
-                    >
-                      <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                    </Tooltip>
-                  </span>
-                }
-              >
-                <Input placeholder='usage.prompt_tokens' />
-              </Form.Item>
-            </Col>
-
-            <Col span={8}>
-              <Form.Item
-                name={['field_mapping', 'completion_tokens']}
-                label={
-                  <span>
-                    {t('components.createJobForm.completionTokensFieldPath')}
-                    <Tooltip
-                      title={t(
-                        'components.createJobForm.completionTokensFieldPathTooltip'
-                      )}
-                    >
-                      <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                    </Tooltip>
-                  </span>
-                }
-              >
-                <Input placeholder='usage.completion_tokens' />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name={['field_mapping', 'total_tokens']}
-                label={
-                  <span>
-                    {t('components.createJobForm.totalTokensFieldPath')}
-                    <Tooltip
-                      title={t(
-                        'components.createJobForm.totalTokensFieldPathTooltip'
-                      )}
-                    >
-                      <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                    </Tooltip>
-                  </span>
-                }
-              >
-                <Input placeholder='usage.total_tokens' />
-              </Form.Item>
-            </Col>
-          </Row>
-          {/* <Row gutter={24} style={{ marginTop: 16 }}>
+                        <Tooltip
+                          title={t(
+                            'components.createJobForm.completionTokensFieldPathTooltip'
+                          )}
+                        >
+                          <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                        </Tooltip>
+                      </span>
+                    }
+                  >
+                    <Input placeholder={getCompletionTokensPlaceholder()} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name={['field_mapping', 'total_tokens']}
+                    label={
+                      <span>
+                        {t('components.createJobForm.totalTokensFieldPath')}
+                        <Tooltip
+                          title={t(
+                            'components.createJobForm.totalTokensFieldPathTooltip'
+                          )}
+                        >
+                          <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                        </Tooltip>
+                      </span>
+                    }
+                  >
+                    <Input placeholder='usage.total_tokens' />
+                  </Form.Item>
+                </Col>
+              </Row>
+              {/* <Row gutter={24} style={{ marginTop: 16 }}>
             <Col span={12}>
               <Form.Item
                 name={['field_mapping', 'usage']}
@@ -2560,8 +2789,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               </Form.Item>
             </Col>
           </Row> */}
-        </div>
-      )}
+            </div>
+          );
+        }}
+      </Form.Item>
     </div>
   );
 
@@ -2588,6 +2819,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
 
   // Render tab action buttons
   const renderTabActions = () => {
+    const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
+    const isStandardChatApi =
+      currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+
     if (activeTabKey === '1') {
       return (
         <Space>
@@ -2613,6 +2848,30 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       );
     }
     if (activeTabKey === '2') {
+      // Tab 2 can be either Field Mapping or Data/Load depending on API type
+      if (isStandardChatApi) {
+        // This is the final tab for standard chat APIs
+        return (
+          <Space>
+            <Button icon={<LeftOutlined />} onClick={goToPreviousTab}>
+              {t('components.createJobForm.previousStep')}
+            </Button>
+            <Button onClick={onCancel}>{t('common.cancel')}</Button>
+            <Button
+              type='primary'
+              loading={submitting || uploading}
+              onClick={handleSubmit}
+            >
+              {submitting || uploading
+                ? uploading
+                  ? t('components.createJobForm.uploading')
+                  : t('components.createJobForm.submitting')
+                : t('components.createJobForm.create')}
+            </Button>
+          </Space>
+        );
+      }
+      // This is the Field Mapping tab, not the final tab
       return (
         <Space>
           <Button icon={<LeftOutlined />} onClick={goToPreviousTab}>
@@ -2631,6 +2890,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       );
     }
     if (activeTabKey === '3') {
+      // Tab 3 is always the final Data/Load tab for custom-chat and embeddings
       return (
         <Space>
           <Button icon={<LeftOutlined />} onClick={goToPreviousTab}>
@@ -2664,6 +2924,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         form={form}
         layout='vertical'
         initialValues={{
+          api_type: 'openai-chat',
           headers: [
             { key: 'Content-Type', value: 'application/json', fixed: true },
             { key: 'Authorization', value: '', fixed: false },
@@ -2676,38 +2937,72 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           test_data_input_type: 'default',
           temp_task_id: tempTaskId,
           target_host: '',
-          api_path: '/chat/completions',
+          api_path: '/v1/chat/completions',
           duration: '',
           model: '',
-          request_payload: generateDefaultPayload(
-            form.getFieldValue('model') || '',
-            form.getFieldValue('stream_mode') || true,
-            form.getFieldValue('api_path') || ''
-          ),
-          field_mapping: getDefaultFieldMapping('/chat/completions', true),
+          request_payload: generateDefaultPayload('openai-chat', '', true),
+          field_mapping: getDefaultFieldMapping('openai-chat'),
         }}
         onFinish={handleSubmit}
         onValuesChange={changedValues => {
+          // Handle API type changes
+          if ('api_type' in changedValues && !isCopyMode) {
+            const newApiType = changedValues.api_type;
+
+            // Update api_path based on API type
+            const newApiPath = getDefaultApiPath(newApiType);
+            form.setFieldsValue({ api_path: newApiPath });
+
+            // Update stream_mode for embed types
+            const isEmbedType = newApiType === 'embeddings';
+            if (isEmbedType) {
+              form.setFieldsValue({ stream_mode: false });
+              setStreamMode(false);
+            }
+
+            // Update field_mapping based on API type
+            const newFieldMapping = getDefaultFieldMapping(newApiType);
+            form.setFieldsValue({ field_mapping: newFieldMapping });
+
+            // Update request_payload based on API type
+            if (!userModifiedPayload) {
+              const currentStreamMode = isEmbedType
+                ? false
+                : form.getFieldValue('stream_mode');
+              const currentModel = form.getFieldValue('model') || '';
+              const newPayload = generateDefaultPayload(
+                newApiType,
+                currentModel,
+                currentStreamMode
+              );
+              form.setFieldsValue({ request_payload: newPayload });
+            }
+
+            // Reset to tab 1 when API type changes to ensure proper tab navigation
+            setActiveTabKey('1');
+          }
+
           if ('stream_mode' in changedValues) {
             setStreamMode(changedValues.stream_mode);
             // Update field_mapping default values when stream mode changes (but not in copy mode)
+            // Note: For standard chat APIs (openai-chat, claude-chat), backend auto-generates field mapping
+            // so we don't need to update it here
             if (!isCopyMode) {
-              const currentApiPath =
-                form.getFieldValue('api_path') || '/chat/completions';
-              const newFieldMapping = getDefaultFieldMapping(
-                currentApiPath,
-                changedValues.stream_mode
-              );
+              const currentApiType =
+                form.getFieldValue('api_type') || 'openai-chat';
+              const newFieldMapping = getDefaultFieldMapping(currentApiType);
               form.setFieldsValue({ field_mapping: newFieldMapping });
             }
 
             // Auto-fill request_payload when stream_mode changes (only if user hasn't manually modified it)
             if (!userModifiedPayload && !isCopyMode) {
+              const currentApiType =
+                form.getFieldValue('api_type') || 'openai-chat';
               const currentModel = form.getFieldValue('model') || '';
               const newPayload = generateDefaultPayload(
+                currentApiType,
                 currentModel,
-                changedValues.stream_mode,
-                form.getFieldValue('api_path') || ''
+                changedValues.stream_mode
               );
               form.setFieldsValue({ request_payload: newPayload });
             }
@@ -2715,54 +3010,19 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           if ('concurrent_users' in changedValues) {
             setConcurrentUsers(changedValues.concurrent_users);
           }
-          if ('api_path' in changedValues) {
-            handleApiPathChange(changedValues.api_path);
-            // Update field_mapping default values when API path changes (but not in copy mode)
-            if (!isCopyMode) {
-              const currentStreamMode = form.getFieldValue('stream_mode');
-              const newFieldMapping = getDefaultFieldMapping(
-                changedValues.api_path,
-                currentStreamMode
-              );
-              form.setFieldsValue({ field_mapping: newFieldMapping });
-
-              // If API path is /embeddings, set stream_mode to false
-              if (
-                changedValues.api_path === '/embeddings' &&
-                currentStreamMode !== false
-              ) {
-                form.setFieldsValue({ stream_mode: false });
-                setStreamMode(false);
-              }
-
-              // Auto-fill request_payload when api_path changes (only if user hasn't manually modified it)
-              if (!userModifiedPayload) {
-                const currentModel = form.getFieldValue('model') || '';
-                const finalStreamMode =
-                  changedValues.api_path === '/embeddings'
-                    ? false
-                    : currentStreamMode;
-                const newPayload = generateDefaultPayload(
-                  currentModel,
-                  finalStreamMode,
-                  changedValues.api_path
-                );
-                form.setFieldsValue({ request_payload: newPayload });
-              }
-            }
-          }
 
           // Auto-fill request_payload when model changes (only if user hasn't manually modified it)
           if ('model' in changedValues && !userModifiedPayload && !isCopyMode) {
+            const currentApiType =
+              form.getFieldValue('api_type') || 'openai-chat';
             const currentStreamMode =
               form.getFieldValue('stream_mode') !== undefined
                 ? form.getFieldValue('stream_mode')
                 : true;
-            const currentApiPath = form.getFieldValue('api_path') || '';
             const newPayload = generateDefaultPayload(
+              currentApiType,
               changedValues.model || '',
-              currentStreamMode,
-              currentApiPath
+              currentStreamMode
             );
             form.setFieldsValue({ request_payload: newPayload });
           }
@@ -2770,20 +3030,35 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           // Clear related fields when dataset source type changes
           if ('test_data_input_type' in changedValues) {
             const newInputType = changedValues.test_data_input_type;
+            setDatasetFile(null);
             if (newInputType === 'input') {
               // Clear test_data_file and test_data when switching to custom input
               form.setFieldsValue({
                 test_data_file: undefined,
                 test_data: undefined,
+                chat_type: undefined,
               });
             } else if (newInputType === 'upload') {
               // Clear test_data when switching to file upload
-              form.setFieldsValue({ test_data: undefined });
-            } else {
-              // Clear both when switching to default or none
+              form.setFieldsValue({
+                test_data: undefined,
+                chat_type: undefined,
+              });
+            } else if (newInputType === 'default') {
+              // Reset dataset-related fields when switching back to built-in dataset
               form.setFieldsValue({
                 test_data: undefined,
                 test_data_file: undefined,
+              });
+              if (form.getFieldValue('chat_type') === undefined) {
+                form.setFieldsValue({ chat_type: 0 });
+              }
+            } else {
+              // Clear dataset-related fields when no dataset is selected
+              form.setFieldsValue({
+                test_data: undefined,
+                test_data_file: undefined,
+                chat_type: undefined,
               });
             }
           }
@@ -2810,24 +3085,44 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         </Form.Item>
 
         {/* Tabs for organized form sections */}
-        <Tabs
-          activeKey={activeTabKey}
-          onChange={setActiveTabKey}
-          tabPosition='top'
-          size='large'
-          items={[
-            {
-              key: '1',
-              label: (
-                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                  <SettingOutlined style={{ marginRight: 8 }} />
-                  {t('components.createJobForm.basicRequest')}
-                </span>
-              ),
-              children: renderTab1Content(),
-            },
-            {
-              key: '2',
+        <Form.Item noStyle shouldUpdate>
+          {({ getFieldValue }) => {
+            const currentApiType = getFieldValue('api_type') || 'openai-chat';
+            const isStandardChatApi =
+              currentApiType === 'openai-chat' ||
+              currentApiType === 'claude-chat';
+
+            // Build tabs array based on API type
+            const tabItems = [
+              {
+                key: '1',
+                label: (
+                  <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                    <SettingOutlined style={{ marginRight: 8 }} />
+                    {t('components.createJobForm.basicRequest')}
+                  </span>
+                ),
+                children: renderTab1Content(),
+              },
+            ];
+
+            // Only show field mapping tab for custom-chat and embeddings
+            if (!isStandardChatApi) {
+              tabItems.push({
+                key: '2',
+                label: (
+                  <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                    <ApiOutlined style={{ marginRight: 8 }} />
+                    {t('components.createJobForm.fieldMapping')}
+                  </span>
+                ),
+                children: renderTab3Content(),
+              });
+            }
+
+            // Data/Load tab - always show
+            tabItems.push({
+              key: isStandardChatApi ? '2' : '3',
               label: (
                 <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
                   <DatabaseOutlined style={{ marginRight: 8 }} />
@@ -2835,22 +3130,22 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 </span>
               ),
               children: renderTab2Content(),
-            },
-            {
-              key: '3',
-              label: (
-                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                  <ApiOutlined style={{ marginRight: 8 }} />
-                  {t('components.createJobForm.fieldMapping')}
-                </span>
-              ),
-              children: renderTab3Content(),
-            },
-          ]}
-          style={{
-            minHeight: '500px',
+            });
+
+            return (
+              <Tabs
+                activeKey={activeTabKey}
+                onChange={setActiveTabKey}
+                tabPosition='top'
+                size='large'
+                items={tabItems}
+                style={{
+                  minHeight: '500px',
+                }}
+              />
+            );
           }}
-        />
+        </Form.Item>
       </Form>
 
       {/* Action buttons outside of Form to prevent accidental submission */}

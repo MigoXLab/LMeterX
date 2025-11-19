@@ -36,7 +36,7 @@ services:
       - DB_PASSWORD=lmeterx123
       - DB_NAME=lmeterx
     volumes:
-      - ./logs:/logs
+      - ./logs:/app/logs
       - ./upload_files:/app/upload_files
     healthcheck:
       test: [ "CMD", "curl", "-s", "-f", "http://localhost:5001/health" ]
@@ -74,8 +74,10 @@ services:
       MALLOC_ARENA_MAX: 2                    # Limit memory arenas for stability
       PYTHONMALLOC: malloc                   # Use system malloc for better memory management
     volumes:
-      - ./logs:/logs
+      - ./logs:/app/logs
       - ./upload_files:/app/upload_files
+      # Mount image directory for ShareGPT dataset
+      - ./data:/app/data
     # Resource limits for the container
     deploy:
       resources:

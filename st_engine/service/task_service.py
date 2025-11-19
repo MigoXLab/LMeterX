@@ -21,6 +21,7 @@ from config.business import (
 )
 from engine.process_manager import (
     cleanup_task_resources,
+    get_task_process_status,
     terminate_locust_process_group,
 )
 from engine.runner import LocustRunner
@@ -462,15 +463,12 @@ class TaskService:
         try:
             task_logger.info(f"Received stop request for task {task_id}.")
 
-            # Check if the process is managed by this runner instance
             process = self.runner._process_dict.get(task_id)
             if not process:
                 task_logger.warning(
                     f"Task {task_id}: Process not found in runner's dictionary. "
                     f"It might have finished, be on another node, or not started yet."
                 )
-                # Since we can't manage it, we assume the stop request is "successful" from this node's perspective.
-                # The reconciliation process will handle truly orphaned tasks.
                 return True
 
             if process.poll() is not None:
@@ -478,24 +476,37 @@ class TaskService:
                     f"Task {task_id}: Process with PID {process.pid} has already terminated. Cleaning up local reference."
                 )
                 self.runner._process_dict.pop(task_id, None)
+                cleanup_task_resources(task_id)
                 return True
 
-            # Delegate the complex termination logic to the process manager via the runner.
-            # We assume `terminate_locust_process_group` is robust and handles timeouts, signals, and cleanup.
-            success = terminate_locust_process_group(task_id, timeout=15.0)
+            group_info = get_task_process_status(task_id)
+            group_terminated = False
 
-            if success:
+            if group_info:
                 task_logger.info(
-                    f"Successfully terminated process group for task {task_id}."
+                    f"Task {task_id}: Terminating registered multiprocess group."
                 )
-                # Remove from local tracking after successful termination
-                self.runner._process_dict.pop(task_id, None)
-                return True
+                group_terminated = terminate_locust_process_group(task_id, timeout=15.0)
+                if not group_terminated:
+                    task_logger.warning(
+                        f"Task {task_id}: Multiprocess group termination reported failure. Falling back to direct termination."
+                    )
             else:
-                task_logger.error(
-                    f"Failed to terminate process group for task {task_id}."
+                task_logger.debug(
+                    f"Task {task_id}: No registered multiprocess group found. Falling back to direct termination."
                 )
-                return False
+
+            if process.poll() is None:
+                if not self._terminate_local_process(process, task_id, task_logger):
+                    return False
+            else:
+                task_logger.info(
+                    f"Task {task_id}: Process exited after multiprocess termination."
+                )
+
+            self.runner._process_dict.pop(task_id, None)
+            cleanup_task_resources(task_id)
+            return True
 
         except Exception as e:
             task_logger.exception(
@@ -503,183 +514,67 @@ class TaskService:
             )
             return False
 
-    def stop_task_old(self, task_id: str) -> bool:
+    def _terminate_local_process(
+        self,
+        process: subprocess.Popen,
+        task_id: str,
+        task_logger,
+        term_timeout: float = 10.0,
+    ) -> bool:
         """
-        Stops a running task by terminating its Locust process with enhanced cleanup.
+        Terminate a single Locust process with graceful fallback to SIGKILL.
 
         Args:
-            task_id (str): The ID of the task to stop.
+            process (subprocess.Popen): The process to terminate.
+            task_id (str): The task identifier for logging.
+            task_logger: Structured logger bound to the task.
+            term_timeout (float): Timeout for graceful termination.
 
         Returns:
-            bool: True if the process was stopped successfully or was already stopped,
-                  False if the stop attempt failed.
+            bool: True if the process was terminated or already exited, False otherwise.
         """
-        task_logger = logger.bind(task_id=task_id)
-
         try:
-            # Step 1: Use enhanced multiprocess termination first
-            terminate_success = terminate_locust_process_group(task_id, timeout=15.0)
-            if terminate_success:
-                task_logger.info(
-                    f"Successfully terminated process group for task {task_id}"
-                )
-
-                # Clean up local tracking
-                self.runner._process_dict.pop(task_id, None)
-                if hasattr(self.runner, "_terminating_processes"):
-                    termination_key = f"{task_id}_terminating"
-                    self.runner._terminating_processes.discard(termination_key)
-
-                # Clean up task resources
-                cleanup_task_resources(task_id)
-                return True
-
-            # Step 2: Fallback to original process termination if multiprocess cleanup failed
-            process = self.runner._process_dict.get(task_id)
-
-            if not process:
-                task_logger.warning(
-                    f"Task {task_id}, Process not found in runner's dictionary. It might have finished or be on another node."
-                )
-                self.runner._process_dict.pop(task_id, None)
-                # Clean up task resources (do not force cleanup orphaned processes here)
-                cleanup_task_resources(task_id)
-                return True
-
             if process.poll() is not None:
-                task_logger.info(
-                    f"Task {task_id}, Process with PID {process.pid} has already terminated. Cleaning up."
+                task_logger.debug(
+                    f"Task {task_id}: Process already exited with code {process.returncode}."
                 )
-                self.runner._process_dict.pop(task_id, None)
-                cleanup_task_resources(task_id)
                 return True
-
-            # Check if process is already being terminated to avoid duplicate signals
-            termination_key = f"{task_id}_terminating"
-            if hasattr(self.runner, "_terminating_processes"):
-                if termination_key in self.runner._terminating_processes:
-                    task_logger.info(
-                        f"Task {task_id}, Process with PID {process.pid} is already being terminated. Skipping duplicate termination attempt."
-                    )
-                    return True
-            else:
-                self.runner._terminating_processes = set()
-
-            # Mark process as being terminated
-            self.runner._terminating_processes.add(termination_key)
 
             task_logger.info(
-                f"Task {task_id}, Attempting to terminate process with PID {process.pid} (SIGTERM)."
+                f"Task {task_id}: Sending SIGTERM to process PID {process.pid}."
             )
-
-            # Check if process is still running before sending signal
-            if process.poll() is not None:
-                task_logger.info(
-                    f"Task {task_id}, Process with PID {process.pid} terminated naturally while preparing to stop it."
-                )
-                self.runner._process_dict.pop(task_id, None)
-                self.runner._terminating_processes.discard(termination_key)
-                cleanup_task_resources(task_id)
-                return True
-
             process.terminate()
-            process.wait(timeout=10)
-            task_logger.info(
-                f"Task {task_id}, Process terminated successfully via SIGTERM."
-            )
-            self.runner._process_dict.pop(task_id, None)
-            self.runner._terminating_processes.discard(termination_key)
-            cleanup_task_resources(task_id)
-            return True
-        except subprocess.TimeoutExpired:
-            task_logger.warning(
-                f"SIGTERM timed out for task {task_id}, process {process.pid}. Attempting to kill (SIGKILL)."
-            )
             try:
-                # Double-check if process is still alive before sending SIGKILL
-                if process.poll() is not None:
-                    task_logger.info(
-                        f"Task {task_id}, Process with PID {process.pid} terminated naturally during SIGTERM timeout."
-                    )
-                    self.runner._process_dict.pop(task_id, None)
-                    self.runner._terminating_processes.discard(termination_key)
-                    return True
-
-                process.kill()
-                process.wait(timeout=5)
+                process.wait(timeout=term_timeout)
                 task_logger.info(
-                    f"Task {task_id}, Process killed successfully via SIGKILL."
+                    f"Task {task_id}: Process PID {process.pid} terminated via SIGTERM."
                 )
-                self.runner._process_dict.pop(task_id, None)
-                self.runner._terminating_processes.discard(termination_key)
                 return True
             except subprocess.TimeoutExpired:
-                task_logger.error(
-                    f"Task {task_id}, Failed to kill process {process.pid} even with SIGKILL. Manual intervention may be required."
+                task_logger.warning(
+                    f"Task {task_id}: SIGTERM timed out after {term_timeout}s. Sending SIGKILL."
                 )
-                self.runner._terminating_processes.discard(termination_key)
-                return False
-            except Exception as e:
-                task_logger.exception(
-                    f"Task {task_id}, An unexpected error occurred while trying to kill process {process.pid}: {e}"
+                process.kill()
+                process.wait(timeout=5.0)
+                task_logger.info(
+                    f"Task {task_id}: Process PID {process.pid} terminated via SIGKILL."
                 )
-                self.runner._terminating_processes.discard(termination_key)
-                return False
-        except ProcessLookupError:
-            # Process has already terminated
-            task_logger.info(
-                f"Task {task_id}, Process with PID {process.pid} no longer exists (ProcessLookupError). Cleaning up."
+                return True
+        except subprocess.TimeoutExpired:
+            task_logger.error(
+                f"Task {task_id}: SIGKILL timed out. Manual intervention may be required."
             )
-            self.runner._process_dict.pop(task_id, None)
-            self.runner._terminating_processes.discard(termination_key)
+        except ProcessLookupError:
+            task_logger.info(
+                f"Task {task_id}: Process PID {process.pid if process else 'unknown'} no longer exists."
+            )
             return True
         except Exception as e:
-            # Check if the error is related to process already being in stopping state
-            error_msg = str(e).lower()
-            if "stopping" in error_msg or "unexpected state" in error_msg:
-                task_logger.info(
-                    f"Task {task_id}, Process with PID {process.pid} is already in stopping state. This is expected when process is naturally shutting down."
-                )
-                # Wait a bit for the process to complete its natural shutdown
-                try:
-                    process.wait(timeout=15)
-                    task_logger.info(
-                        f"Task {task_id}, Process completed its natural shutdown successfully."
-                    )
-                    self.runner._process_dict.pop(task_id, None)
-                    self.runner._terminating_processes.discard(termination_key)
-                    return True
-                except subprocess.TimeoutExpired:
-                    task_logger.warning(
-                        f"Task {task_id}, Process natural shutdown timed out. Attempting force kill."
-                    )
-                    try:
-                        process.kill()
-                        process.wait(timeout=5)
-                        task_logger.info(
-                            f"Task {task_id}, Process force-killed successfully after natural shutdown timeout."
-                        )
-                        self.runner._process_dict.pop(task_id, None)
-                        self.runner._terminating_processes.discard(termination_key)
-                        return True
-                    except Exception as kill_e:
-                        task_logger.error(
-                            f"Task {task_id}, Failed to force-kill process after natural shutdown timeout: {kill_e}"
-                        )
-                        self.runner._terminating_processes.discard(termination_key)
-                        return False
-                except Exception as wait_e:
-                    task_logger.error(
-                        f"Task {task_id}, Error while waiting for natural shutdown: {wait_e}"
-                    )
-                    self.runner._terminating_processes.discard(termination_key)
-                    return False
-            else:
-                task_logger.exception(
-                    f"Task {task_id}, An unexpected error occurred while terminating process {process.pid}: {e}"
-                )
-                self.runner._terminating_processes.discard(termination_key)
-                return False
+            task_logger.exception(
+                f"Task {task_id}: Unexpected error during process termination: {e}"
+            )
+
+        return False
 
     def get_stopping_task_ids(self, session: Session) -> list[str]:
         """

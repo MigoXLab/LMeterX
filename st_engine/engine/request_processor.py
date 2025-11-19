@@ -786,8 +786,8 @@ class APIClient:
                 yield line
         except Exception as e:
             self.task_logger.error(f"Error iterating over stream lines: {e}")
-            # Yield any remaining buffer if possible, but don't let it crash the whole test.
-            pass
+            # Propagate the exception so callers can record the failure properly.
+            raise
 
     def handle_stream_request(
         self, client, base_request_kwargs: Dict[str, Any], start_time: float
@@ -795,9 +795,6 @@ class APIClient:
         """Handle streaming API request with comprehensive metrics collection."""
         metrics = StreamMetrics()
         request_kwargs = {**base_request_kwargs, "stream": True}
-        self.task_logger.debug(
-            f"handle_stream_request-field_mapping: {self.config.field_mapping}"
-        )
         field_mapping = ConfigManager.parse_field_mapping(
             self.config.field_mapping or ""
         )
@@ -809,9 +806,6 @@ class APIClient:
             if api_type in ("openai-chat", "claude-chat", "embeddings"):
                 field_mapping = ConfigManager.generate_field_mapping_by_api_type(
                     api_type, self.config.stream_mode
-                )
-                self.task_logger.debug(
-                    f"handle_stream_request-field_mapping: {field_mapping}"
                 )
         response = None
         actual_start_time = 0.0

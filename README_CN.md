@@ -15,6 +15,31 @@
 
 # LMeterX
 
+## 内容导航
+- [LMeterX](#lmeterx)
+  - [内容导航](#内容导航)
+  - [📋 项目简介](#-项目简介)
+  - [✨ 核心特性](#-核心特性)
+    - [工具对比](#工具对比)
+  - [🏗️ 系统架构](#️-系统架构)
+  - [🚀 快速开始](#-快速开始)
+    - [环境检查清单](#环境检查清单)
+    - [一键部署（推荐）](#一键部署推荐)
+    - [数据目录与挂载说明](#数据目录与挂载说明)
+    - [使用指南](#使用指南)
+  - [🔧 配置说明](#-配置说明)
+    - [数据库配置](#数据库配置)
+    - [资源配置](#资源配置)
+  - [🤝 开发指南](#-开发指南)
+    - [技术栈](#技术栈)
+    - [开发环境搭建](#开发环境搭建)
+  - [🗺️ 发展路线图](#️-发展路线图)
+    - [开发中](#开发中)
+    - [规划中](#规划中)
+  - [📚 相关文档](#-相关文档)
+  - [👥 贡献者](#-贡献者)
+  - [📄 开源许可](#-开源许可)
+
 ## 📋 项目简介
 
 LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模型推理框架（如 LiteLLM、vLLM、TensorRT-LLM、LMDeploy 等）的模型推理服务，同时也支持对 Azure OpenAI、AWS Bedrock、Google Vertex AI 等主流云服务进行性能测试。通过直观的 Web 界面，可以轻松创建和管理测试任务，实时监控测试过程，并获得详细的性能分析报告，为模型部署和性能优化提供可靠的数据支撑。
@@ -27,11 +52,11 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 ## ✨ 核心特性
 
 - **通用框架支持** - 兼容主流推理框架（vLLM、LiteLLM、TensorRT-LLM）和云服务（Azure、AWS、Google Cloud）
-- **全模型兼容** - 支持 GPT、Claude、Llama 等主流大模型，一键发起压测
+- **全模型兼容** - 支持 GPT、Claude、Llama 等主流大模型，也支持[MinerU](https://github.com/opendatalab/MinerU)、[dots.ocr](https://github.com/rednote-hilab/dots.ocr)等文档解析大模型
 - **高负载压测** - 模拟高并发请求，精准探测模型性能极限
-- **多场景覆盖** - 支持流式/非流式、文本/多模态/自定义数据集<sup>![NEW](https://img.shields.io/badge/NEW-00C851?style=flat&labelColor=transparent)</sup>
+- **多场景覆盖**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 支持流式/非流式、文本/多模态/自定义数据集
 - **专业指标统计** - 首Token延迟、吞吐量(RPS、TPS)、成功率等核心性能指标
-- **AI智能报告** - AI智能分析报告<sup>![NEW](https://img.shields.io/badge/NEW-00C851?style=flat&labelColor=transparent)</sup>，多维度多模型可视化结果对比
+- **AI智能报告**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 提供 AI 智能分析报告，多维度多模型可视化结果对比
 - **Web控制台** - 提供任务创建、停止、状态跟踪、全链路日志监控等一站式管理
 - **企业级部署** - Docker容器化，支持弹性扩展与分布式部署
 
@@ -60,62 +85,61 @@ LMeterX 采用微服务架构，由四个核心组件构成：
 
 ## 🚀 快速开始
 
-### 环境要求
-- Docker 20.10.0+
-- Docker Compose 2.0.0+
-- 至少 4GB 可用内存
-- 至少 5GB 可用磁盘空间
+### 环境检查清单
+- Docker 20.10.0+（确保 Docker 守护进程已启动）
+- Docker Compose 2.0.0+（支持 `docker compose` 或 `docker-compose`）
+- 至少 4GB 可用内存、5GB 磁盘空间
+
+> **需要更多部署方式？** 请查阅 [完整部署指南](docs/DEPLOYMENT_GUIDE_CN.md)，获取 Kubernetes、离线环境等高级方案。
 
 ### 一键部署（推荐）
 
-> **完整部署指南**：查看 [完整部署指南](docs/DEPLOYMENT_GUIDE_CN.md) 了解所有部署方式的详细说明
-
-使用预构建的 Docker 镜像，一键启动所有服务：
-
 ```bash
-# 一键启动所有服务（默认各服务 1个实例）
+# 默认使用预构建镜像启动全套服务
 curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.sh | bash
 ```
-### 多实例部署（支持并发压测任务）
 
-```bash
-# 下载部署文件 docker-compose.yml
-curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/MigoXLab/LMeterX/main/docker-compose.yml
-# 使用 --scale 启动多实例
-# 启动 2 个 backend + 2 个 engine（可根据需要调整数量）
-docker compose up -d --scale backend=2 --scale engine=2
-```
+启动完成后可执行：
+- `docker compose ps` 查看容器状态
+- `docker compose logs -f` 追踪实时日志
+- `docker compose up -d --scale backend=2 --scale engine=2` 服务扩容(如需)
+- 在浏览器打开 http://localhost:8080（详见下方「使用指南」）
+
+### 数据目录与挂载说明
+- `./data` → 挂载到 `engine` 容器的 `/app/data`（大规模数据集不会打包进镜像，便于更新）
+- `./logs` → 后端与压测引擎的统一日志输出目录
+- `./upload_files` → 用户上传的自定义文件及导出的报表
+
+如需准备自定义数据，请参考 [数据集使用指南](docs/DATASET_GUIDE.md)。
 
 ### 使用指南
 
 1. **访问界面**: 打开 http://localhost:8080
-2. **创建任务**: 导航至 测试任务 → 创建任务，配置LLM API请求信息、测试数据以及请求响应字段映射
-   - 2.1 基础信息: 对于 `/chat/completions` API只需要配置API路径、模型以及响应模式即可，也支持在请求参数中补充完整payload
-   - 2.2 数据负载: 根据需要选择内置的纯文本数据集/多模态数据集，也支持自定义JSONL/ShareGPT数据文件
-   - 2.3 字段映射: 配置payload中prompt对应字段路径，以及响应数据中对应模型输出的content、reasoning_content字段路径、usage字段路径等，此字段映射对于使用数据集更新请求参数和正确解析流式/非流式响应至关重要，请注意仔细填写
-   > 💡 **提示**: 如需进行自定义图文数据集压测，请参考 [数据集使用指南](docs/DATASET_GUIDE.md) 了解数据准备、挂载与常见问题排查。
-3. **API测试**: 在 测试任务 → 创建任务，点击基础信息面板的"测试"按钮，快速测试API连通性
-   **注意**: 为快速得到API响应，建议使用简单的prompt测试API连通性
-4. **实时监控**: 导航至 测试任务 → 日志/监控中心，查看全链路测试日志，排查异常
-5. **结果分析**: 导航至 测试任务 → 结果，查看详细性能结果，导出报告
-6. **结果对比**: 导航至 模型擂台，选择多个模型或版本进行多维度性能对比
-7. **AI分析**: 在 测试任务 → 结果/模型擂台，配置AI分析服务后，支持对单个/多个任务进行智能性能评估
+2. **创建任务**: 导航至 测试任务 → 创建任务，配置 API 请求信息、测试数据以及请求响应字段映射
+   - 2.1 基础信息: 对于 OpenAI-like 和 Claude-like API 只需填写 API 路径、模型与响应模式，也可在请求参数中补充完整 payload
+   - 2.2 数据&负载: 根据需要选择数据集类型、并发数、压测时间等
+   - 2.3 字段映射: 针对自定义 API 需要配置 payload 中 prompt 对应字段路径，以及响应数据中 content、reasoning_content、usage 等字段路径；该映射对于使用压测数据集和解析流式响应尤为关键
+   > 💡 **提示**: 若需自定义图文数据集压测，请参考 [数据集使用指南](docs/DATASET_GUIDE.md) 了解数据准备、挂载与常见问题排查。
+3. **API 测试**: 在 测试任务 → 创建任务，点击基础信息面板的「测试」按钮，快速验证接口连通性（建议使用简短 prompt）
+4. **实时监控**: 访问 测试任务 → 日志/监控中心，查看全链路测试日志，快速定位异常
+5. **结果分析**: 进入 测试任务 → 结果，查看详细性能指标并导出报告
+6. **结果对比**: 在 模型擂台 模块选择多个模型/版本，进行多维度性能对比
+7. **AI 分析**: 在 测试任务 → 结果/模型擂台 中配置 AI 分析服务后，可对单个或多任务进行智能评估
 
 ## 🔧 配置说明
 
-### 环境变量
-
+### 数据库配置
 ```bash
-===  数据库配置 ===
+=== 数据库配置 ===
 DB_HOST=mysql
 DB_PORT=3306
 DB_USER=lmeterx
 DB_PASSWORD=lmeterx_password
 DB_NAME=lmeterx
+```
 
-===  前端配置 ===
-VITE_API_BASE_URL=/api
-
+### 资源配置
+```bash
 === 高并发压测 部署要求 ===
 # 当并发用户数超过此阈值，系统将自动启用多进程模式（需多核 CPU 支持）
 MULTIPROCESS_THRESHOLD: 1000
@@ -141,7 +165,6 @@ deploy:
 - **压测引擎** - Python + Locust + 自定义扩展
 - **前端** - React + TypeScript + Ant Design + Vite
 - **部署** - Docker + Docker Compose + Nginx
-
 
 ```
 LMeterX/

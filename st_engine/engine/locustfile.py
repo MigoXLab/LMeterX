@@ -516,7 +516,6 @@ class LLMTestUser(HttpUser):
                         self.client, base_request_kwargs, start_time
                     )
                 )
-                self.task_logger.debug(f"chat_request- usage: {usage}")
                 self.task_logger.debug(f"chat_request- content: {content}")
             else:
                 reasoning_content, content, usage = (

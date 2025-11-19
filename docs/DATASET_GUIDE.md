@@ -91,7 +91,7 @@ services:
 ### 使用步骤
 
 1. **准备数据集文件**
-   - 创建 `.json`（ShareGPT 格式）或 `.jsonl` 格式的数据集文件
+   - 准备符合要求的 `.json`（ShareGPT 格式）或 `.jsonl` 格式的数据集文件
    - 如果包含图片，准备好图片文件
 
 2. **配置图片挂载**
@@ -206,7 +206,7 @@ services:
 ### Usage Steps
 
 1. **Prepare Dataset File**
-   - Create `.json` (ShareGPT format) or `.jsonl` format dataset file
+   - Prepare `.json` (ShareGPT format) or `.jsonl` format dataset file
    - Prepare image files if needed
 
 2. **Configure Image Mount** (if needed)

@@ -73,6 +73,14 @@ class ErrorResponse:
         full_error_msg = f"{error_msg}{context_info}"
         self.task_logger.error(full_error_msg)
 
+        if response is not None and hasattr(response, "failure"):
+            try:
+                response.failure(full_error_msg)
+            except Exception as failure_err:
+                self.task_logger.warning(
+                    f"Failed to mark response as failure: {failure_err}"
+                )
+
         try:
             EventManager.fire_failure_event(
                 name="failure",

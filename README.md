@@ -37,8 +37,9 @@
   - [🗺️ Development Roadmap](#️-development-roadmap)
     - [In Development](#in-development)
     - [Planned](#planned)
-  - [📚 Related Documentation](#-related-documentation)
-  - [👥 Contributors](#-contributors)
+  - [🗂️ Dataset Reference Notes](#️-dataset-reference-notes)
+  - [👥 Contributing](#-contributing)
+  - [📝 Citation](#-citation)
   - [📄 Open Source License](#-open-source-license)
 
 ## 📋 Project Overview
@@ -202,18 +203,42 @@ LMeterX/
 ### Planned
 - [ ] CLI command-line tool
 
-## 📚 Related Documentation
+## 🗂️ Dataset Reference Notes
 
-- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Detailed deployment instructions and configuration guide
-- [Contributing Guide](docs/CONTRIBUTING.md) - How to participate in project development and contribute code
-- [Dataset Guide](docs/DATASET_GUIDE.md) - Instructions for preparing and using custom multimodal datasets
+> LMeterX builds test samples based on the open-source ShareGPT dataset, strictly adhering to the original license requirements.
 
-## 👥 Contributors
+- **Data Source**: Uses the [ShareGPT dataset](https://huggingface.co/datasets/learnanything/sharegpt_v3_unfiltered_cleaned_split) as the original dialogue corpus.
 
-Thanks to all developers who have contributed to the LMeterX project:
+- **Adjustment Scope**:
+- Filtered high-quality dialogue samples, removing low-quality or irrelevant data for the load testing scenario.
+- Random sampling was performed to reduce the data size while preserving diverse dialogues.
 
-- [@LuckyYC](https://github.com/LuckyYC) - Project maintainer & Core developer
-- [@del-zhenwu](https://github.com/del-zhenwu) - Core developer
+## 👥 Contributing
+
+We welcome any contributions from the community! Please refer to our [Contributing Guide](docs/CONTRIBUTING.md)
+Thanks to all developers who have contributed to the LMeterX project!
+
+<a href="https://github.com/MigoXLab/LMeterX/graphs/contributors" target="_blank">
+  <table>
+    <tr>
+      <th colspan="2">
+        <br><img src="https://contrib.rocks/image?repo=MigoXLab/LMeterX"><br><br>
+      </th>
+    </tr>
+  </table>
+</a>
+
+## 📝 Citation
+If you use EvalScope in your research, please cite our work:
+
+```bibtex
+@software{LMeterX2025,
+  author  = {LMeterX Team},
+  title   = {LMeterX: Enterprise-Grade Performance Benchmarking Platform for Large Language Models},
+  year    = {2025},
+  url     = {https://github.com/MigoXLab/LMeterX},
+}
+```
 
 ## 📄 Open Source License
 

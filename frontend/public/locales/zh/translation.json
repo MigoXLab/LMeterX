@@ -401,7 +401,7 @@
       "selectDatasetFile": "选择数据集文件",
       "jsonlFormatDescription": "必需格式：.jsonl文件，每行包含{\"id\": \"...\", \"prompt\": \"...\"}",
       "datasetFileFormatDescription": "支持 JSON (ShareGPT格式) 和 JSONL 格式。ShareGPT格式: [{\"id\": \"...\", \"conversations\": [...]}]，JSONL格式: 每行一个JSON对象 {\"id\": \"...\", \"prompt\": \"...\"}",
-      "datasetImageMountWarning": "⚠️ 若数据集包含图片，请确保图片文件已挂载到容器，详见部署文档",
+      "datasetImageMountWarning": "⚠️ 若数据集包含图片，请确保图片文件已挂载到容器对应目录下，详见 DATASET_GUIDE。",
       "jsonlData": "JSONL数据",
       "jsonlDataTooltip": "每行必须是具有id和prompt字段的有效JSON对象。",
       "testDuration": "测试持续时间（秒）",

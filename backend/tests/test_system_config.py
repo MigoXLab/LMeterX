@@ -2,12 +2,14 @@
 Test cases for system configuration batch operations.
 """
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app import app
+from utils.tools import mask_config_value
 
 
 @pytest.mark.asyncio
@@ -35,8 +37,13 @@ async def test_batch_upsert_system_configs(mock_db_session, mock_request):
         },
     ]
 
-    # Mock the database operations
-    with patch("service.system_service.get_db_session", return_value=mock_db_session):
+    @asynccontextmanager
+    async def mock_session_factory():
+        yield mock_db_session
+
+    # Mock the database session factory used by middleware
+    with patch("middleware.db_middleware.async_session_factory") as mock_factory:
+        mock_factory.return_value = mock_session_factory()
         with TestClient(app) as client:
             response = client.post("/api/system/batch", json={"configs": test_configs})
             assert response.status_code == 200
@@ -53,7 +60,10 @@ async def test_batch_upsert_system_configs(mock_db_session, mock_request):
                 ]
                 # Sensitive values should be masked
                 if config["config_key"] == "test_api_key":
-                    assert config["config_value"] == "••••••••••••••••"
+                    expected_value = mask_config_value(
+                        config["config_key"], "sk-test-key"
+                    )
+                    assert config["config_value"] == expected_value
 
 
 @pytest.mark.asyncio
@@ -76,8 +86,12 @@ async def test_batch_upsert_mixed_operations(mock_db_session, mock_request):
         },
     ]
 
-    # Mock the database operations
-    with patch("service.system_service.get_db_session", return_value=mock_db_session):
+    @asynccontextmanager
+    async def mock_session_factory():
+        yield mock_db_session
+
+    with patch("middleware.db_middleware.async_session_factory") as mock_factory:
+        mock_factory.return_value = mock_session_factory()
         with TestClient(app) as client:
             response = client.post("/api/system/batch", json={"configs": mixed_configs})
             assert response.status_code == 200

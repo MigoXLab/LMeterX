@@ -401,7 +401,7 @@
       "selectDatasetFile": "Select Dataset File",
       "jsonlFormatDescription": "Required format: .jsonl file with each line containing {\"id\": \"...\", \"prompt\": \"...\"}",
       "datasetFileFormatDescription": "Supports JSON (ShareGPT format) and JSONL formats. ShareGPT: [{\"id\": \"...\", \"conversations\": [...]}], JSONL: one JSON object per line {\"id\": \"...\", \"prompt\": \"...\"}",
-      "datasetImageMountWarning": "⚠️ If dataset contains images, ensure image files are mounted to the container, see deployment docs",
+      "datasetImageMountWarning": "⚠️ If the dataset contains images, ensure image files are mounted to the container. See DATASET_GUIDE for details.",
       "jsonlData": "JSONL Data",
       "jsonlDataTooltip": "Each line must be a valid JSON object with \"id\" and \"prompt\" fields.",
       "testDuration": "Test Duration (seconds)",

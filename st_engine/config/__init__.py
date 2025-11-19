@@ -20,7 +20,6 @@ __all__ = [
     "LOG_DIR",
     "LOG_TASK_DIR",
     "DATA_DIR",
-    "PROMPTS_DIR",
     "IMAGES_DIR",
     "UPLOAD_FOLDER",
     "HTTP_OK",

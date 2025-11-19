@@ -25,8 +25,7 @@ else:
 
 # === LOG PATHS ===
 LOG_TASK_DIR = os.path.join(LOG_DIR, "task")
-# === DATA PATHS ===
-PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
+# === IMAGES PATHS ===
 IMAGES_DIR = os.path.join(DATA_DIR, "pic")
 
 # === HTTP CONSTANTS ===
@@ -57,7 +56,6 @@ __all__ = [
     "LOG_DIR",
     "LOG_TASK_DIR",
     "DATA_DIR",
-    "PROMPTS_DIR",
     "IMAGES_DIR",
     "UPLOAD_FOLDER",
     # http

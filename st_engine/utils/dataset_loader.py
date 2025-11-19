@@ -12,7 +12,7 @@ import os
 import queue
 from typing import Any, Dict, List, Optional
 
-from config.base import IMAGES_DIR, MAX_QUEUE_SIZE, PROMPTS_DIR
+from config.base import DATA_DIR, MAX_QUEUE_SIZE
 from utils.common import encode_image, is_url
 from utils.logger import logger
 
@@ -523,7 +523,7 @@ def init_prompt_queue(
             )
             dataset_filename = BUILTIN_DATASET_FILES[DEFAULT_CHAT_TYPE]
 
-        data_file = os.path.join(PROMPTS_DIR, dataset_filename)
+        data_file = os.path.join(DATA_DIR, dataset_filename)
 
         if not os.path.exists(data_file):
             raise ValueError(f"Default data file not found: {data_file}")

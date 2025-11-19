@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="20" viewBox="0 0 56 20" role="img" aria-labelledby="title desc">
+  <title id="title">New Feature</title>
+  <desc id="desc">Badge indicating new feature</desc>
+  <defs>
+    <linearGradient id="badgeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12d87c" />
+      <stop offset="100%" stop-color="#0aa958" />
+    </linearGradient>
+    <filter id="softShadow" x="-10%" y="-40%" width="120%" height="180%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#0a803f" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  <g filter="url(#softShadow)">
+    <rect x="1" y="1" width="54" height="18" rx="9" fill="url(#badgeGradient)" />
+    <rect x="1" y="1" width="54" height="18" rx="9" fill="url(#badgeGradient)" />
+  </g>
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="1" fill="#ffffff">NEW</text>
+</svg>

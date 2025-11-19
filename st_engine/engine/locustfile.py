@@ -121,6 +121,12 @@ def init_parser(parser):
         "--cookies", type=str, default="", help="Request cookies in JSON format."
     )
     parser.add_argument(
+        "--api_type",
+        type=str,
+        default="openai-chat",
+        help="API type to determine default field mappings.",
+    )
+    parser.add_argument(
         "--request_payload", type=str, default="", help="Request payload."
     )
     parser.add_argument(
@@ -194,6 +200,7 @@ def on_locust_init(environment, **kwargs):
         config = global_state.config
         config.task_id = task_id
         config.api_path = options.api_path
+        config.api_type = options.api_type or "openai-chat"
         config.request_payload = options.request_payload
         config.model_name = options.model_name
         config.user_prompt = options.user_prompt
@@ -219,7 +226,7 @@ def on_locust_init(environment, **kwargs):
         # Initialize prompt queue
         if not hasattr(environment, "prompt_queue"):
             try:
-                from utils.common import init_prompt_queue
+                from utils.dataset_loader import init_prompt_queue
 
                 environment.prompt_queue = init_prompt_queue(
                     chat_type=options.chat_type,
@@ -317,11 +324,6 @@ def on_test_stop(environment, **kwargs):
 class LLMTestUser(HttpUser):
     """A user class that simulates a client making requests to an LLM service."""
 
-    wait_time = between(DEFAULT_WAIT_TIME_MIN, DEFAULT_WAIT_TIME_MAX)
-    # Align FastHttp timeouts with previous requests timeout
-    connection_timeout = DEFAULT_TIMEOUT
-    network_timeout = DEFAULT_TIMEOUT
-    socket_timeout = DEFAULT_TIMEOUT * 2
     # Class-level shared instances to reduce memory usage
     _shared_request_handler = None
     _shared_stream_handler = None
@@ -493,6 +495,7 @@ class LLMTestUser(HttpUser):
         base_request_kwargs, user_prompt = self.request_handler.prepare_request_kwargs(
             prompt_data
         )
+        logger.debug(f"base_request_kwargs: {base_request_kwargs}")
         if not base_request_kwargs:
             self.task_logger.error(
                 "Failed to generate request arguments. Skipping task."
@@ -513,8 +516,7 @@ class LLMTestUser(HttpUser):
                         self.client, base_request_kwargs, start_time
                     )
                 )
-                self.task_logger.debug(f"chat_request- usage: {usage}")
-                # self.task_logger.debug(f"content: {content}")
+                self.task_logger.debug(f"chat_request- content: {content}")
             else:
                 reasoning_content, content, usage = (
                     self.stream_handler.handle_non_stream_request(

@@ -169,8 +169,11 @@ class TaskCreateReq(BaseModel):
     chat_type: Optional[int] = Field(
         default=0,
         ge=0,
-        le=1,
-        description="Type of chat interaction (0=text, 1=multimodal)",
+        le=2,
+        description=(
+            "Built-in dataset selector: 0=text self-built, "
+            "1=ShareGPT partial, 2=vision self-built"
+        ),
     )
     stream_mode: bool = Field(
         default=True, description="Whether to use streaming response"
@@ -193,6 +196,10 @@ class TaskCreateReq(BaseModel):
     )
     field_mapping: Optional[Dict[str, str]] = Field(
         default=None, description="Field mapping configuration for custom APIs"
+    )
+    api_type: Optional[str] = Field(
+        default="openai-chat",
+        description="API type: openai-chat, claude-chat, embeddings, or custom-chat",
     )
     test_data: Optional[str] = Field(
         default="",
@@ -472,6 +479,7 @@ class Task(Base):
     api_path = Column(String(255), nullable=True)
     request_payload = Column(Text, nullable=True)
     field_mapping = Column(Text, nullable=True)
+    api_type = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
     test_data = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())

@@ -322,19 +322,17 @@ async def _call_ai_service(
             model_info_str = json.dumps(model_info, ensure_ascii=False, indent=2)
             prompt = prompt_template.format(model_info=model_info_str)
         except (TypeError, ValueError) as e:
-            error_msg = f"Failed to serialize model_info: {str(e)}"
-            logger.error(error_msg)
+            logger.error("Failed to serialize model_info: {}", e)
             # Try fallback serialization
             try:
                 model_info_str = str(model_info)
                 prompt = prompt_template.format(model_info=model_info_str)
             except Exception as fallback_error:
-                logger.error(f"Fallback serialization failed: {str(fallback_error)}")
+                logger.error("Fallback serialization failed: {}", fallback_error)
                 raise Exception(f"Failed to serialize model_info: {str(e)}")
         except Exception as format_error:
-            error_msg = f"Failed to format prompt: {str(format_error)}"
-            logger.error(f"Prompt formatting error: {error_msg}")
-            raise Exception(error_msg)
+            logger.error("Prompt formatting error: {}", format_error)
+            raise Exception(f"Failed to format prompt: {str(format_error)}")
     else:
         error_msg = "model_info is required for task analysis"
         raise ValueError(error_msg)
@@ -367,27 +365,27 @@ async def _call_ai_service(
             return content
         else:
             error_msg = "Invalid response format from AI service - missing content"
-            logger.error(f"AI service error: {error_msg}")
-            logger.error(f"AI service response: {response_data}")
+            logger.error("AI service error: {}", error_msg)
+            logger.error("AI service response: {}", response_data)
             raise Exception(error_msg)
 
     except httpx.TimeoutException as e:
         error_msg = f"AI service request timeout: {str(e)}"
-        logger.error(f"AI service timeout error: {error_msg}")
+        logger.error("AI service timeout error: {}", error_msg)
         raise Exception(error_msg)
     except httpx.ConnectError as e:
         error_msg = f"AI service connection error: {str(e)}"
-        logger.error(f"AI service connection error: {error_msg}")
+        logger.error("AI service connection error: {}", error_msg)
         raise Exception(error_msg)
     except httpx.HTTPStatusError as e:
         error_msg = f"AI service HTTP error: {e.response.status_code} - {str(e)}"
-        logger.error(f"AI service HTTP error: {error_msg}")
+        logger.error("AI service HTTP error: {}", error_msg)
         raise Exception(error_msg)
     except httpx.RequestError as e:
         error_msg = f"AI service request failed: {str(e)}"
-        logger.error(f"AI service request error: {error_msg}")
+        logger.error("AI service request error: {}", error_msg)
         raise Exception(error_msg)
     except Exception as e:
         error_msg = f"AI service call failed: {str(e)}"
-        logger.error(f"AI service general error: {error_msg}")
+        logger.error("AI service general error: {}", error_msg)
         raise Exception(error_msg)

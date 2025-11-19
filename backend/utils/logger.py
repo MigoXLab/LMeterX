@@ -1,5 +1,4 @@
-"""Logger configuration for LLMeter Backend.
-
+"""
 Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """

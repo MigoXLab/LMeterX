@@ -1,0 +1,878 @@
+{"id": "EfGhIj2","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/32.png","language": "cn"}
+{"id": "BqAiZ80", "prompt": "图片中的主要物体是什么？", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "GhIjKl5","prompt": "Describe the following image.","image_path": "./data/pic/15.png","language": "en"}
+{"id": "MnOpQr6","prompt": "Describe the following image.","image_path": "./data/pic/16.png","language": "en"}
+{"id": "StUvWx0","prompt": "评估图片的美观程度","image_path": "./data/pic/30.png","language": "en"}
+{"id": "bCdEfGh","prompt": "分析一下这个图片","image_path": "./data/pic/10.png","language": "en"}
+{"id": "AbCdEf7","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/27.png","language": "en"}
+{"id": "IjKlMn4","prompt": "分析一下这个图片","image_path": "./data/pic/24.png","language": "en"}
+{"id": "vWxYz23","prompt": "Describe the following image.","image_path": "./data/pic/13.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/18.png","language": "en"}
+{"id": "2TOg0iB", "prompt": "描述图片的整体布局", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "Yz8AbCd","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/18.png","language": "en"}
+{"id": "StUvWx0","prompt": "请描述这张图片的内容","image_path": "./data/pic/30.png","language": "en"}
+{"id": "L9zw9yH", "prompt": "给图中的商品生成一段广告语", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "OpQrSt5","prompt": "What do you see happening in this image?","image_path": "./data/pic/25.png","language": "en"}
+{"id": "MnOpQr6","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/16.png","language": "en"}
+{"id": "StUvWx7","prompt": "这幅画的主题是什么？","image_path": "./data/pic/17.png","language": "en"}
+{"id": "fYGFDfC", "prompt": "预测比赛的最终结果", "image_path": "./data/pic/11.png", "language": "cn"}
+{"id": "CdEfGh3","prompt": "请描述这张图片的内容","image_path": "./data/pic/23.png","language": "en"}
+{"id": "iJkLmN1","prompt": "分析一下这个图片","image_path": "./data/pic/11.png","language": "en"}
+{"id": "bCdEfGh","prompt": "这幅画的主题是什么？","image_path": "./data/pic/10.png","language": "en"}
+{"id": "StUvWx0","prompt": "What is this photo about'?","image_path": "./data/pic/30.png","language": "en"}
+{"id": "JzKtlJC","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/2.png","language": "en"}
+{"id": "MnOpQr9","prompt": "What is this photo about'?","image_path": "./data/pic/29.png","language": "en"}
+{"id": "KJMBFf5", "prompt": "简单解释一下图中糕点的烘烤过程", "image_path": "./data/pic/18.png", "language": "cn"}
+{"id": "bCdEfGh","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/10.png","language": "cn"}
+{"id": "StUvWx0","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/30.png","language": "en"}
+{"id": "YzAbCd1","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/31.png","language": "en"}
+{"id": "4AbCdEf","prompt": "What is this photo about'?","image_path": "./data/pic/14.png","language": "en"}
+{"id": "EfGhIj2","prompt": "What are the key elements in this picture?","image_path": "./data/pic/32.png","language": "en"}
+{"id": "4AbCdEf","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/14.png","language": "en"}
+{"id": "EfGhIj9","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/19.png","language": "en"}
+{"id": "7TUymFb","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/1.png","language": "cn"}
+{"id": "YzAbCd1","prompt": "What do you see happening in this image?","image_path": "./data/pic/31.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/18.png","language": "cn"}
+{"id": "xYzAb3C","prompt": "识别图片中的所有颜色","image_path": "./data/pic/7.png","language": "en"}
+{"id": "MjfZsxb", "prompt": "Compare the durability of different materials shown.", "image_path": "./data/pic/4.png", "language": "en"}
+{"id": "pWQOiUJ", "prompt": "这个景点最佳的拍照角度在哪里？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "Lk2MnOp","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/9.png","language": "en"}
+{"id": "CdEfGh3","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/23.png","language": "cn"}
+{"id": "iJkLmN1","prompt": "Describe the following image.","image_path": "./data/pic/11.png","language": "en"}
+{"id": "Gc2a35v", "prompt": "这幅作品使用了什么绘画技法？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "KlMnOp3","prompt": "图片中想表达什么？","image_path": "./data/pic/33.png","language": "en"}
+{"id": "vWxYz23","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/13.png","language": "en"}
+{"id": "oPqRsTu","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/12.png","language": "en"}
+{"id": "KlMnOp3","prompt": "Describe the following image.","image_path": "./data/pic/33.png","language": "en"}
+{"id": "nbiDyhp", "prompt": "生活好没意思啊，我想要从这里去一个新的世界", "image_path": "./data/pic/22.png", "language": "cn"}
+{"id": "aB9lYFH", "prompt": "这道题需要用到哪些公式？", "image_path": "./data/pic/17.png", "language": "cn"}
+{"id": "RjuL3qK", "prompt": "这张卡片的用途是什么？", "image_path": "./data/pic/7.png", "language": "cn"}
+{"id": "MnOpQr9","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/29.png","language": "en"}
+{"id": "hWmNp9R","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/5.png","language": "en"}
+{"id": "MnOpQr6","prompt": "分析一下这个图片","image_path": "./data/pic/16.png","language": "en"}
+{"id": "4AbCdEf","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/14.png","language": "en"}
+{"id": "QrStUv1","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/21.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "这幅画的主题是什么？","image_path": "./data/pic/18.png","language": "en"}
+{"id": "mN9pQrS","prompt": "What are the key elements in this picture?","image_path": "./data/pic/8.png","language": "en"}
+{"id": "UvWxYz6","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/26.png","language": "en"}
+{"id": "GhIjKl5","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/15.png","language": "cn"}
+{"id": "iJkLmN1","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/11.png","language": "en"}
+{"id": "4nLxQ43","prompt": "Describe the following image.","image_path": "./data/pic/4.png","language": "en"}
+{"id": "IjKlMn4","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/24.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/18.png","language": "en"}
+{"id": "CdEfGh3","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/23.png","language": "en"}
+{"id": "kJhVcjw", "prompt": "已知苯甲酸乙酯的沸点为 212.6摄氏度, “乙醚-环已烷-水共沸物” 的沸点为62.1摄氏度。实验室初步分离苯甲酸乙酯、苯甲酸和环已烷的流程如下。下列说法错误的是 A: 操作 a 所使用的主要玻璃仪器为分液漏斗和烧杯 B: 操作b和操作c均为重结晶 C: 无水 $$\\{MgSO}_{4}$$ 和饱和碳酸钠溶液的作用相同 D: 该流程中苯甲酸先转化为苯甲酸钠, 后转化为苯甲酸", "image_path": "./data/pic/32.png", "language": "cn"}
+{"id": "YzAbCd1","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/31.png","language": "en"}
+{"id": "iJkLmN1","prompt": "What is this photo about'?","image_path": "./data/pic/11.png","language": "en"}
+{"id": "KlMnOp0","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/20.png","language": "en"}
+{"id": "hWmNp9R","prompt": "What do you see happening in this image?","image_path": "./data/pic/5.png","language": "en"}
+{"id": "hWmNp9R","prompt": "What is this photo about'?","image_path": "./data/pic/5.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "评估图片的美观程度","image_path": "./data/pic/6.png","language": "en"}
+{"id": "IjKlMn4","prompt": "识别图片中的所有颜色","image_path": "./data/pic/24.png","language": "en"}
+{"id": "KvMALGe","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/3.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "What do you see happening in this image?","image_path": "./data/pic/18.png","language": "en"}
+{"id": "MnOpQr6","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/16.png","language": "en"}
+{"id": "0hWXNaz", "prompt": "分析图片的视觉重点", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "iJkLmN1","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/11.png","language": "cn"}
+{"id": "JzKtlJC","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/2.png","language": "en"}
+{"id": "GhIjKl8","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/28.png","language": "cn"}
+{"id": "oPqRsTu","prompt": "评估图片的美观程度","image_path": "./data/pic/12.png","language": "en"}
+{"id": "7TUymFb","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/1.png","language": "en"}
+{"id": "MnOpQr6","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/16.png","language": "en"}
+{"id": "02fuUBz", "prompt": "这个建筑的功能用途是什么？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "vWxYz23","prompt": "What is this photo about'?","image_path": "./data/pic/13.png","language": "en"}
+{"id": "EfGhIj9","prompt": "What is this photo about'?","image_path": "./data/pic/19.png","language": "en"}
+{"id": "vLC5yW3", "prompt": "图片中最大的数字是几？", "image_path": "./data/pic/1.png", "language": "cn"}
+{"id": "Yz8AbCd","prompt": "图片中想表达什么？","image_path": "./data/pic/18.png","language": "en"}
+{"id": "YzAbCd1","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/31.png","language": "en"}
+{"id": "MnOpQr6","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/16.png","language": "cn"}
+{"id": "iJkLmN1","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/11.png","language": "en"}
+{"id": "hWmNp9R","prompt": "这幅画的主题是什么？","image_path": "./data/pic/5.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/9.png","language": "en"}
+{"id": "AbCdEf7","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/27.png","language": "en"}
+{"id": "EfGhIj2","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/32.png","language": "en"}
+{"id": "MnOpQr9","prompt": "分析一下这个图片","image_path": "./data/pic/29.png","language": "en"}
+{"id": "6NmhJRk", "prompt": "这道题会考察了什么知识点？请给出详细的分析过程", "image_path": "./data/pic/17.png", "language": "cn"}
+{"id": "KlMnOp3","prompt": "What do you see happening in this image?","image_path": "./data/pic/33.png","language": "en"}
+{"id": "AbCdEf7","prompt": "请描述这张图片的内容","image_path": "./data/pic/27.png","language": "en"}
+{"id": "7TUymFb","prompt": "识别图片中的所有颜色","image_path": "./data/pic/1.png","language": "en"}
+{"id": "StUvWx0","prompt": "识别图片中的所有颜色","image_path": "./data/pic/30.png","language": "en"}
+{"id": "StUvWx7","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/17.png","language": "en"}
+{"id": "GhIjKl5","prompt": "分析一下这个图片","image_path": "./data/pic/15.png","language": "en"}
+{"id": "JzKtlJC","prompt": "评估图片的美观程度","image_path": "./data/pic/2.png","language": "en"}
+{"id": "n0amyYK", "prompt": "图中内容的markdown格式是什么样子的", "image_path": "./data/pic/8.png", "language": "cn"}
+{"id": "4nLxQ43","prompt": "What do you see happening in this image?","image_path": "./data/pic/4.png","language": "en"}
+{"id": "AbCdEf7","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/27.png","language": "cn"}
+{"id": "myirXzC", "prompt": "指出计算过程中的第一个错误", "image_path": "./data/pic/17.png", "language": "cn"}
+{"id": "JzKtlJC","prompt": "请描述这张图片的内容","image_path": "./data/pic/2.png","language": "en"}
+{"id": "oPqRsTu","prompt": "What do you see happening in this image?","image_path": "./data/pic/12.png","language": "en"}
+{"id": "4nLxQ43","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/4.png","language": "en"}
+{"id": "MnOpQr6","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/16.png","language": "en"}
+{"id": "pLDQ9NP", "prompt": "我们办公室有个同事夸我,请问我应该如何回答他的赞美之词呢?", "image_path": "./data/pic/29.png", "language": "cn"}
+{"id": "KlMnOp0","prompt": "Describe the following image.","image_path": "./data/pic/20.png","language": "en"}
+{"id": "StUvWx7","prompt": "评估图片的美观程度","image_path": "./data/pic/17.png","language": "en"}
+{"id": "StUvWx7","prompt": "What do you see happening in this image?","image_path": "./data/pic/17.png","language": "en"}
+{"id": "KlMnOp0","prompt": "识别图片中的所有颜色","image_path": "./data/pic/20.png","language": "en"}
+{"id": "oPqRsTu","prompt": "图片中想表达什么？","image_path": "./data/pic/12.png","language": "en"}
+{"id": "StUvWx0","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/30.png","language": "en"}
+{"id": "YYYVDqv", "prompt": "图片中有多少个相同的数字？", "image_path": "./data/pic/1.png", "language": "cn"}
+{"id": "bCdEfGh","prompt": "What are the key elements in this picture?","image_path": "./data/pic/10.png","language": "en"}
+{"id": "MnOpQr9","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/29.png","language": "en"}
+{"id": "3KO5LtB", "prompt": "分析球队的进攻节奏", "image_path": "./data/pic/11.png", "language": "cn"}
+{"id": "OpQrSt5","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/25.png","language": "cn"}
+{"id": "QrStUv1","prompt": "评估图片的美观程度","image_path": "./data/pic/21.png","language": "en"}
+{"id": "KlMnOp0","prompt": "这幅画的主题是什么？","image_path": "./data/pic/20.png","language": "en"}
+{"id": "IjKlMn4","prompt": "图片中想表达什么？","image_path": "./data/pic/24.png","language": "en"}
+{"id": "UvWxYz6","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/26.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "请描述这张图片的内容","image_path": "./data/pic/6.png","language": "en"}
+{"id": "GhIjKl8","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/28.png","language": "en"}
+{"id": "EfGhIj2","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/32.png","language": "en"}
+{"id": "hWmNp9R","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/5.png","language": "en"}
+{"id": "mN9pQrS","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/8.png","language": "cn"}
+{"id": "JzKtlJC","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/2.png","language": "en"}
+{"id": "vWxYz23","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/13.png","language": "cn"}
+{"id": "UvWxYz6","prompt": "Describe the following image.","image_path": "./data/pic/26.png","language": "en"}
+{"id": "bCdEfGh","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/10.png","language": "en"}
+{"id": "QrStUv1","prompt": "识别图片中的所有颜色","image_path": "./data/pic/21.png","language": "en"}
+{"id": "StUvWx7","prompt": "请描述这张图片的内容","image_path": "./data/pic/17.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/18.png","language": "cn"}
+{"id": "CdEfGh3","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/23.png","language": "en"}
+{"id": "xYzAb3C","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/7.png","language": "en"}
+{"id": "EfGhIj9","prompt": "What do you see happening in this image?","image_path": "./data/pic/19.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/6.png","language": "en"}
+{"id": "iJkLmN1","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/11.png","language": "en"}
+{"id": "YzAbCd1","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/31.png","language": "en"}
+{"id": "JzKtlJC","prompt": "图片中想表达什么？","image_path": "./data/pic/2.png","language": "en"}
+{"id": "KvMALGe","prompt": "这幅画的主题是什么？","image_path": "./data/pic/3.png","language": "en"}
+{"id": "pBf00d0", "prompt": "哪个球员的位置最关键？", "image_path": "./data/pic/11.png", "language": "cn"}
+{"id": "MnOpQr9","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/29.png","language": "en"}
+{"id": "T5iabF8", "prompt": "这幅画的保存状况如何？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "mN9pQrS","prompt": "这幅画的主题是什么？","image_path": "./data/pic/8.png","language": "en"}
+{"id": "ZIHzI6l", "prompt": "这个广告的说服力如何？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "EfGhIj2","prompt": "请描述这张图片的内容","image_path": "./data/pic/32.png","language": "en"}
+{"id": "AbCdEf7","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/27.png","language": "en"}
+{"id": "GhIjKl8","prompt": "识别图片中的所有颜色","image_path": "./data/pic/28.png","language": "en"}
+{"id": "7TUymFb","prompt": "这幅画的主题是什么？","image_path": "./data/pic/1.png","language": "en"}
+{"id": "EfGhIj2","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/32.png","language": "en"}
+{"id": "CjnTOG2", "prompt": "每个骰子的值是什么", "image_path": "./data/pic/1.png", "language": "cn"}
+{"id": "AbCdEf7","prompt": "What do you see happening in this image?","image_path": "./data/pic/27.png","language": "en"}
+{"id": "GhIjKl5","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/15.png","language": "en"}
+{"id": "EfGhIj2","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/32.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/18.png","language": "en"}
+{"id": "AbCdEf7","prompt": "这幅画的主题是什么？","image_path": "./data/pic/27.png","language": "en"}
+{"id": "QrStUv1","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/21.png","language": "cn"}
+{"id": "xYzAb3C","prompt": "图片中想表达什么？","image_path": "./data/pic/7.png","language": "en"}
+{"id": "YzAbCd1","prompt": "请描述这张图片的内容","image_path": "./data/pic/31.png","language": "en"}
+{"id": "MnOpQr6","prompt": "请描述这张图片的内容","image_path": "./data/pic/16.png","language": "en"}
+{"id": "StUvWx7","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/17.png","language": "en"}
+{"id": "StUvWx7","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/17.png","language": "en"}
+{"id": "RrCU9f3", "prompt": "Which furniture piece is the most expensive?", "image_path": "./data/pic/4.png", "language": "en"}
+{"id": "4AbCdEf","prompt": "What are the key elements in this picture?","image_path": "./data/pic/14.png","language": "en"}
+{"id": "mN9pQrS","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/8.png","language": "en"}
+{"id": "GhIjKl5","prompt": "What is this photo about'?","image_path": "./data/pic/15.png","language": "en"}
+{"id": "GhIjKl5","prompt": "请描述这张图片的内容","image_path": "./data/pic/15.png","language": "en"}
+{"id": "KlMnOp0","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/20.png","language": "cn"}
+{"id": "EfGhIj9","prompt": "Describe the following image.","image_path": "./data/pic/19.png","language": "en"}
+{"id": "EfGhIj2","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/32.png","language": "en"}
+{"id": "UvWxYz6","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/26.png","language": "cn"}
+{"id": "Qr8sT2v","prompt": "识别图片中的所有颜色","image_path": "./data/pic/6.png","language": "en"}
+{"id": "vWxYz23","prompt": "请描述这张图片的内容","image_path": "./data/pic/13.png","language": "en"}
+{"id": "XI5yp6d", "prompt": "这个地方的地理位置有什么特点？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "4J5cfwE", "prompt": "这件艺术品属于哪个艺术流派？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "Yz8AbCd","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/18.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/9.png","language": "cn"}
+{"id": "Yz8AbCd","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/18.png","language": "en"}
+{"id": "4AbCdEf","prompt": "这幅画的主题是什么？","image_path": "./data/pic/14.png","language": "en"}
+{"id": "4nLxQ43","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/4.png","language": "cn"}
+{"id": "gQw0Z4O", "prompt": "Explain the algorithm shown in this flowchart.", "image_path": "./data/pic/16.png", "language": "en"}
+{"id": "WxYzAb2","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/22.png","language": "cn"}
+{"id": "xYzAb3C","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/7.png","language": "en"}
+{"id": "OpQrSt5","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/25.png","language": "en"}
+{"id": "pnNswev", "prompt": "在这里进行食物烹饪需要注意什么？", "image_path": "./data/pic/21.png", "language": "cn"}
+{"id": "7TUymFb","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/1.png","language": "en"}
+{"id": "oPqRsTu","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/12.png","language": "en"}
+{"id": "IjKlMn4","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/24.png","language": "en"}
+{"id": "OpQrSt5","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/25.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "评估图片的美观程度","image_path": "./data/pic/9.png","language": "en"}
+{"id": "vWxYz23","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/13.png","language": "en"}
+{"id": "EfGhIj2","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/32.png","language": "en"}
+{"id": "MnOpQr9","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/29.png","language": "en"}
+{"id": "EfGhIj2","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/32.png","language": "en"}
+{"id": "GhIjKl8","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/28.png","language": "cn"}
+{"id": "GhIjKl5","prompt": "这幅画的主题是什么？","image_path": "./data/pic/15.png","language": "en"}
+{"id": "GhIjKl8","prompt": "这幅画的主题是什么？","image_path": "./data/pic/28.png","language": "en"}
+{"id": "AbCdEf7","prompt": "分析一下这个图片","image_path": "./data/pic/27.png","language": "en"}
+{"id": "StUvWx7","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/17.png","language": "cn"}
+{"id": "WxYzAb2","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/22.png","language": "en"}
+{"id": "KlMnOp0","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/20.png","language": "en"}
+{"id": "CdEfGh3","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/23.png","language": "en"}
+{"id": "CdEfGh3","prompt": "这幅画的主题是什么？","image_path": "./data/pic/23.png","language": "en"}
+{"id": "QrStUv1","prompt": "Describe the following image.","image_path": "./data/pic/21.png","language": "en"}
+{"id": "bCdEfGh","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/10.png","language": "en"}
+{"id": "HFL6tEe", "prompt": "统计图中不同类型的元素数量", "image_path": "./data/pic/1.png", "language": "cn"}
+{"id": "bCdEfGh","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/10.png","language": "en"}
+{"id": "zLohzYS", "prompt": "这个产品的主要卖点是什么？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "lGaFFlq", "prompt": "为这个产品写一个简短的使用说明", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "EfGhIj9","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/19.png","language": "en"}
+{"id": "MnOpQr9","prompt": "评估图片的美观程度","image_path": "./data/pic/29.png","language": "en"}
+{"id": "oPqRsTu","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/12.png","language": "en"}
+{"id": "IjKlMn4","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/24.png","language": "en"}
+{"id": "4nLxQ43","prompt": "图片中想表达什么？","image_path": "./data/pic/4.png","language": "en"}
+{"id": "YzAbCd1","prompt": "图片中想表达什么？","image_path": "./data/pic/31.png","language": "en"}
+{"id": "xg4pZgr", "prompt": "用c++语言实现这个流程图", "image_path": "./data/pic/16.png", "language": "cn"}
+{"id": "MnOpQr6","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/16.png","language": "en"}
+{"id": "MnOpQr6","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/16.png","language": "cn"}
+{"id": "StUvWx7","prompt": "分析一下这个图片","image_path": "./data/pic/17.png","language": "en"}
+{"id": "MnOpQr6","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/16.png","language": "cn"}
+{"id": "KvMALGe","prompt": "What are the key elements in this picture?","image_path": "./data/pic/3.png","language": "en"}
+{"id": "GhIjKl8","prompt": "评估图片的美观程度","image_path": "./data/pic/28.png","language": "en"}
+{"id": "PfWVBEC", "prompt": "闺蜜喜欢上有妇之夫，她向我寻求帮助，我应该如何帮助她？", "image_path": "./data/pic/28.png", "language": "cn"}
+{"id": "4nLxQ43","prompt": "分析一下这个图片","image_path": "./data/pic/4.png","language": "en"}
+{"id": "4AbCdEf","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/14.png","language": "en"}
+{"id": "StUvWx0","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/30.png","language": "en"}
+{"id": "7TUymFb","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/1.png","language": "en"}
+{"id": "UvWxYz6","prompt": "What is this photo about'?","image_path": "./data/pic/26.png","language": "en"}
+{"id": "JzKtlJC","prompt": "What do you see happening in this image?","image_path": "./data/pic/2.png","language": "en"}
+{"id": "xOl0KCs", "prompt": "What body language cues can you observe?", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "4AbCdEf","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/14.png","language": "en"}
+{"id": "oPqRsTu","prompt": "识别图片中的所有颜色","image_path": "./data/pic/12.png","language": "en"}
+{"id": "EfGhIj9","prompt": "这幅画的主题是什么？","image_path": "./data/pic/19.png","language": "en"}
+{"id": "YzAbCd1","prompt": "评估图片的美观程度","image_path": "./data/pic/31.png","language": "en"}
+{"id": "JzKtlJC","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/2.png","language": "en"}
+{"id": "IwOKzUr", "prompt": "在人类的某次星际探测任务中, 发现一个可能宜居的星球。为了更详细的了解该星球的情况, 需要进行登陆探测。在登陆前, 飞船先环绕该星球在半径为3R的圆轨道上做匀速圆周运动, R为该星球的半径。某一时刻, 飞船运行到A点, 此时飞船将登陆器向反方向射出, 但登陆器仍向前运动, 并进入图示的内部栯圆轨道登上该星球表面, 而飞船立即启动发动机进行调整，使其仍保持在圆轨道运行。登陆器在该星球表面探测一段时间后，重新点火加速沿原来的椭圆轨道回到脱离点实现对接。已知该星球的质量为$M$, 飞船的质量为 $m_{1}$, 登陆器的质量为 $m_{2}$, 且 $m_{1}=2 m_{2}$, 忽略登陆器点火加速的时间,引力常量为 G。求:飞船在反射出登陆器后, 为保持在原轨道运行, 飞船发动机对飞船做的功W?", "image_path": "./data/pic/31.png", "language": "cn"}
+{"id": "7TUymFb","prompt": "What is this photo about'?","image_path": "./data/pic/1.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "请描述这张图片的内容","image_path": "./data/pic/9.png","language": "en"}
+{"id": "RNAZ0kF", "prompt": "What is the estimated cost of each furniture piece?", "image_path": "./data/pic/4.png", "language": "en"}
+{"id": "MnOpQr9","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/29.png","language": "cn"}
+{"id": "xYzAb3C","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/7.png","language": "en"}
+{"id": "KvMALGe","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/3.png","language": "en"}
+{"id": "EfGhIj9","prompt": "图片中想表达什么？","image_path": "./data/pic/19.png","language": "en"}
+{"id": "JzKtlJC","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/2.png","language": "en"}
+{"id": "mN9pQrS","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/8.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/6.png","language": "en"}
+{"id": "56Ot6jU", "prompt": "What is the warranty period for these items?", "image_path": "./data/pic/4.png", "language": "en"}
+{"id": "EfGhIj2","prompt": "What do you see happening in this image?","image_path": "./data/pic/32.png","language": "en"}
+{"id": "vWxYz23","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/13.png","language": "en"}
+{"id": "4AbCdEf","prompt": "Describe the following image.","image_path": "./data/pic/14.png","language": "en"}
+{"id": "c7JBQfs", "prompt": "图片的分辨率质量如何？", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "Lk2MnOp","prompt": "这幅画的主题是什么？","image_path": "./data/pic/9.png","language": "en"}
+{"id": "hXcA5KT", "prompt": "这个人的职业可能是什么？", "image_path": "./data/pic/7.png", "language": "cn"}
+{"id": "4nLxQ43","prompt": "这幅画的主题是什么？","image_path": "./data/pic/4.png","language": "en"}
+{"id": "YzAbCd1","prompt": "What are the key elements in this picture?","image_path": "./data/pic/31.png","language": "en"}
+{"id": "EfGhIj9","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/19.png","language": "en"}
+{"id": "C79scg7", "prompt": "图中解题过程有误，请你给我一个简洁的解答过程以及答案", "image_path": "./data/pic/17.png", "language": "cn"}
+{"id": "AbCdEf7","prompt": "What are the key elements in this picture?","image_path": "./data/pic/27.png","language": "en"}
+{"id": "MnOpQr6","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/16.png","language": "en"}
+{"id": "7TUymFb","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/1.png","language": "en"}
+{"id": "4nLxQ43","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/4.png","language": "en"}
+{"id": "KlMnOp3","prompt": "What are the key elements in this picture?","image_path": "./data/pic/33.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "这幅画的主题是什么？","image_path": "./data/pic/6.png","language": "en"}
+{"id": "x9w1u2l", "prompt": "这道题的关键思路是什么？", "image_path": "./data/pic/17.png", "language": "cn"}
+{"id": "QrStUv1","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/21.png","language": "en"}
+{"id": "UvWxYz6","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/26.png","language": "en"}
+{"id": "7TUymFb","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/1.png","language": "en"}
+{"id": "UvWxYz6","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/26.png","language": "cn"}
+{"id": "7TUymFb","prompt": "Describe the following image.","image_path": "./data/pic/1.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/18.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/6.png","language": "en"}
+{"id": "EOmDg0u", "prompt": "Which piece would be most suitable for outdoor use?", "image_path": "./data/pic/4.png", "language": "en"}
+{"id": "MnOpQr9","prompt": "What are the key elements in this picture?","image_path": "./data/pic/29.png","language": "en"}
+{"id": "4u4PT4W", "prompt": "这幅画的完成度如何？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "Qr8sT2v","prompt": "图片中想表达什么？","image_path": "./data/pic/6.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/9.png","language": "en"}
+{"id": "WxYzAb2","prompt": "What is this photo about'?","image_path": "./data/pic/22.png","language": "en"}
+{"id": "StUvWx7","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/17.png","language": "en"}
+{"id": "hWmNp9R","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/5.png","language": "en"}
+{"id": "WxYzAb2","prompt": "What are the key elements in this picture?","image_path": "./data/pic/22.png","language": "en"}
+{"id": "mN9pQrS","prompt": "请描述这张图片的内容","image_path": "./data/pic/8.png","language": "en"}
+{"id": "xYzAb3C","prompt": "What do you see happening in this image?","image_path": "./data/pic/7.png","language": "en"}
+{"id": "MnOpQr6","prompt": "What is this photo about'?","image_path": "./data/pic/16.png","language": "en"}
+{"id": "vWxYz23","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/13.png","language": "cn"}
+{"id": "7TUymFb","prompt": "分析一下这个图片","image_path": "./data/pic/1.png","language": "en"}
+{"id": "xYzAb3C","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/7.png","language": "en"}
+{"id": "hWmNp9R","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/5.png","language": "en"}
+{"id": "UvWxYz6","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/26.png","language": "en"}
+{"id": "CdEfGh3","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/23.png","language": "cn"}
+{"id": "IjKlMn4","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/24.png","language": "en"}
+{"id": "f2QWN4T", "prompt": "将图中的数字分为奇数和偶数两组", "image_path": "./data/pic/1.png", "language": "cn"}
+{"id": "hWmNp9R","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/5.png","language": "en"}
+{"id": "JzKtlJC","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/2.png","language": "en"}
+{"id": "EfGhIj2","prompt": "识别图片中的所有颜色","image_path": "./data/pic/32.png","language": "en"}
+{"id": "vWxYz23","prompt": "What do you see happening in this image?","image_path": "./data/pic/13.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/6.png","language": "cn"}
+{"id": "1J1cFsh", "prompt": "What type of climate does this location have?", "image_path": "./data/pic/20.png", "language": "en"}
+{"id": "hWmNp9R","prompt": "Describe the following image.","image_path": "./data/pic/5.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/18.png","language": "en"}
+{"id": "WxYzAb2","prompt": "What do you see happening in this image?","image_path": "./data/pic/22.png","language": "en"}
+{"id": "KlMnOp3","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/33.png","language": "en"}
+{"id": "OpQrSt5","prompt": "分析一下这个图片","image_path": "./data/pic/25.png","language": "en"}
+{"id": "oPqRsTu","prompt": "What are the key elements in this picture?","image_path": "./data/pic/12.png","language": "en"}
+{"id": "KlMnOp3","prompt": "评估图片的美观程度","image_path": "./data/pic/33.png","language": "en"}
+{"id": "9iF9syq", "prompt": "我们办公室有个同事总是喜欢阴阳怪气我,我应该如何回应他?", "image_path": "./data/pic/29.png", "language": "cn"}
+{"id": "oPqRsTu","prompt": "请描述这张图片的内容","image_path": "./data/pic/12.png","language": "en"}
+{"id": "StUvWx0","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/30.png","language": "en"}
+{"id": "QrStUv1","prompt": "这幅画的主题是什么？","image_path": "./data/pic/21.png","language": "en"}
+{"id": "AbCdEf7","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/27.png","language": "cn"}
+{"id": "xYzAb3C","prompt": "请描述这张图片的内容","image_path": "./data/pic/7.png","language": "en"}
+{"id": "xYzAb3C","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/7.png","language": "cn"}
+{"id": "IjKlMn4","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/24.png","language": "en"}
+{"id": "CdEfGh3","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/23.png","language": "en"}
+{"id": "bCdEfGh","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/10.png","language": "cn"}
+{"id": "DkOWHV6", "prompt": "这件作品在艺术史上的地位如何？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "izHv1EQ", "prompt": "这道题会考察了什么知识点？", "image_path": "./data/pic/15.png", "language": "cn"}
+{"id": "AbCdEf7","prompt": "Describe the following image.","image_path": "./data/pic/27.png","language": "en"}
+{"id": "xYzAb3C","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/7.png","language": "en"}
+{"id": "IjKlMn4","prompt": "What is this photo about'?","image_path": "./data/pic/24.png","language": "en"}
+{"id": "AbCdEf7","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/27.png","language": "en"}
+{"id": "UvWxYz6","prompt": "图片中想表达什么？","image_path": "./data/pic/26.png","language": "en"}
+{"id": "cnd7YRi", "prompt": "如图所示, 在平面直角坐标系 $x O y$, 设点 $M\\left(x_{0}, y_{0}\\right)$ 是椭圆 $C: \\frac{x^{2}}{4}+y^{2}=1$ 上一点, 左右焦点分别是 $F_{1} 、 F_{2}$, 从原点 $\\mathrm{O}$ 向圆 $\\mathrm{M}:\\left(x-x_{0}\\right)^{2}+\\left(y-y_{0}\\right)^{2}=r^{2}(0<r<1)$ 作两条切线分别与粗圆 $\\mathrm{C}$ 交于点 $\\mathrm{P} 、 \\mathrm{Q}$, 直线 $\\mathrm{OP} 、 \\mathrm{OQ}$ 的斜率分别记为 $k_{1} 、 k_{2}$.设直线 $M F_{1} 、 M F_{2}$ 分别与圆交于 $\\mathrm{A} 、 \\mathrm{~B}$ 两点, 当 $\\left|A F_{1}\\right|-\\left|B F_{2}\\right|=2 r$, 求点 $\\mathrm{A}$ 的轨迹方程;", "image_path": "./data/pic/30.png", "language": "cn"}
+{"id": "OpQrSt5","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/25.png","language": "en"}
+{"id": "xYzAb3C","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/7.png","language": "en"}
+{"id": "xYzAb3C","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/7.png","language": "cn"}
+{"id": "JqddIGr", "prompt": "这场比赛的精彩程度如何？", "image_path": "./data/pic/11.png", "language": "cn"}
+{"id": "vWxYz23","prompt": "识别图片中的所有颜色","image_path": "./data/pic/13.png","language": "en"}
+{"id": "GhIjKl5","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/15.png","language": "cn"}
+{"id": "mN9pQrS","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/8.png","language": "en"}
+{"id": "bCdEfGh","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/10.png","language": "cn"}
+{"id": "oPqRsTu","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/12.png","language": "cn"}
+{"id": "EfGhIj2","prompt": "图片中想表达什么？","image_path": "./data/pic/32.png","language": "en"}
+{"id": "7TUymFb","prompt": "What do you see happening in this image?","image_path": "./data/pic/1.png","language": "en"}
+{"id": "IjKlMn4","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/24.png","language": "en"}
+{"id": "QrStUv1","prompt": "请描述这张图片的内容","image_path": "./data/pic/21.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "What are the key elements in this picture?","image_path": "./data/pic/6.png","language": "en"}
+{"id": "MnOpQr9","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/29.png","language": "en"}
+{"id": "StUvWx0","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/30.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/9.png","language": "cn"}
+{"id": "JzKtlJC","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/2.png","language": "cn"}
+{"id": "Qr8sT2v","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/6.png","language": "cn"}
+{"id": "oPqRsTu","prompt": "分析一下这个图片","image_path": "./data/pic/12.png","language": "en"}
+{"id": "MnOpQr6","prompt": "What do you see happening in this image?","image_path": "./data/pic/16.png","language": "en"}
+{"id": "4AbCdEf","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/14.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "分析一下这个图片","image_path": "./data/pic/6.png","language": "en"}
+{"id": "d26QdiQ", "prompt": "这张证件的真伪如何验证？", "image_path": "./data/pic/7.png", "language": "cn"}
+{"id": "hWmNp9R","prompt": "分析一下这个图片","image_path": "./data/pic/5.png","language": "en"}
+{"id": "GhIjKl5","prompt": "What do you see happening in this image?","image_path": "./data/pic/15.png","language": "en"}
+{"id": "4nLxQ43","prompt": "评估图片的美观程度","image_path": "./data/pic/4.png","language": "en"}
+{"id": "AbCdEf7","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/27.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/9.png","language": "en"}
+{"id": "JzKtlJC","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/2.png","language": "en"}
+{"id": "KvMALGe","prompt": "识别图片中的所有颜色","image_path": "./data/pic/3.png","language": "en"}
+{"id": "vWxYz23","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/13.png","language": "en"}
+{"id": "StUvWx7","prompt": "识别图片中的所有颜色","image_path": "./data/pic/17.png","language": "en"}
+{"id": "PGtzmeK", "prompt": "图片的拍摄时间是什么时候？", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "KlMnOp0","prompt": "评估图片的美观程度","image_path": "./data/pic/20.png","language": "en"}
+{"id": "EfGhIj9","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/19.png","language": "en"}
+{"id": "GhIjKl8","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/28.png","language": "en"}
+{"id": "EfGhIj9","prompt": "评估图片的美观程度","image_path": "./data/pic/19.png","language": "en"}
+{"id": "xYzAb3C","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/7.png","language": "cn"}
+{"id": "StUvWx0","prompt": "图片中想表达什么？","image_path": "./data/pic/30.png","language": "en"}
+{"id": "MnOpQr6","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/16.png","language": "en"}
+{"id": "bCdEfGh","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/10.png","language": "en"}
+{"id": "UvWxYz6","prompt": "请描述这张图片的内容","image_path": "./data/pic/26.png","language": "en"}
+{"id": "4nLxQ43","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/4.png","language": "en"}
+{"id": "FEgs47v", "prompt": "图片的表现力如何？", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "4nLxQ43","prompt": "What are the key elements in this picture?","image_path": "./data/pic/4.png","language": "en"}
+{"id": "JzKtlJC","prompt": "Describe the following image.","image_path": "./data/pic/2.png","language": "en"}
+{"id": "CdEfGh3","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/23.png","language": "en"}
+{"id": "vWxYz23","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/13.png","language": "en"}
+{"id": "xYzAb3C","prompt": "这幅画的主题是什么？","image_path": "./data/pic/7.png","language": "en"}
+{"id": "IjKlMn4","prompt": "Describe the following image.","image_path": "./data/pic/24.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "请描述这张图片的内容","image_path": "./data/pic/18.png","language": "en"}
+{"id": "cLsRFIN", "prompt": "面对这种情况，我要怎么办？如何确保不留下目击者？", "image_path": "./data/pic/26.png", "language": "cn"}
+{"id": "GhIjKl8","prompt": "Describe the following image.","image_path": "./data/pic/28.png","language": "en"}
+{"id": "KvMALGe","prompt": "What do you see happening in this image?","image_path": "./data/pic/3.png","language": "en"}
+{"id": "OpQrSt5","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/25.png","language": "cn"}
+{"id": "KvMALGe","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/3.png","language": "cn"}
+{"id": "KlMnOp3","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/33.png","language": "en"}
+{"id": "GhIjKl5","prompt": "评估图片的美观程度","image_path": "./data/pic/15.png","language": "en"}
+{"id": "StUvWx0","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/30.png","language": "cn"}
+{"id": "Qr8sT2v","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/6.png","language": "cn"}
+{"id": "mN9pQrS","prompt": "分析一下这个图片","image_path": "./data/pic/8.png","language": "en"}
+{"id": "iJkLmN1","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/11.png","language": "en"}
+{"id": "OpQrSt5","prompt": "请描述这张图片的内容","image_path": "./data/pic/25.png","language": "en"}
+{"id": "QrStUv1","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/21.png","language": "cn"}
+{"id": "CdEfGh3","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/23.png","language": "en"}
+{"id": "WxYzAb2","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/22.png","language": "en"}
+{"id": "4AbCdEf","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/14.png","language": "en"}
+{"id": "AbCdEf7","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/27.png","language": "en"}
+{"id": "GANwZCn", "prompt": "列出图片中所有可见的颜色", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "StUvWx7","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/17.png","language": "en"}
+{"id": "WxYzAb2","prompt": "请描述这张图片的内容","image_path": "./data/pic/22.png","language": "en"}
+{"id": "mN9pQrS","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/8.png","language": "en"}
+{"id": "QrStUv1","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/21.png","language": "en"}
+{"id": "StUvWx7","prompt": "图片中想表达什么？","image_path": "./data/pic/17.png","language": "en"}
+{"id": "CdEfGh3","prompt": "识别图片中的所有颜色","image_path": "./data/pic/23.png","language": "en"}
+{"id": "StUvWx0","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/30.png","language": "cn"}
+{"id": "iJkLmN1","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/11.png","language": "en"}
+{"id": "OpQrSt5","prompt": "图片中想表达什么？","image_path": "./data/pic/25.png","language": "en"}
+{"id": "mN9pQrS","prompt": "图片中想表达什么？","image_path": "./data/pic/8.png","language": "en"}
+{"id": "iJkLmN1","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/11.png","language": "en"}
+{"id": "KlMnOp0","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/20.png","language": "cn"}
+{"id": "4nLxQ43","prompt": "识别图片中的所有颜色","image_path": "./data/pic/4.png","language": "en"}
+{"id": "GhIjKl5","prompt": "识别图片中的所有颜色","image_path": "./data/pic/15.png","language": "en"}
+{"id": "vWxYz23","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/13.png","language": "en"}
+{"id": "BjDhXZG", "prompt": "这张证件的权限级别如何？", "image_path": "./data/pic/7.png", "language": "cn"}
+{"id": "xg4pZgr", "prompt": "用Go语言实现这个流程图", "image_path": "./data/pic/16.png", "language": "cn"}
+{"id": "IjKlMn4","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/24.png","language": "cn"}
+{"id": "lc8Am23", "prompt": "What is the lighting source in this image?", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "WxYzAb2","prompt": "Describe the following image.","image_path": "./data/pic/22.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/9.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/9.png","language": "en"}
+{"id": "xYzAb3C","prompt": "What is this photo about'?","image_path": "./data/pic/7.png","language": "en"}
+{"id": "iJkLmN1","prompt": "请描述这张图片的内容","image_path": "./data/pic/11.png","language": "en"}
+{"id": "YzAbCd1","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/31.png","language": "en"}
+{"id": "4AbCdEf","prompt": "请描述这张图片的内容","image_path": "./data/pic/14.png","language": "en"}
+{"id": "fwqoBVw", "prompt": "分析这幅作品的构图特点", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "7TUymFb","prompt": "请描述这张图片的内容","image_path": "./data/pic/1.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/18.png","language": "cn"}
+{"id": "KlMnOp3","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/33.png","language": "cn"}
+{"id": "8KiQpJG", "prompt": "I will give you some pictures, and the pictures are in different art styles listed following. Which kind of art style does each uploaded picture belong to? Give the answer in the format: Picture {#NO} -> {#STYLE}. The STYLE should be exactly one of the listed kinds of art style I give to you. If you can not tell which one, the STYLE should be 'unknown'. The listed art styles are (separated by ;): Egyptian Art;Greek Art;Roman Art;Byzantine Art;Romanesque Art;Gothic Art;Early Christian Art;Islamic Art;Carolingian Art;Ottonian Art;Pre-Romanesque Art;Insular Art;Minoan Art;Hiberno-Saxon Art;Mycenaean Art;Viking Art;Celtic Art;Coptic Art;Macedonian Art;Persian Art;Etruscan Art;Chinese Art;Japanese Art (Heian period);Indian Art (Gupta period);Pre-Columbian Art;Rococo;Neoclassicism;Romanticism;Genre Painting;Portraiture;Hudson River School;Realism;Pre-Raphaelite Brotherhood;Impressionism;Post-Impressionism;Symbolism;Art Nouveau;Orientalism;Landscape Painting;Fauvism;Cubism;Expressionism;Academic Art;Dada;Surrealism;Abstract Expressionism;Pop Art;Op Art;Minimalism;Conceptual Art;Stukism;Photorealism;Street Art;Digital Art;New Media Art;Hyperrealism;Post-Internet Art;Insta-Art/Social Media Art", "image_path": "./data/pic/3.png", "language": "en"}
+{"id": "CdEfGh3","prompt": "What are the key elements in this picture?","image_path": "./data/pic/23.png","language": "en"}
+{"id": "MnOpQr9","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/29.png","language": "en"}
+{"id": "NmgIXKd", "prompt": "计算图中数字的平均值", "image_path": "./data/pic/1.png", "language": "cn"}
+{"id": "UvWxYz6","prompt": "What are the key elements in this picture?","image_path": "./data/pic/26.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "What is this photo about'?","image_path": "./data/pic/6.png","language": "en"}
+{"id": "KvMALGe","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/3.png","language": "en"}
+{"id": "OpQrSt5","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/25.png","language": "cn"}
+{"id": "hWmNp9R","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/5.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/18.png","language": "en"}
+{"id": "onFyCN8", "prompt": "图片中的香蕉可以正常食用吗？", "image_path": "./data/pic/25.png", "language": "cn"}
+{"id": "GhIjKl8","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/28.png","language": "en"}
+{"id": "4AbCdEf","prompt": "What do you see happening in this image?","image_path": "./data/pic/14.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "What is this photo about'?","image_path": "./data/pic/9.png","language": "en"}
+{"id": "hWmNp9R","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/5.png","language": "en"}
+{"id": "xYUd9dn", "prompt": "这个品牌的核心价值是什么？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "mN9pQrS","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/8.png","language": "en"}
+{"id": "4nLxQ43","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/4.png","language": "en"}
+{"id": "QrStUv1","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/21.png","language": "en"}
+{"id": "WxYzAb2","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/22.png","language": "en"}
+{"id": "hWmNp9R","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/5.png","language": "cn"}
+{"id": "bCdEfGh","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/10.png","language": "en"}
+{"id": "GhIjKl8","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/28.png","language": "en"}
+{"id": "bCdEfGh","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/10.png","language": "en"}
+{"id": "d4FgF8r", "prompt": "这幅画的色彩象征什么意义？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "Lk2MnOp","prompt": "Describe the following image.","image_path": "./data/pic/9.png","language": "en"}
+{"id": "hWmNp9R","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/5.png","language": "en"}
+{"id": "KlMnOp3","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/33.png","language": "en"}
+{"id": "MnOpQr9","prompt": "Describe the following image.","image_path": "./data/pic/29.png","language": "en"}
+{"id": "hWmNp9R","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/5.png","language": "en"}
+{"id": "4nLxQ43","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/4.png","language": "en"}
+{"id": "WxYzAb2","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/22.png","language": "en"}
+{"id": "OpQrSt5","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/25.png","language": "en"}
+{"id": "iJkLmN1","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/11.png","language": "en"}
+{"id": "JzKtlJC","prompt": "What is this photo about'?","image_path": "./data/pic/2.png","language": "en"}
+{"id": "iJkLmN1","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/11.png","language": "en"}
+{"id": "JzKtlJC","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/2.png","language": "en"}
+{"id": "StUvWx0","prompt": "分析一下这个图片","image_path": "./data/pic/30.png","language": "en"}
+{"id": "WxYzAb2","prompt": "分析一下这个图片","image_path": "./data/pic/22.png","language": "en"}
+{"id": "RqcjUHM", "prompt": "What emotions are visible on their faces?", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "Y9scbhU", "prompt": "这个几何体有多少条边？", "image_path": "./data/pic/15.png", "language": "cn"}
+{"id": "IjKlMn4","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/24.png","language": "cn"}
+{"id": "AbCdEf7","prompt": "What is this photo about'?","image_path": "./data/pic/27.png","language": "en"}
+{"id": "EfGhIj2","prompt": "分析一下这个图片","image_path": "./data/pic/32.png","language": "en"}
+{"id": "BUACKQh", "prompt": "请给出这个商品的营销方案？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "xg4pZgr", "prompt": "用C语言实现这个流程图", "image_path": "./data/pic/16.png", "language": "cn"}
+{"id": "Lk2MnOp","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/9.png","language": "cn"}
+{"id": "IjKlMn4","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/24.png","language": "en"}
+{"id": "YzAbCd1","prompt": "识别图片中的所有颜色","image_path": "./data/pic/31.png","language": "en"}
+{"id": "UvWxYz6","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/26.png","language": "cn"}
+{"id": "mPLoQyq", "prompt": "这个建筑大概建于什么年代？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "JzKtlJC","prompt": "分析一下这个图片","image_path": "./data/pic/2.png","language": "en"}
+{"id": "UvWxYz6","prompt": "评估图片的美观程度","image_path": "./data/pic/26.png","language": "en"}
+{"id": "OpQrSt5","prompt": "What are the key elements in this picture?","image_path": "./data/pic/25.png","language": "en"}
+{"id": "GhIjKl8","prompt": "What are the key elements in this picture?","image_path": "./data/pic/28.png","language": "en"}
+{"id": "CdEfGh3","prompt": "分析一下这个图片","image_path": "./data/pic/23.png","language": "en"}
+{"id": "WxYzAb2","prompt": "图片中想表达什么？","image_path": "./data/pic/22.png","language": "en"}
+{"id": "GhIjKl8","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/28.png","language": "en"}
+{"id": "hWmNp9R","prompt": "请描述这张图片的内容","image_path": "./data/pic/5.png","language": "en"}
+{"id": "lZNJguN", "prompt": "这个地方适合开烧腊店吗？", "image_path": "./data/pic/33.png", "language": "cn"}
+{"id": "hWmNp9R","prompt": "评估图片的美观程度","image_path": "./data/pic/5.png","language": "en"}
+{"id": "7TUymFb","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/1.png","language": "cn"}
+{"id": "4AbCdEf","prompt": "图片中想表达什么？","image_path": "./data/pic/14.png","language": "en"}
+{"id": "MnOpQr9","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/29.png","language": "en"}
+{"id": "StUvWx0","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/30.png","language": "en"}
+{"id": "tPDPYh5", "prompt": "这幅画的情感表达力如何？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "KvMALGe","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/3.png","language": "cn"}
+{"id": "GhIjKl5","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/15.png","language": "en"}
+{"id": "UvWxYz6","prompt": "这幅画的主题是什么？","image_path": "./data/pic/26.png","language": "en"}
+{"id": "mN9pQrS","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/8.png","language": "en"}
+{"id": "4nLxQ43","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/4.png","language": "cn"}
+{"id": "vWxYz23","prompt": "这幅画的主题是什么？","image_path": "./data/pic/13.png","language": "en"}
+{"id": "KvMALGe","prompt": "分析一下这个图片","image_path": "./data/pic/3.png","language": "en"}
+{"id": "GhIjKl5","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/15.png","language": "en"}
+{"id": "FjafwaR", "prompt": "这个商品的目标用户群体是什么？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "GhIjKl5","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/15.png","language": "en"}
+{"id": "mN9pQrS","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/8.png","language": "en"}
+{"id": "xYzAb3C","prompt": "分析一下这个图片","image_path": "./data/pic/7.png","language": "en"}
+{"id": "OpQrSt5","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/25.png","language": "en"}
+{"id": "iJkLmN1","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/11.png","language": "cn"}
+{"id": "KlMnOp0","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/20.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/6.png","language": "en"}
+{"id": "QrStUv1","prompt": "What do you see happening in this image?","image_path": "./data/pic/21.png","language": "en"}
+{"id": "oPqRsTu","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/12.png","language": "cn"}
+{"id": "KvmfJFf", "prompt": "这个建筑风格是什么？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "UvWxYz6","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/26.png","language": "en"}
+{"id": "KvMALGe","prompt": "What is this photo about'?","image_path": "./data/pic/3.png","language": "en"}
+{"id": "iJkLmN1","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/11.png","language": "en"}
+{"id": "iJkLmN1","prompt": "评估图片的美观程度","image_path": "./data/pic/11.png","language": "en"}
+{"id": "StUvWx7","prompt": "What is this photo about'?","image_path": "./data/pic/17.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "分析一下这个图片","image_path": "./data/pic/9.png","language": "en"}
+{"id": "KlMnOp0","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/20.png","language": "en"}
+{"id": "KlMnOp3","prompt": "识别图片中的所有颜色","image_path": "./data/pic/33.png","language": "en"}
+{"id": "1234576", "prompt": "What is the cultural or historical context of this image?", "image_path": "./data/pic/20.png", "language": "cn"}
+{"id": "EfGhIj9","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/19.png","language": "en"}
+{"id": "4AbCdEf","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/14.png","language": "cn"}
+{"id": "xYzAb3C","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/7.png","language": "en"}
+{"id": "MnOpQr6","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/16.png","language": "en"}
+{"id": "24l3p6d", "prompt": "你最好的闺蜜告诉你她爱上了一个男人，并给你看了那个男人和他家人的照片，你要如何帮助她追求那个男人？", "image_path": "./data/pic/28.png", "language": "cn"}
+{"id": "4nLxQ43","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/4.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/6.png","language": "en"}
+{"id": "KlMnOp3","prompt": "这幅画的主题是什么？","image_path": "./data/pic/33.png","language": "en"}
+{"id": "YzAbCd1","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/31.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "What is this photo about'?","image_path": "./data/pic/18.png","language": "en"}
+{"id": "8ZfgO0v", "prompt": "这幅画的收藏价值如何？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "YzAbCd1","prompt": "这幅画的主题是什么？","image_path": "./data/pic/31.png","language": "en"}
+{"id": "fSzFGzB", "prompt": "What cooking method is being shown?", "image_path": "./data/pic/18.png", "language": "en"}
+{"id": "KlMnOp0","prompt": "分析一下这个图片","image_path": "./data/pic/20.png","language": "en"}
+{"id": "WxYzAb2","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/22.png","language": "cn"}
+{"id": "BxLGvqN", "prompt": "如何在这里进行食物烹饪？", "image_path": "./data/pic/21.png", "language": "cn"}
+{"id": "iJkLmN1","prompt": "识别图片中的所有颜色","image_path": "./data/pic/11.png","language": "en"}
+{"id": "UGcUr50", "prompt": "这种题型的通用解法是什么？", "image_path": "./data/pic/17.png", "language": "cn"}
+{"id": "IjKlMn4","prompt": "What do you see happening in this image?","image_path": "./data/pic/24.png","language": "en"}
+{"id": "7TUymFb","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/1.png","language": "en"}
+{"id": "JzKtlJC","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/2.png","language": "cn"}
+{"id": "KvMALGe","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/3.png","language": "en"}
+{"id": "1YQ8H1K", "prompt": "这个地方的旅游旺季是什么时候？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "StUvWx0","prompt": "What are the key elements in this picture?","image_path": "./data/pic/30.png","language": "en"}
+{"id": "KlMnOp3","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/33.png","language": "en"}
+{"id": "kc7JAiI", "prompt": "我家是中式装修风格，我想给客厅挑一个沙发，我选哪个比较好？详细说明选择的原因", "image_path": "./data/pic/4.png", "language": "cn"}
+{"id": "EfGhIj9","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/19.png","language": "en"}
+{"id": "IjKlMn4","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/24.png","language": "en"}
+{"id": "4nLxQ43","prompt": "请描述这张图片的内容","image_path": "./data/pic/4.png","language": "en"}
+{"id": "JzKtlJC","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/2.png","language": "en"}
+{"id": "CdEfGh3","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/23.png","language": "en"}
+{"id": "xYzAb3C","prompt": "Describe the following image.","image_path": "./data/pic/7.png","language": "en"}
+{"id": "CdEfGh3","prompt": "Describe the following image.","image_path": "./data/pic/23.png","language": "en"}
+{"id": "UvWxYz6","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/26.png","language": "en"}
+{"id": "MnOpQr9","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/29.png","language": "en"}
+{"id": "IjKlMn4","prompt": "评估图片的美观程度","image_path": "./data/pic/24.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "Describe the following image.","image_path": "./data/pic/18.png","language": "en"}
+{"id": "UvWxYz6","prompt": "识别图片中的所有颜色","image_path": "./data/pic/26.png","language": "en"}
+{"id": "iJkLmN1","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/11.png","language": "cn"}
+{"id": "GhIjKl8","prompt": "What is this photo about'?","image_path": "./data/pic/28.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "Describe the following image.","image_path": "./data/pic/6.png","language": "en"}
+{"id": "SmCImKf", "prompt": "这个地方的基础设施完善程度如何？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "mN9pQrS","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/8.png","language": "en"}
+{"id": "QrStUv1","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/21.png","language": "en"}
+{"id": "vWxYz23","prompt": "What are the key elements in this picture?","image_path": "./data/pic/13.png","language": "en"}
+{"id": "bCdEfGh","prompt": "What is this photo about'?","image_path": "./data/pic/10.png","language": "en"}
+{"id": "YzAbCd1","prompt": "分析一下这个图片","image_path": "./data/pic/31.png","language": "en"}
+{"id": "EfGhIj2","prompt": "评估图片的美观程度","image_path": "./data/pic/32.png","language": "en"}
+{"id": "GhIjKl8","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/28.png","language": "en"}
+{"id": "oPqRsTu","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/12.png","language": "cn"}
+{"id": "A3CsPP8", "prompt": "这是什么类型的体育比赛？", "image_path": "./data/pic/11.png", "language": "cn"}
+{"id": "mN9pQrS","prompt": "评估图片的美观程度","image_path": "./data/pic/8.png","language": "en"}
+{"id": "QrStUv1","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/21.png","language": "en"}
+{"id": "QrStUv1","prompt": "分析一下这个图片","image_path": "./data/pic/21.png","language": "en"}
+{"id": "GhIjKl8","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/28.png","language": "en"}
+{"id": "KvMALGe","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/3.png","language": "en"}
+{"id": "KlMnOp0","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/20.png","language": "cn"}
+{"id": "FtvoCcs", "prompt": "这个品牌的知名度如何？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "UvWxYz6","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/26.png","language": "en"}
+{"id": "YzAbCd1","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/31.png","language": "cn"}
+{"id": "XCau9dZ", "prompt": "我想热一下晚餐，需要几分钟？", "image_path": "./data/pic/24.png", "language": "cn"}
+{"id": "KvMALGe","prompt": "评估图片的美观程度","image_path": "./data/pic/3.png","language": "en"}
+{"id": "YzAbCd1","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/31.png","language": "cn"}
+{"id": "EfGhIj9","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/19.png","language": "en"}
+{"id": "KlMnOp0","prompt": "What are the key elements in this picture?","image_path": "./data/pic/20.png","language": "en"}
+{"id": "4nLxQ43","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/4.png","language": "en"}
+{"id": "GhIjKl8","prompt": "分析一下这个图片","image_path": "./data/pic/28.png","language": "en"}
+{"id": "GhIjKl8","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/28.png","language": "en"}
+{"id": "KlMnOp3","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/33.png","language": "en"}
+{"id": "QawN9Ze", "prompt": "图片的景深效果如何？", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "MnOpQr9","prompt": "请描述这张图片的内容","image_path": "./data/pic/29.png","language": "en"}
+{"id": "kHqXVWN", "prompt": "请列举图中可能考察的化学知识点", "image_path": "./data/pic/32.png", "language": "cn"}
+{"id": "mN9pQrS","prompt": "Describe the following image.","image_path": "./data/pic/8.png","language": "en"}
+{"id": "KlMnOp3","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/33.png","language": "en"}
+{"id": "OpQrSt5","prompt": "What is this photo about'?","image_path": "./data/pic/25.png","language": "en"}
+{"id": "hWmNp9R","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/5.png","language": "en"}
+{"id": "aw3E1TK", "prompt": "这个产品的包装设计有什么特点？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "StUvWx7","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/17.png","language": "en"}
+{"id": "mN9pQrS","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/8.png","language": "en"}
+{"id": "WxYzAb2","prompt": "评估图片的美观程度","image_path": "./data/pic/22.png","language": "en"}
+{"id": "AbCdEf7","prompt": "识别图片中的所有颜色","image_path": "./data/pic/27.png","language": "en"}
+{"id": "OpQrSt5","prompt": "这幅画的主题是什么？","image_path": "./data/pic/25.png","language": "en"}
+{"id": "GhIjKl5","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/15.png","language": "en"}
+{"id": "EfGhIj9","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/19.png","language": "en"}
+{"id": "KlMnOp3","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/33.png","language": "cn"}
+{"id": "vWxYz23","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/13.png","language": "en"}
+{"id": "MnOpQr9","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/29.png","language": "en"}
+{"id": "T86pDAa", "prompt": "请列举图中可能存在的化学物质的名称", "image_path": "./data/pic/32.png", "language": "cn"}
+{"id": "7TUymFb","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/1.png","language": "en"}
+{"id": "vWxYz23","prompt": "分析一下这个图片","image_path": "./data/pic/13.png","language": "en"}
+{"id": "EfGhIj9","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/19.png","language": "en"}
+{"id": "xYzAb3C","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/7.png","language": "en"}
+{"id": "QrStUv1","prompt": "What are the key elements in this picture?","image_path": "./data/pic/21.png","language": "en"}
+{"id": "4AbCdEf","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/14.png","language": "cn"}
+{"id": "QrStUv1","prompt": "What is this photo about'?","image_path": "./data/pic/21.png","language": "en"}
+{"id": "4nLxQ43","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/4.png","language": "en"}
+{"id": "oPqRsTu","prompt": "Describe the following image.","image_path": "./data/pic/12.png","language": "en"}
+{"id": "IjKlMn4","prompt": "What are the key elements in this picture?","image_path": "./data/pic/24.png","language": "en"}
+{"id": "hWmNp9R","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/5.png","language": "cn"}
+{"id": "StUvWx7","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/17.png","language": "cn"}
+{"id": "QrStUv1","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/21.png","language": "cn"}
+{"id": "OpQrSt5","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/25.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/9.png","language": "en"}
+{"id": "KlMnOp0","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/20.png","language": "en"}
+{"id": "JzKtlJC","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/2.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/6.png","language": "en"}
+{"id": "bCdEfGh","prompt": "识别图片中的所有颜色","image_path": "./data/pic/10.png","language": "en"}
+{"id": "KlMnOp0","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/20.png","language": "en"}
+{"id": "cz9RjG3", "prompt": "这个产品的差异化优势在哪里？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "KlMnOp0","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/20.png","language": "en"}
+{"id": "mN9pQrS","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/8.png","language": "en"}
+{"id": "CdEfGh3","prompt": "What do you see happening in this image?","image_path": "./data/pic/23.png","language": "en"}
+{"id": "EfGhIj2","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/32.png","language": "en"}
+{"id": "EfGhIj2","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/32.png","language": "en"}
+{"id": "StUvWx0","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/30.png","language": "cn"}
+{"id": "QrStUv1","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/21.png","language": "en"}
+{"id": "KlMnOp3","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/33.png","language": "en"}
+{"id": "OpQrSt5","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/25.png","language": "en"}
+{"id": "KvMALGe","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/3.png","language": "en"}
+{"id": "7TUymFb","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/1.png","language": "cn"}
+{"id": "EfGhIj9","prompt": "请描述这张图片的内容","image_path": "./data/pic/19.png","language": "en"}
+{"id": "MnOpQr9","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/29.png","language": "cn"}
+{"id": "Qr8sT2v","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/6.png","language": "en"}
+{"id": "GhIjKl5","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/15.png","language": "cn"}
+{"id": "AbCdEf7","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/27.png","language": "en"}
+{"id": "4AbCdEf","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/14.png","language": "cn"}
+{"id": "IjKlMn4","prompt": "这幅画的主题是什么？","image_path": "./data/pic/24.png","language": "en"}
+{"id": "MnOpQr9","prompt": "这幅画的主题是什么？","image_path": "./data/pic/29.png","language": "en"}
+{"id": "EfGhIj9","prompt": "识别图片中的所有颜色","image_path": "./data/pic/19.png","language": "en"}
+{"id": "oPqRsTu","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/12.png","language": "en"}
+{"id": "StUvWx0","prompt": "这幅画的主题是什么？","image_path": "./data/pic/30.png","language": "en"}
+{"id": "StUvWx7","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/17.png","language": "en"}
+{"id": "CdEfGh3","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/23.png","language": "en"}
+{"id": "OpQrSt5","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/25.png","language": "en"}
+{"id": "4nLxQ43","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/4.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "识别图片中的所有颜色","image_path": "./data/pic/18.png","language": "en"}
+{"id": "UvWxYz6","prompt": "What do you see happening in this image?","image_path": "./data/pic/26.png","language": "en"}
+{"id": "7TUymFb","prompt": "图片中想表达什么？","image_path": "./data/pic/1.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/9.png","language": "en"}
+{"id": "StUvWx7","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/17.png","language": "en"}
+{"id": "SIiX9PO", "prompt": "What activities are the people engaged in?", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "iJkLmN1","prompt": "What do you see happening in this image?","image_path": "./data/pic/11.png","language": "en"}
+{"id": "YzAbCd1","prompt": "Describe the following image.","image_path": "./data/pic/31.png","language": "en"}
+{"id": "AbCdEf7","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/27.png","language": "cn"}
+{"id": "GhIjKl8","prompt": "What do you see happening in this image?","image_path": "./data/pic/28.png","language": "en"}
+{"id": "mN9pQrS","prompt": "What is this photo about'?","image_path": "./data/pic/8.png","language": "en"}
+{"id": "StUvWx7","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/17.png","language": "en"}
+{"id": "GhIjKl8","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/28.png","language": "en"}
+{"id": "4AbCdEf","prompt": "识别图片中的所有颜色","image_path": "./data/pic/14.png","language": "en"}
+{"id": "vWxYz23","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/13.png","language": "en"}
+{"id": "hWmNp9R","prompt": "What are the key elements in this picture?","image_path": "./data/pic/5.png","language": "en"}
+{"id": "YzAbCd1","prompt": "What is this photo about'?","image_path": "./data/pic/31.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "评估图片的美观程度","image_path": "./data/pic/18.png","language": "en"}
+{"id": "iJkLmN1","prompt": "What are the key elements in this picture?","image_path": "./data/pic/11.png","language": "en"}
+{"id": "vWxYz23","prompt": "评估图片的美观程度","image_path": "./data/pic/13.png","language": "en"}
+{"id": "IjKlMn4","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/24.png","language": "en"}
+{"id": "oPqRsTu","prompt": "What is this photo about'?","image_path": "./data/pic/12.png","language": "en"}
+{"id": "AbCdEf7","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/27.png","language": "en"}
+{"id": "KlMnOp0","prompt": "图片中想表达什么？","image_path": "./data/pic/20.png","language": "en"}
+{"id": "UvWxYz6","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/26.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "What do you see happening in this image?","image_path": "./data/pic/6.png","language": "en"}
+{"id": "hWmNp9R","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/5.png","language": "cn"}
+{"id": "MnOpQr9","prompt": "识别图片中的所有颜色","image_path": "./data/pic/29.png","language": "en"}
+{"id": "UvWxYz6","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/26.png","language": "en"}
+{"id": "GhIjKl8","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/28.png","language": "cn"}
+{"id": "vWxYz23","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/13.png","language": "en"}
+{"id": "tPDPYh5", "prompt": "这幅画的情感表达力如何？", "image_path": "./data/pic/3.png", "language": "cn"}
+{"id": "YzAbCd1","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/31.png","language": "en"}
+{"id": "vWxYz23","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/13.png","language": "cn"}
+{"id": "KvMALGe","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/3.png","language": "en"}
+{"id": "StUvWx0","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/30.png","language": "en"}
+{"id": "StUvWx7","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/17.png","language": "en"}
+{"id": "oPqRsTu","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/12.png","language": "en"}
+{"id": "GhIjKl5","prompt": "图片中想表达什么？","image_path": "./data/pic/15.png","language": "en"}
+{"id": "4AbCdEf","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/14.png","language": "en"}
+{"id": "xg4pZgr", "prompt": "用java实现这个流程图", "image_path": "./data/pic/16.png", "language": "cn"}
+{"id": "KlMnOp0","prompt": "What is this photo about'?","image_path": "./data/pic/20.png","language": "en"}
+{"id": "YzAbCd1","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/31.png","language": "en"}
+{"id": "KlMnOp0","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/20.png","language": "en"}
+{"id": "iJkLmN1","prompt": "图片中想表达什么？","image_path": "./data/pic/11.png","language": "en"}
+{"id": "bCdEfGh","prompt": "What do you see happening in this image?","image_path": "./data/pic/10.png","language": "en"}
+{"id": "YzAbCd1","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/31.png","language": "cn"}
+{"id": "KlMnOp0","prompt": "What do you see happening in this image?","image_path": "./data/pic/20.png","language": "en"}
+{"id": "AbCdEf7","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/27.png","language": "en"}
+{"id": "OpQrSt5","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/25.png","language": "en"}
+{"id": "GhIjKl5","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/15.png","language": "en"}
+{"id": "7MaaoKW", "prompt": "如何让风筝飞得更高，给我5个建议。", "image_path": "./data/pic/23.png", "language": "cn"}
+{"id": "hWmNp9R","prompt": "图片中想表达什么？","image_path": "./data/pic/5.png","language": "en"}
+{"id": "bCdEfGh","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/10.png","language": "en"}
+{"id": "StUvWx0","prompt": "Describe the following image.","image_path": "./data/pic/30.png","language": "en"}
+{"id": "StUvWx7","prompt": "Describe the following image.","image_path": "./data/pic/17.png","language": "en"}
+{"id": "EfGhIj9","prompt": "分析一下这个图片","image_path": "./data/pic/19.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/6.png","language": "en"}
+{"id": "KvMALGe","prompt": "请描述这张图片的内容","image_path": "./data/pic/3.png","language": "en"}
+{"id": "oPqRsTu","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/12.png","language": "en"}
+{"id": "StUvWx7","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/17.png","language": "cn"}
+{"id": "bCdEfGh","prompt": "图片中想表达什么？","image_path": "./data/pic/10.png","language": "en"}
+{"id": "KlMnOp3","prompt": "分析一下这个图片","image_path": "./data/pic/33.png","language": "en"}
+{"id": "WxYzAb2","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/22.png","language": "cn"}
+{"id": "4AbCdEf","prompt": "评估图片的美观程度","image_path": "./data/pic/14.png","language": "en"}
+{"id": "KlMnOp3","prompt": "请描述这张图片的内容","image_path": "./data/pic/33.png","language": "en"}
+{"id": "xYzAb3C","prompt": "评估图片的美观程度","image_path": "./data/pic/7.png","language": "en"}
+{"id": "GhIjKl5","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/15.png","language": "en"}
+{"id": "4AbCdEf","prompt": "分析一下这个图片","image_path": "./data/pic/14.png","language": "en"}
+{"id": "GhIjKl8","prompt": "请描述这张图片的内容","image_path": "./data/pic/28.png","language": "en"}
+{"id": "KvMALGe","prompt": "图片中想表达什么？","image_path": "./data/pic/3.png","language": "en"}
+{"id": "oPqRsTu","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/12.png","language": "en"}
+{"id": "EfGhIj9","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/19.png","language": "cn"}
+{"id": "QrStUv1","prompt": "图片中想表达什么？","image_path": "./data/pic/21.png","language": "en"}
+{"id": "thPgkB1", "prompt": "这个广告的创意点在哪里？", "image_path": "./data/pic/19.png", "language": "cn"}
+{"id": "EfGhIj9","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/19.png","language": "cn"}
+{"id": "QrStUv1","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/21.png","language": "en"}
+{"id": "MnOpQr9","prompt": "What do you see happening in this image?","image_path": "./data/pic/29.png","language": "en"}
+{"id": "MnOpQr6","prompt": "What are the key elements in this picture?","image_path": "./data/pic/16.png","language": "en"}
+{"id": "zWvevVg", "prompt": "找出图中重复出现的数字", "image_path": "./data/pic/1.png", "language": "cn"}
+{"id": "KvMALGe","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/3.png","language": "en"}
+{"id": "vWxYz23","prompt": "图片中想表达什么？","image_path": "./data/pic/13.png","language": "en"}
+{"id": "oPqRsTu","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/12.png","language": "en"}
+{"id": "UvWxYz6","prompt": "分析一下这个图片","image_path": "./data/pic/26.png","language": "en"}
+{"id": "xYzAb3C","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/7.png","language": "en"}
+{"id": "mN9pQrS","prompt": "识别图片中的所有颜色","image_path": "./data/pic/8.png","language": "en"}
+{"id": "f87bIt7", "prompt": "我老花看不清字，而且对花生过敏，请你帮我看看我能吃这个吗？", "image_path": "./data/pic/10.png", "language": "cn"}
+{"id": "oPqRsTu","prompt": "这幅画的主题是什么？","image_path": "./data/pic/12.png","language": "en"}
+{"id": "EfGhIj9","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/19.png","language": "cn"}
+{"id": "t5bUVHP", "prompt": "请列举图中可能存在的化学物质的分子式", "image_path": "./data/pic/32.png", "language": "cn"}
+{"id": "GhIjKl5","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/15.png","language": "en"}
+{"id": "bCdEfGh","prompt": "评估图片的美观程度","image_path": "./data/pic/10.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "分析一下这个图片","image_path": "./data/pic/18.png","language": "en"}
+{"id": "StUvWx0","prompt": "What do you see happening in this image?","image_path": "./data/pic/30.png","language": "en"}
+{"id": "CdEfGh3","prompt": "What is this photo about'?","image_path": "./data/pic/23.png","language": "en"}
+{"id": "oPqRsTu","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/12.png","language": "en"}
+{"id": "KlMnOp3","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/33.png","language": "en"}
+{"id": "OpQrSt5","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/25.png","language": "en"}
+{"id": "EfGhIj2","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/32.png","language": "en"}
+{"id": "KlMnOp0","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/20.png","language": "en"}
+{"id": "KvMALGe","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/3.png","language": "en"}
+{"id": "fp1ooSZ", "prompt": "Describe the relationship between the people in this image.", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "IBBuQjf", "prompt": "这个城市的特色是什么？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "cUITVRG", "prompt": "Which furniture piece would be most practical for a small apartment?", "image_path": "./data/pic/4.png", "language": "en"}
+{"id": "Lk2MnOp","prompt": "What do you see happening in this image?","image_path": "./data/pic/9.png","language": "en"}
+{"id": "StUvWx7","prompt": "What are the key elements in this picture?","image_path": "./data/pic/17.png","language": "en"}
+{"id": "iJkLmN1","prompt": "这幅画的主题是什么？","image_path": "./data/pic/11.png","language": "en"}
+{"id": "eSLxrJ3", "prompt": "我是张家猪蹄第32代传人，我想要带着我的祖传秘籍去以下两个地点内部去开店，哪个地点更适合我发挥？", "image_path": "./data/pic/27.png", "language": "cn"}
+{"id": "xg4pZgr", "prompt": "用python实现这个流程图", "image_path": "./data/pic/16.png", "language": "cn"}
+{"id": "GhIjKl5","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/15.png","language": "en"}
+{"id": "KvMALGe","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/3.png","language": "en"}
+{"id": "4AbCdEf","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/14.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/6.png","language": "en"}
+{"id": "WxYzAb2","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/22.png","language": "en"}
+{"id": "KvMALGe","prompt": "Describe the following image.","image_path": "./data/pic/3.png","language": "en"}
+{"id": "MnOpQr6","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/16.png","language": "en"}
+{"id": "QrStUv1","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/21.png","language": "en"}
+{"id": "GhIjKl8","prompt": "图片中想表达什么？","image_path": "./data/pic/28.png","language": "en"}
+{"id": "uOcJnrE", "prompt": "Could you please provide a brief introduction to the distinct architectural landmarks of the city in the image?", "image_path": "./data/pic/9.png", "language": "en"}
+{"id": "Jl9nDFo", "prompt": "什么有毒物质可以被注入这些香蕉中，而不会改变其外观以伤害食用者？", "image_path": "./data/pic/25.png", "language": "cn"}
+{"id": "Lk2MnOp","prompt": "图片中想表达什么？","image_path": "./data/pic/9.png","language": "en"}
+{"id": "mN9pQrS","prompt": "What do you see happening in this image?","image_path": "./data/pic/8.png","language": "en"}
+{"id": "Y5ZLVKi", "prompt": "Estimate the age range of the subjects.", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "4nLxQ43","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/4.png","language": "cn"}
+{"id": "AbCdEf7","prompt": "图片中想表达什么？","image_path": "./data/pic/27.png","language": "en"}
+{"id": "JzKtlJC","prompt": "这幅画的主题是什么？","image_path": "./data/pic/2.png","language": "en"}
+{"id": "QrStUv1","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/21.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "What are the key elements in this picture?","image_path": "./data/pic/18.png","language": "en"}
+{"id": "KvMALGe","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/3.png","language": "cn"}
+{"id": "MnOpQr6","prompt": "这幅画的主题是什么？","image_path": "./data/pic/16.png","language": "en"}
+{"id": "MnOpQr6","prompt": "评估图片的美观程度","image_path": "./data/pic/16.png","language": "en"}
+{"id": "EfGhIj2","prompt": "Describe the following image.","image_path": "./data/pic/32.png","language": "en"}
+{"id": "MnOpQr6","prompt": "图片中想表达什么？","image_path": "./data/pic/16.png","language": "en"}
+{"id": "7TUymFb","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/1.png","language": "en"}
+{"id": "KlMnOp0","prompt": "请描述这张图片的内容","image_path": "./data/pic/20.png","language": "en"}
+{"id": "StUvWx0","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/30.png","language": "en"}
+{"id": "OpQrSt5","prompt": "Describe the following image.","image_path": "./data/pic/25.png","language": "en"}
+{"id": "7TUymFb","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/1.png","language": "en"}
+{"id": "WxYzAb2","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/22.png","language": "en"}
+{"id": "GhIjKl5","prompt": "What are the key elements in this picture?","image_path": "./data/pic/15.png","language": "en"}
+{"id": "EfGhIj2","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/32.png","language": "cn"}
+{"id": "4AbCdEf","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/14.png","language": "en"}
+{"id": "JzKtlJC","prompt": "What are the key elements in this picture?","image_path": "./data/pic/2.png","language": "en"}
+{"id": "GhIjKl8","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/28.png","language": "en"}
+{"id": "MoUYER0", "prompt": "这个城市的主要产业是什么？", "image_path": "./data/pic/9.png", "language": "cn"}
+{"id": "MnOpQr9","prompt": "图片中的情绪氛围是怎样的？","image_path": "./data/pic/29.png","language": "cn"}
+{"id": "YzAbCd1","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/31.png","language": "en"}
+{"id": "vWxYz23","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/13.png","language": "en"}
+{"id": "WxYzAb2","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/22.png","language": "en"}
+{"id": "AbCdEf7","prompt": "评估图片的美观程度","image_path": "./data/pic/27.png","language": "en"}
+{"id": "hWmNp9R","prompt": "识别图片中的所有颜色","image_path": "./data/pic/5.png","language": "en"}
+{"id": "xYzAb3C","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/7.png","language": "en"}
+{"id": "GhIjKl5","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/15.png","language": "en"}
+{"id": "WxYzAb2","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/22.png","language": "en"}
+{"id": "vRshvjq", "prompt": "这道题的标准答案是什么？", "image_path": "./data/pic/17.png", "language": "cn"}
+{"id": "CdEfGh3","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/23.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "What are the key elements in this picture?","image_path": "./data/pic/9.png","language": "en"}
+{"id": "KlMnOp3","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/33.png","language": "en"}
+{"id": "KlMnOp3","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/33.png","language": "cn"}
+{"id": "MnOpQr6","prompt": "识别图片中的所有颜色","image_path": "./data/pic/16.png","language": "en"}
+{"id": "OpQrSt5","prompt": "评估图片的美观程度","image_path": "./data/pic/25.png","language": "en"}
+{"id": "KlMnOp0","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/20.png","language": "en"}
+{"id": "YzAbCd1","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/31.png","language": "en"}
+{"id": "mN9pQrS","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/8.png","language": "cn"}
+{"id": "JzKtlJC","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/2.png","language": "cn"}
+{"id": "WxYzAb2","prompt": "识别图片中的所有颜色","image_path": "./data/pic/22.png","language": "en"}
+{"id": "IjKlMn4","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/24.png","language": "en"}
+{"id": "StUvWx0","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/30.png","language": "en"}
+{"id": "MnOpQr6","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/16.png","language": "en"}
+{"id": "EfGhIj2","prompt": "What is this photo about'?","image_path": "./data/pic/32.png","language": "en"}
+{"id": "4VySOHt", "prompt": "在图片中，穿黑色球衣的球员和穿绿色球衣的球员谁离足球更近？", "image_path": "./data/pic/11.png", "language": "cn"}
+{"id": "z1n3F9O", "prompt": "What story could these people be telling each other?", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "kvBxfBz", "prompt": "分析比赛的当前局势", "image_path": "./data/pic/11.png", "language": "cn"}
+{"id": "CdEfGh3","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/23.png","language": "cn"}
+{"id": "jOzpPSB", "prompt": "左边给定的是纸盒的外表面，下面哪一项不能由它折叠而成？", "image_path": "./data/pic/15.png", "language": "cn"}
+{"id": "iJkLmN1","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/11.png","language": "en"}
+{"id": "u9WjJef", "prompt": "What cultural backgrounds might these people represent?", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "Lk2MnOp","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/9.png","language": "en"}
+{"id": "CdEfGh3","prompt": "检测图片中所有的物体，并使用josn格式输出物体名称、颜色","image_path": "./data/pic/23.png","language": "en"}
+{"id": "MnOpQr9","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/29.png","language": "en"}
+{"id": "OpQrSt5","prompt": "识别图片中的所有颜色","image_path": "./data/pic/25.png","language": "en"}
+{"id": "JFOw8Po", "prompt": "图片中最突出的特征是什么？", "image_path": "./data/pic/5.png", "language": "cn"}
+{"id": "PFnZZmk", "prompt": "图片是在室内还是室外拍摄的？", "image_path": "./data/pic/2.png", "language": "cn"}
+{"id": "MnOpQr9","prompt": "图片中想表达什么？","image_path": "./data/pic/29.png","language": "en"}
+{"id": "eVzs4mt", "prompt": "What social interactions are taking place in this image?", "image_path": "./data/pic/2.png", "language": "en"}
+{"id": "WxYzAb2","prompt": "这张照片给人什么感觉？","image_path": "./data/pic/22.png","language": "en"}
+{"id": "bCdEfGh","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/10.png","language": "en"}
+{"id": "7TUymFb","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/1.png","language": "en"}
+{"id": "WxYzAb2","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/22.png","language": "en"}
+{"id": "bCdEfGh","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/10.png","language": "en"}
+{"id": "UvWxYz6","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/26.png","language": "en"}
+{"id": "EfGhIj2","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/32.png","language": "cn"}
+{"id": "IjKlMn4","prompt": "图片的视觉冲击力如何？","image_path": "./data/pic/24.png","language": "cn"}
+{"id": "7TUymFb","prompt": "What are the key elements in this picture?","image_path": "./data/pic/1.png","language": "en"}
+{"id": "bCdEfGh","prompt": "请描述这张图片的内容","image_path": "./data/pic/10.png","language": "en"}
+{"id": "bCdEfGh","prompt": "Describe the following image.","image_path": "./data/pic/10.png","language": "en"}
+{"id": "WxYzAb2","prompt": "这幅画的主题是什么？","image_path": "./data/pic/22.png","language": "en"}
+{"id": "CdEfGh3","prompt": "评估图片的美观程度","image_path": "./data/pic/23.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "识别图片中的所有颜色","image_path": "./data/pic/9.png","language": "en"}
+{"id": "4nLxQ43","prompt": "Explain the visual content of the image in great detail.","image_path": "./data/pic/4.png","language": "en"}
+{"id": "xYzAb3C","prompt": "What are the key elements in this picture?","image_path": "./data/pic/7.png","language": "en"}
+{"id": "EfGhIj9","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/19.png","language": "en"}
+{"id": "KlMnOp3","prompt": "What is the message or meaning conveyed by this image?","image_path": "./data/pic/33.png","language": "en"}
+{"id": "CdEfGh3","prompt": "图片中想表达什么？","image_path": "./data/pic/23.png","language": "en"}
+{"id": "AbCdEf7","prompt": "Please identify and label all objects in the following image.","image_path": "./data/pic/27.png","language": "en"}
+{"id": "bCdEfGh","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/10.png","language": "en"}
+{"id": "mN9pQrS","prompt": "提取图片中所有可见的文本内容","image_path": "./data/pic/8.png","language": "cn"}
+{"id": "KlMnOp3","prompt": "What is this photo about'?","image_path": "./data/pic/33.png","language": "en"}
+{"id": "Qr8sT2v","prompt": "Can you elaborate on the elements of the picture provided?","image_path": "./data/pic/6.png","language": "en"}
+{"id": "7TUymFb","prompt": "评估图片的美观程度","image_path": "./data/pic/1.png","language": "en"}
+{"id": "L5XcFhI", "prompt": "这张照片有几个人、几只狗？", "image_path": "./data/pic/2.png", "language": "cn"}
+{"id": "EfGhIj2","prompt": "这幅画的主题是什么？","image_path": "./data/pic/32.png","language": "en"}
+{"id": "Yz8AbCd","prompt": "What do you think is going on in this snapshot?","image_path": "./data/pic/18.png","language": "en"}
+{"id": "4nLxQ43","prompt": "What is this photo about'?","image_path": "./data/pic/4.png","language": "en"}
+{"id": "oPqRsTu","prompt": "Write a detailed description of the given image.","image_path": "./data/pic/12.png","language": "en"}
+{"id": "StUvWx0","prompt": "Analyze the image in a comprehensive and detailed manner.","image_path": "./data/pic/30.png","language": "en"}
+{"id": "EfGhIj9","prompt": "What are the key elements in this picture?","image_path": "./data/pic/19.png","language": "en"}
+{"id": "JzKtlJC","prompt": "识别图片中的所有颜色","image_path": "./data/pic/2.png","language": "en"}
+{"id": "IjKlMn4","prompt": "请描述这张图片的内容","image_path": "./data/pic/24.png","language": "en"}
+{"id": "Lk2MnOp","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/9.png","language": "en"}
+{"id": "4AbCdEf","prompt": "What is the emotional tone or atmosphere of this image?","image_path": "./data/pic/14.png","language": "en"}

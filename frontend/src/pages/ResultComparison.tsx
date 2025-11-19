@@ -274,8 +274,8 @@ const ResultComparison: React.FC = () => {
     return models.sort();
   }, [availableTasks]);
 
-  // Color mapping for models
-  const modelColors = [
+  // Color mapping for tasks
+  const taskColors = [
     '#1890ff', // Blue
     '#52c41a', // Green
     '#fa8c16', // Orange
@@ -308,7 +308,15 @@ const ResultComparison: React.FC = () => {
     });
 
     const index = uniqueModelsList.indexOf(modelName);
-    return modelColors[index % modelColors.length];
+    return taskColors[index % taskColors.length];
+  };
+
+  // Get color for task by task_id
+  const getTaskColor = (taskId: string) => {
+    const index = comparisonResults.findIndex(
+      result => result.task_id === taskId
+    );
+    return taskColors[index % taskColors.length];
   };
 
   // Table columns for available tasks in modal
@@ -438,33 +446,86 @@ const ResultComparison: React.FC = () => {
     },
   ];
 
+  // Helper function to wrap text for x-axis labels
+  const wrapTaskName = (text: string, maxCharsPerLine: number = 20) => {
+    if (text.length <= maxCharsPerLine) {
+      return text;
+    }
+
+    const lines: string[] = [];
+    let currentLine = '';
+
+    // split text by characters
+    const chars = text.split('');
+
+    chars.forEach((char, index) => {
+      if (currentLine.length >= maxCharsPerLine) {
+        // check if we can break the line at the separator
+        if (char === ' ' || char === '-' || char === '_') {
+          lines.push(currentLine);
+          currentLine = char === ' ' ? '' : char;
+        } else if (
+          currentLine.length === maxCharsPerLine ||
+          index === chars.length - 1
+        ) {
+          lines.push(currentLine);
+          currentLine = char;
+        } else {
+          currentLine += char;
+        }
+      } else {
+        currentLine += char;
+      }
+    });
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    return lines.join('\n');
+  };
+
   // Chart configurations
   const createChartConfig = (
     yField: keyof ComparisonMetrics,
     title: string
   ) => ({
     data: comparisonResults.map((result, index) => ({
-      task: `${result.model_name} - ${result.task_id.substring(0, 5)}(${result.concurrent_users}${t('pages.resultComparison.concurrentUsersSuffix')}) `,
+      task: wrapTaskName(result.task_name),
       value: result[yField] as number,
-      model: result.model_name,
+      taskId: result.task_id,
       index,
     })),
     xField: 'task',
     yField: 'value',
-    colorField: 'model',
-    height: 300,
+    colorField: 'taskId',
+    height: 350,
+    maxColumnWidth: 50,
+    columnWidthRatio: 0.5,
+    appendPadding: [30, 0, 80, 0],
     title: { visible: true, text: title },
     color: comparisonResults.reduce(
       (acc, result) => {
-        acc[result.model_name] = getModelColor(result.model_name);
+        acc[result.task_id] = getTaskColor(result.task_id);
         return acc;
       },
       {} as Record<string, string>
     ),
     label: {
-      visible: true,
       position: 'top',
-      formatter: (text: string) => `${parseFloat(text).toFixed(3)}`,
+      // offset: 8,
+      style: {
+        fill: '#000',
+        fontSize: 12,
+        fontWeight: 500,
+        textAlign: 'center',
+        textBaseline: 'bottom',
+        dy: -8,
+      },
+      formatter: (datum: any) => {
+        const value = datum.value || datum;
+        return `${parseFloat(value).toFixed(3)}`;
+      },
     },
     meta: {
       value: {
@@ -473,10 +534,13 @@ const ResultComparison: React.FC = () => {
     },
     xAxis: {
       label: {
-        autoRotate: true,
-        autoHide: true,
+        autoRotate: false,
+        autoHide: false,
+        autoEllipsis: false,
         style: {
-          fontSize: 10,
+          fontSize: 11,
+          textAlign: 'center',
+          fill: '#666',
         },
       },
     },

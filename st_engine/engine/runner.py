@@ -128,6 +128,8 @@ class LocustRunner:
             task.cookies or "{}",
             "--model_name",
             task.model or "",
+            "--api_type",
+            getattr(task, "api_type", "openai-chat") or "openai-chat",
             "--stream_mode",
             task.stream_mode,
             "--chat_type",

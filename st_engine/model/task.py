@@ -227,6 +227,7 @@ class Task(Base):
     headers = Column(Text, nullable=True)
     cookies = Column(Text, nullable=True)
     api_path = Column(String(255), nullable=True)
+    api_type = Column(String(50), nullable=True)
     request_payload = Column(Text, nullable=True)
     field_mapping = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)

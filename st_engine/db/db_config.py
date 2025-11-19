@@ -5,6 +5,7 @@ Copyright (c) 2025, All Rights Reserved.
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict
 
 from pydantic import Field, model_validator
@@ -44,6 +45,10 @@ def get_env_str(key: str, default: str) -> str:
     """
     value = os.environ.get(key, "").strip()
     return value if value else default
+
+
+ENGINE_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE_PATH = ENGINE_DIR / ".env"
 
 
 class MySqlSettings(BaseSettings):
@@ -133,7 +138,7 @@ class MySqlSettings(BaseSettings):
     class Config:
         """Pydantic configuration options."""
 
-        env_file = ".env"
+        env_file = str(ENV_FILE_PATH)
         case_sensitive = True
         extra = "ignore"
 

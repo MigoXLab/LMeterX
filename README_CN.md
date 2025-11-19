@@ -36,9 +36,9 @@
   - [🗺️ 发展路线图](#️-发展路线图)
     - [开发中](#开发中)
     - [规划中](#规划中)
-  - [📚 相关文档](#-相关文档)
-  - [👥 贡献者](#-贡献者)
   - [🗂️ 数据集引用说明](#️-数据集引用说明)
+  - [👥 贡献](#-贡献)
+  - [📝 引用](#-引用)
   - [📄 开源许可](#-开源许可)
   - [本项目采用 Apache 2.0 许可证。](#本项目采用-apache-20-许可证)
 
@@ -194,19 +194,6 @@ LMeterX/
 ### 规划中
 - [ ] CLI 命令行工具
 
-## 📚 相关文档
-
-- [部署指南](docs/DEPLOYMENT_GUIDE_CN.md) - 详细部署说明
-- [贡献指南](docs/CONTRIBUTING.md) - 参与开发指南
-- [数据集使用指南](docs/DATASET_GUIDE.md) - 自定义图文数据集准备与使用说明
-
-## 👥 贡献者
-
-感谢所有为 LMeterX 做出贡献的开发者：
-
-- [@LuckyYC](https://github.com/LuckyYC) - 项目维护者 & 核心开发者
-- [@del-zhenwu](https://github.com/del-zhenwu) - 核心开发者
-
 ## 🗂️ 数据集引用说明
 
 > LMeterX 基于开源 ShareGPT 数据集构建测试样本，严格遵循原始许可要求。
@@ -216,12 +203,40 @@ LMeterX/
   - 筛选高质量对话样本，剔除低质量或与压测场景无关的数据
   - 进行随机抽样，减轻数据规模的同时保留多样化对话
 
+## 👥 贡献
+
+我们欢迎来自社区的任何贡献！请参考我们的 [贡献指南](docs/CONTRIBUTING.md)。
+感谢所有为 LMeterX 做出贡献的开发者!
+
+<a href="https://github.com/MigoXLab/LMeterX/graphs/contributors" target="_blank">
+  <table>
+    <tr>
+      <th colspan="2">
+        <br><img src="https://contrib.rocks/image?repo=MigoXLab/LMeterX"><br><br>
+      </th>
+    </tr>
+  </table>
+</a>
+
+## 📝 引用
+如果您在研究中使用了 LMeterX，请引用我们的工作：
+
+```bibtex
+@software{LMeterX2025,
+  author  = {LMeterX Team},
+  title   = {LMeterX: Enterprise-Grade Performance Benchmarking Platform for Large Language Models},
+  year    = {2025},
+  url     = {https://github.com/MigoXLab/LMeterX},
+}
+```
+
 ## 📄 开源许可
 
 本项目采用 [Apache 2.0 许可证](LICENSE)。
 ---
 
 <div align="center">
+
 
 **⭐ 如果这个项目对您有帮助，请给我们一个 Star！您的支持是我们持续改进的动力。**
 

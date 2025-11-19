@@ -39,6 +39,7 @@
     - [Planned](#planned)
   - [📚 Related Documentation](#-related-documentation)
   - [👥 Contributors](#-contributors)
+  - [🗂️ Dataset Reference Notes](#️-dataset-reference-notes)
   - [📄 Open Source License](#-open-source-license)
 
 ## 📋 Project Overview
@@ -214,6 +215,16 @@ Thanks to all developers who have contributed to the LMeterX project:
 
 - [@LuckyYC](https://github.com/LuckyYC) - Project maintainer & Core developer
 - [@del-zhenwu](https://github.com/del-zhenwu) - Core developer
+
+## 🗂️ Dataset Reference Notes
+
+> LMeterX builds test samples based on the open-source ShareGPT dataset, strictly adhering to the original license requirements.
+
+- **Data Source**: Uses the [ShareGPT dataset](https://huggingface.co/datasets/learnanything/sharegpt_v3_unfiltered_cleaned_split) as the original dialogue corpus.
+
+- **Adjustment Scope**:
+- Filtered high-quality dialogue samples, removing low-quality or irrelevant data for the load testing scenario.
+- Random sampling was performed to reduce the data size while preserving diverse dialogues.
 
 ## 📄 Open Source License
 

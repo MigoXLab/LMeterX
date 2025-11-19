@@ -38,7 +38,9 @@
     - [规划中](#规划中)
   - [📚 相关文档](#-相关文档)
   - [👥 贡献者](#-贡献者)
+  - [🗂️ 数据集引用说明](#️-数据集引用说明)
   - [📄 开源许可](#-开源许可)
+  - [本项目采用 Apache 2.0 许可证。](#本项目采用-apache-20-许可证)
 
 ## 📋 项目简介
 
@@ -205,10 +207,18 @@ LMeterX/
 - [@LuckyYC](https://github.com/LuckyYC) - 项目维护者 & 核心开发者
 - [@del-zhenwu](https://github.com/del-zhenwu) - 核心开发者
 
+## 🗂️ 数据集引用说明
+
+> LMeterX 基于开源 ShareGPT 数据集构建测试样本，严格遵循原始许可要求。
+
+- **数据来源**：使用 [ShareGPT 数据集](https://huggingface.co/datasets/learnanything/sharegpt_v3_unfiltered_cleaned_split) 作为原始对话语料
+- **调整范围**：
+  - 筛选高质量对话样本，剔除低质量或与压测场景无关的数据
+  - 进行随机抽样，减轻数据规模的同时保留多样化对话
+
 ## 📄 开源许可
 
 本项目采用 [Apache 2.0 许可证](LICENSE)。
-
 ---
 
 <div align="center">

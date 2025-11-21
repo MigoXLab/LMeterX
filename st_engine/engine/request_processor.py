@@ -67,21 +67,43 @@ class StreamProcessor:
             return ""
 
     @staticmethod
-    def is_sse_event_line(chunk_str: str) -> bool:
-        """Check if the line is an SSE event line (not data line) that should be skipped.
-        Only skip event control lines, not data lines that start with 'data: '.
-        """
-        chunk_str = chunk_str.strip()
+    def should_skip_non_json_chunk(chunk_str: str) -> bool:
+        """Return True when the chunk is a control/heartbeat line that should be skipped."""
 
-        # Check for SSE event control prefixes that should be skipped
-        # Only 'event:', 'id:', 'retry:' are control lines, 'data:' contains actual data
-        control_prefixes = ["event:", "event: ", "id:", "id: ", "retry:", "retry: "]
+        normalized = chunk_str.strip()
+        if not normalized:
+            return True
 
-        for prefix in control_prefixes:
-            if chunk_str.startswith(prefix):
+        normalized_lower = normalized.lower()
+
+        if normalized_lower.startswith(":"):
+            return True
+
+        # SSE control prefixes that never contain payload data
+        SSE_CONTROL_PREFIXES = (
+            "event:",
+            "id:",
+            "retry:",
+        )
+        if any(normalized_lower.startswith(prefix) for prefix in SSE_CONTROL_PREFIXES):
+            return True
+
+        # Strip leading 'data:' prefix if present to inspect actual payload
+        chunk_data = normalized_lower
+        if normalized_lower.startswith("data:"):
+            chunk_data = normalized_lower[5:].strip()
+            if not chunk_data:
                 return True
 
-        return False
+        IGNORE_HEARTBEAT_TOKENS = {
+            "heartbeat",
+            "keepalive",
+            "keep-alive",
+            "ping",
+            "pong",
+        }
+
+        return chunk_data in IGNORE_HEARTBEAT_TOKENS
 
     @staticmethod
     def remove_chunk_prefix(chunk_str: str, field_mapping: FieldMapping) -> str:
@@ -273,6 +295,9 @@ class StreamProcessor:
         if not chunk_str:
             return False, None, metrics
 
+        if StreamProcessor.should_skip_non_json_chunk(chunk_str):
+            return False, None, metrics
+
         # Remove prefix if present
         processed_chunk = StreamProcessor.remove_chunk_prefix(chunk_str, field_mapping)
 
@@ -283,14 +308,12 @@ class StreamProcessor:
         if StreamProcessor.check_stop_flag(processed_chunk, field_mapping):
             return True, None, metrics  # Normal stream end
 
-        if StreamProcessor.is_sse_event_line(chunk_str):
-            return False, None, metrics
         # Check if data format is JSON
         if field_mapping.data_format == "json":
             try:
                 chunk_data = orjson.loads(processed_chunk)
             except (orjson.JSONDecodeError, TypeError) as e:
-                task_logger.error(
+                task_logger.warning(
                     f"Failed to parse chunk as JSON: {e} | Chunk: {processed_chunk}"
                 )
                 return True, f"JSON parsing error: {e}", metrics

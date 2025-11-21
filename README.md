@@ -242,8 +242,3 @@ If you use EvalScope in your research, please cite our work:
 ## 📄 Open Source License
 
 This project is licensed under the [Apache 2.0 License](LICENSE).
-
----
-<div align="center">
-**⭐ If this project helps you, please give us a Star! Your support is our motivation for continuous improvement.**
-</div>

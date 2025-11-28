@@ -57,6 +57,7 @@ class TokenCounter(ABC):
     """Common interface for token counters with built-in fallback estimation."""
 
     def count_tokens(self, text: str) -> int:
+        """Count tokens for the provided text with a safe fallback."""
         if not text or not text.strip():
             return 0
 
@@ -87,6 +88,7 @@ class TikTokenCounter(TokenCounter):
     """Token counter backed by tiktoken encoders."""
 
     def __init__(self, model_name: str):
+        """Initialize the counter with a resolved tiktoken encoding."""
         if tiktoken is None:
             raise ValueError("tiktoken not installed")
 

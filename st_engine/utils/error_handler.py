@@ -16,6 +16,7 @@ class ErrorResponse:
     """Centralized error handling for various scenarios."""
 
     def __init__(self, config: GlobalConfig, task_logger):
+        """Store configuration and task-specific logger for later use."""
         self.config = config
         self.task_logger = task_logger
 

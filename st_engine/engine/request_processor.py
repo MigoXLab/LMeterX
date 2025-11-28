@@ -784,7 +784,7 @@ class APIClient:
         self.error_handler = ErrorResponse(config, task_logger)
 
     def _iter_stream_lines(self, response) -> Any:
-        """Yield complete SSE lines using \n\n as delimiter. Robust version for HttpUser."""
+        """Yield SSE lines separated by blank lines for HttpUser streaming."""
         # For HttpUser, response is a requests.Response object
         if not hasattr(response, "iter_lines"):
             self.task_logger.error("Response object does not support streaming.")

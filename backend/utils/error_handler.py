@@ -74,6 +74,7 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """Initialize the error payload and base HTTPException."""
         self.error = error
         self.details = details
         self.code = self._resolve_code(status_code, code)
@@ -136,6 +137,7 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> "ErrorResponse":
+        """Create a 400 Bad Request error response."""
         return cls(400, error, details, code, extra)
 
     @classmethod
@@ -146,6 +148,7 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> "ErrorResponse":
+        """Create a 404 Not Found error response."""
         return cls(404, error, details, code, extra)
 
     @classmethod
@@ -156,6 +159,7 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> "ErrorResponse":
+        """Create a 500 Internal Server Error response."""
         return cls(500, error, details, code, extra)
 
     @classmethod
@@ -166,6 +170,7 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> "ErrorResponse":
+        """Create a 401 Unauthorized error response."""
         return cls(401, error, details, code, extra)
 
     @classmethod
@@ -176,6 +181,7 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> "ErrorResponse":
+        """Create a 403 Forbidden error response."""
         return cls(403, error, details, code, extra)
 
     @classmethod
@@ -186,6 +192,7 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> "ErrorResponse":
+        """Create a 409 Conflict error response."""
         return cls(409, error, details, code, extra)
 
     @classmethod
@@ -196,4 +203,5 @@ class ErrorResponse(HTTPException):
         code: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> "ErrorResponse":
+        """Create a 422 Unprocessable Entity error response."""
         return cls(422, error, details, code, extra)

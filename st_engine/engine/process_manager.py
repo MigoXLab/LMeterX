@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 import psutil
 
-from engine.process_monitor import ProcessInfo, ProcessMonitor
+from engine.process_monitor import ProcessMonitor
 from utils.logger import logger
 
 
@@ -27,6 +27,7 @@ class LocustProcessGroup:
     status: str = "unknown"  # created, running, stopping, stopped, failed
 
     def __post_init__(self):
+        """Normalize optional fields for worker list and timestamps."""
         if self.worker_pids is None:
             self.worker_pids = []
         if self.start_time == 0.0:
@@ -37,6 +38,7 @@ class MultiprocessManager:
     """Enhanced multiprocess manager for Locust testing."""
 
     def __init__(self):
+        """Initialize process tracking structures and monitoring helpers."""
         self._process_groups: Dict[str, LocustProcessGroup] = {}
         self._port_usage: Dict[int, str] = {}  # port -> task_id mapping
         self._lock = threading.RLock()
@@ -49,7 +51,7 @@ class MultiprocessManager:
         """Cleanup on destruction."""
         try:
             self._monitor.stop_monitoring()
-        except:
+        except Exception:
             pass
 
     def cleanup_all_locust_processes(self) -> int:

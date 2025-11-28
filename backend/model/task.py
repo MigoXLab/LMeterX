@@ -209,6 +209,7 @@ class TaskCreateReq(BaseModel):
 
     @validator("name")
     def validate_name(cls, v):
+        """Ensure task name is present and within allowed length."""
         if not v or not v.strip():
             raise ValueError("Name cannot be empty")
         if len(v.strip()) > 100:
@@ -217,6 +218,7 @@ class TaskCreateReq(BaseModel):
 
     @validator("target_host")
     def validate_target_host(cls, v):
+        """Validate the target host URL structure."""
         if not v or not v.strip():
             raise ValueError("API address cannot be empty")
         v = v.strip()
@@ -229,6 +231,7 @@ class TaskCreateReq(BaseModel):
 
     @validator("api_path")
     def validate_api_path(cls, v):
+        """Ensure the API path is absolute and within limits."""
         if not v or not v.strip():
             raise ValueError("API path cannot be empty")
         v = v.strip()
@@ -240,6 +243,7 @@ class TaskCreateReq(BaseModel):
 
     @validator("model")
     def validate_model(cls, v):
+        """Normalize optional model names while enforcing max length."""
         if v and len(v.strip()) > 255:
             raise ValueError("Model name length cannot exceed 255 characters")
         return v.strip() if v else ""
@@ -279,6 +283,7 @@ class TaskCreateReq(BaseModel):
 
     @validator("headers")
     def validate_headers(cls, v):
+        """Validate header collection size and individual key/value limits."""
         if len(v) > 50:
             raise ValueError("Request header count cannot exceed 50")
         for header in v:
@@ -296,6 +301,7 @@ class TaskCreateReq(BaseModel):
 
     @validator("cookies")
     def validate_cookies(cls, v):
+        """Validate cookie collection size and individual key/value limits."""
         if len(v) > 50:
             raise ValueError("Cookie count cannot exceed 50")
         for cookie in v:
@@ -309,6 +315,7 @@ class TaskCreateReq(BaseModel):
 
     @validator("test_data")
     def validate_test_data(cls, v):
+        """Ensure optional test data does not exceed the 1MB limit."""
         if v and len(v) > 1000000:  # 1MB
             raise ValueError("Test data size cannot exceed 1MB")
         return v

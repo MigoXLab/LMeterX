@@ -90,6 +90,7 @@ class GlobalStateManager:
     _lock = threading.Lock()
 
     def __new__(cls):
+        """Create or return the singleton instance."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -142,18 +143,22 @@ class GlobalStateManager:
 
     @property
     def worker_count(self) -> int:
+        """Get the number of active worker processes."""
         return self._worker_count
 
     @worker_count.setter
     def worker_count(self, value: int):
+        """Set the number of active worker processes."""
         self._worker_count = value
 
     @property
     def concurrent_users(self) -> int:
+        """Get current concurrent user count."""
         return self._concurrent_users
 
     @concurrent_users.setter
     def concurrent_users(self, value: int):
+        """Set current concurrent user count."""
         self._concurrent_users = value
 
     def get_task_logger(self, task_id: str = ""):
@@ -177,9 +182,11 @@ class SimpleLock:
     """Simple lock implementation as fallback when multiprocessing fails."""
 
     def __enter__(self):
+        """Enter the dummy lock context."""
         pass
 
     def __exit__(self, *args):
+        """Exit the dummy lock context."""
         pass
 
 

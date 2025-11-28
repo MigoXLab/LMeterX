@@ -8,7 +8,7 @@ import os
 import re
 from typing import Any, Dict, Union
 
-from config.base import IMAGES_DIR, SENSITIVE_KEYS
+from config.base import SENSITIVE_KEYS
 from utils.logger import logger
 
 

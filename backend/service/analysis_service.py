@@ -39,6 +39,8 @@ METRIC_TYPES = (
 
 @dataclass
 class TaskMetricSnapshot:
+    """Lightweight container for the latest aggregated task metrics."""
+
     first_token_latency: float = 0.0
     total_time: float = 0.0
     total_tps: float = 0.0
@@ -48,6 +50,7 @@ class TaskMetricSnapshot:
     rps: float = 0.0
 
     def to_dict(self) -> Dict[str, float]:
+        """Serialize the snapshot to a plain dictionary for API responses."""
         return {
             "first_token_latency": self.first_token_latency,
             "total_time": self.total_time,

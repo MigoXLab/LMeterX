@@ -1,7 +1,6 @@
 """
 Author: Charm
 Copyright (c) 2025, All Rights Reserved.
-
 """
 
 import time
@@ -478,9 +477,11 @@ class PayloadBuilder:
             elif api_type == "embeddings":
                 self._update_embeddings_payload(payload, user_prompt)
             elif api_type == "custom-chat":
-                # For custom-chat, use field mapping
-                field_mapping = ConfigManager.parse_field_mapping(
-                    self.config.field_mapping or ""
+                # For custom-chat, rely on explicit field mapping without auto defaults
+                field_mapping = ConfigManager.resolve_field_mapping(
+                    self.config,
+                    required_fields=("prompt", "image"),
+                    fallback_to_api_defaults=False,
                 )
                 if field_mapping.prompt or field_mapping.image:
                     self._update_payload_by_field_mapping(
@@ -695,17 +696,9 @@ class PayloadBuilder:
     def _extract_prompt_from_payload(self, payload: Dict[str, Any]) -> str:
         """Extract prompt content from custom payload using field mapping."""
         try:
-            field_mapping = ConfigManager.parse_field_mapping(
-                self.config.field_mapping or ""
+            field_mapping = ConfigManager.resolve_field_mapping(
+                self.config, required_fields=("prompt",)
             )
-
-            # Auto-generate field mapping for standard API types if not configured
-            if not field_mapping.prompt and hasattr(self.config, "api_type"):
-                api_type = getattr(self.config, "api_type", "")
-                if api_type in ("openai-chat", "claude-chat", "embeddings"):
-                    field_mapping = ConfigManager.generate_field_mapping_by_api_type(
-                        api_type, self.config.stream_mode
-                    )
 
             if field_mapping.prompt:
                 prompt_value = StreamProcessor.get_field_value(
@@ -818,18 +811,9 @@ class APIClient:
         """Handle streaming API request with comprehensive metrics collection."""
         metrics = StreamMetrics()
         request_kwargs = {**base_request_kwargs, "stream": True}
-        field_mapping = ConfigManager.parse_field_mapping(
-            self.config.field_mapping or ""
+        field_mapping = ConfigManager.resolve_field_mapping(
+            self.config, required_fields=("content",)
         )
-
-        # Auto-generate field mapping for standard API types if not configured
-        if not field_mapping.prompt and hasattr(self.config, "api_type"):
-            api_type = getattr(self.config, "api_type", "")
-            self.task_logger.debug(f"handle_stream_request-api_type: {api_type}")
-            if api_type in ("openai-chat", "claude-chat", "embeddings"):
-                field_mapping = ConfigManager.generate_field_mapping_by_api_type(
-                    api_type, self.config.stream_mode
-                )
         response = None
         actual_start_time = 0.0
         request_name = base_request_kwargs.get("name", "failure")
@@ -1062,17 +1046,9 @@ class APIClient:
 
         request_kwargs = {**base_request_kwargs, "stream": False}
         content, reasoning_content = "", ""
-        field_mapping = ConfigManager.parse_field_mapping(
-            self.config.field_mapping or ""
+        field_mapping = ConfigManager.resolve_field_mapping(
+            self.config, required_fields=("content",)
         )
-
-        # Auto-generate field mapping for standard API types if not configured
-        if not field_mapping.prompt and hasattr(self.config, "api_type"):
-            api_type = getattr(self.config, "api_type", "")
-            if api_type in ("openai-chat", "claude-chat", "embeddings"):
-                field_mapping = ConfigManager.generate_field_mapping_by_api_type(
-                    api_type, self.config.stream_mode
-                )
         request_name = base_request_kwargs.get("name", "failure")
         usage: Dict[str, Optional[int]] = {
             "completion_tokens": 0,

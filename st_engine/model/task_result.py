@@ -1,3 +1,8 @@
+"""
+Author: Charm
+Copyright (c) 2025, All Rights Reserved.
+"""
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Column, DateTime, Float, Index, Integer, String

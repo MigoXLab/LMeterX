@@ -176,8 +176,8 @@ export const uploadFiles = async (
               if (typeof item === 'string') {
                 return item;
               }
-              if (item.msg) {
-                const msg: string = item.msg;
+              const { msg }: { msg?: string } = item;
+              if (msg) {
                 if (/Expected UploadFile/i.test(msg)) {
                   return 'Server did not receive the uploaded file. Please reselect the file and try again.';
                 }
@@ -196,7 +196,7 @@ export const uploadFiles = async (
       } else if (typeof detail === 'string') {
         errorMessage = detail;
       } else if (detail?.msg) {
-        const msg: string = detail.msg;
+        const { msg }: { msg: string } = detail;
         errorMessage = /Expected UploadFile/i.test(msg)
           ? 'Server did not receive the uploaded file. Please reselect the file and try again.'
           : msg;

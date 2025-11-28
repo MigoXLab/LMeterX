@@ -21,6 +21,7 @@ else:
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "upload_files")
 
 LOG_TASK_DIR = os.path.join(LOG_DIR, "task")
+
 # File upload security configuration
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
 MAX_FILENAME_LENGTH = 255

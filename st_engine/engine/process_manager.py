@@ -61,53 +61,12 @@ class MultiprocessManager:
         terminated_count = 0
 
         try:
-            # Find all Locust processes
-            locust_processes = []
-            for proc in psutil.process_iter(["pid", "name", "cmdline", "ppid"]):
-                try:
-                    proc_info = proc.info
-                    cmdline = proc_info.get("cmdline", [])
-                    process_name = proc_info.get("name", "")
-
-                    # Ensure cmdline is not None and is iterable
-                    if cmdline is None:
-                        cmdline = []
-
-                    # Enhanced Locust process detection
-                    is_locust_process = (
-                        # Direct Locust command
-                        isinstance(cmdline, (list, tuple))
-                        and any("locust" in str(arg).lower() for arg in cmdline)
-                        or
-                        # Python process running Locust
-                        (
-                            process_name.lower() in ["python", "python3"]
-                            and isinstance(cmdline, (list, tuple))
-                            and any(
-                                "/locust" in str(arg) or "locustfile" in str(arg)
-                                for arg in cmdline
-                            )
-                        )
-                    )
-
-                    if is_locust_process:
-                        # Skip our own process monitoring and system processes
-                        if (
-                            "ProcessMonitor" not in str(cmdline)
-                            and "process_monitor" not in str(cmdline)
-                            and proc_info["pid"] != os.getpid()
-                        ):
-                            locust_processes.append(proc_info["pid"])
-
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
+            locust_processes = list(self._iter_external_locust_processes())
 
             if locust_processes:
-
                 # Terminate processes gracefully first
-                for pid in locust_processes:
+                for process in locust_processes:
                     try:
-                        process = psutil.Process(pid)
                         process.terminate()
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
@@ -116,14 +75,13 @@ class MultiprocessManager:
                 time.sleep(3.0)
 
                 # Force kill remaining processes
-                for pid in locust_processes:
+                for process in locust_processes:
                     try:
-                        process = psutil.Process(pid)
                         if process.is_running():
                             process.kill()
-                            terminated_count += 1
+                        terminated_count += 1
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        terminated_count += 1  # Already terminated
+                        terminated_count += 1
                         continue
 
         except Exception as e:
@@ -317,45 +275,29 @@ class MultiprocessManager:
 
             # Find potentially orphaned Locust processes
             orphaned_candidates = []
-            for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            for proc in self._iter_external_locust_processes():
                 try:
-                    proc_info = proc.info
-                    pid = proc_info["pid"]
-                    cmdline = proc_info.get("cmdline", [])
-                    create_time = proc_info.get("create_time", 0)
-
-                    # Ensure cmdline is not None and is iterable
-                    if cmdline is None:
-                        cmdline = []
-
-                    # Check if this is a Locust process
-                    if not self._is_locust_process(proc):
-                        continue
-
-                    # Skip our own process and system processes
-                    if (
-                        pid == os.getpid()
-                        or "ProcessMonitor" in str(cmdline)
-                        or "process_monitor" in str(cmdline)
-                    ):
-                        continue
-
-                    # Skip if it's a tracked process from active tasks
+                    pid = proc.pid
                     if pid in tracked_pids:
                         continue
 
-                    # Check if process is old enough to be considered orphaned (> 5 minutes)
+                    cmdline = proc.info.get("cmdline", [])
+                    if cmdline is None:
+                        cmdline = []
+                    cmdline_str = (
+                        " ".join(cmdline)
+                        if isinstance(cmdline, (list, tuple))
+                        else str(cmdline)
+                    )
+                    create_time = proc.info.get("create_time", 0)
+
                     process_age = time.time() - create_time
-                    if process_age < 300:  # Less than 5 minutes old
+                    if process_age < 300:
                         continue
 
-                    # Check if process appears to be associated with any active task
-                    is_associated_with_active_task = False
-                    for task_id in active_task_ids:
-                        if task_id in str(cmdline):
-                            is_associated_with_active_task = True
-                            break
-
+                    is_associated_with_active_task = any(
+                        task_id in cmdline_str for task_id in active_task_ids
+                    )
                     if not is_associated_with_active_task:
                         orphaned_candidates.append(pid)
 
@@ -410,19 +352,38 @@ class MultiprocessManager:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
 
+    def _iter_external_locust_processes(self):
+        """
+        Yield Locust processes excluding the current process and internal monitors.
+        Centralizes filtering logic to keep cleanup routines cohesive.
+        """
+        attrs = ["pid", "name", "cmdline", "create_time"]
+        for proc in psutil.process_iter(attrs):
+            try:
+                if not self._is_locust_process(proc):
+                    continue
+                if proc.pid == os.getpid():
+                    continue
+                cmdline = proc.info.get("cmdline", [])
+                if cmdline is None:
+                    cmdline = []
+                cmdline_str = (
+                    " ".join(cmdline)
+                    if isinstance(cmdline, (list, tuple))
+                    else str(cmdline)
+                )
+                if "ProcessMonitor" in cmdline_str or "process_monitor" in cmdline_str:
+                    continue
+                yield proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
     def _count_remaining_locust_processes(self) -> int:
         """Count remaining Locust processes."""
-        count = 0
         try:
-            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                try:
-                    if self._is_locust_process(proc) and proc.pid != os.getpid():
-                        count += 1
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
+            return sum(1 for _ in self._iter_external_locust_processes())
         except Exception:
-            pass
-        return count
+            return 0
 
 
 # Global multiprocess manager instance

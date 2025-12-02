@@ -123,6 +123,7 @@ class TikTokenCounter(TokenCounter):
         return tk.get_encoding(encoding_name)
 
     def encode(self, text: str) -> list[int]:
+        """Encode text into token IDs using the resolved tokenizer."""
         return self.encoding.encode(text, disallowed_special=())
 
     def _count_tokens(self, text: str) -> int:

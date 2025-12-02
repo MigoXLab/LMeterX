@@ -13,13 +13,13 @@ from typing import Any, Dict, Optional
 
 import urllib3
 from gevent import queue
-from locust import HttpUser, between, events, task
+from locust import HttpUser, events, task
 from urllib3.exceptions import InsecureRequestWarning
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.base import DEFAULT_PROMPT, DEFAULT_WAIT_TIME_MAX, DEFAULT_WAIT_TIME_MIN
+from config.base import DEFAULT_PROMPT
 
 # Local imports after path setup
 from engine.core import ConfigManager, GlobalStateManager, ValidationManager
@@ -332,7 +332,6 @@ class LLMTestUser(HttpUser):
     # Class-level shared instances to reduce memory usage
     _shared_request_handler = None
     _shared_stream_handler = None
-    wait_time = between(DEFAULT_WAIT_TIME_MIN, DEFAULT_WAIT_TIME_MAX)
 
     def __init__(self, environment):
         """Initialize the LLMTestUser with environment and handlers.

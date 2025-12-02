@@ -11,6 +11,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import httpx
 from fastapi import Query, Request
 from sqlalchemy import func, or_, select, text
 from starlette.responses import JSONResponse
@@ -37,7 +38,6 @@ from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
 
 # Testing configuration
-MAX_CHUNKS_FOR_TESTING = 5000  # max chunks to collect for testing
 MAX_DURATION_FOR_TESTING = 120  # max duration to wait for testing
 
 MAX_HEADER_ITEMS = 20
@@ -943,8 +943,6 @@ async def test_api_endpoint_svc(request: Request, body: TaskCreateReq):
     Returns:
         A dictionary containing the test result.
     """
-    import httpx
-
     try:
         # Prepare headers
         headers = {
@@ -1041,7 +1039,6 @@ async def test_api_endpoint_svc(request: Request, body: TaskCreateReq):
 async def _handle_streaming_response(
     response,
     full_url: str,
-    max_chunks: int = MAX_CHUNKS_FOR_TESTING,
     max_duration: int = MAX_DURATION_FOR_TESTING,
 ) -> Dict:
     """
@@ -1051,12 +1048,33 @@ async def _handle_streaming_response(
       Args:
         response: The response object from the API endpoint.
         full_url: The full URL of the API endpoint.
-        max_chunks: The maximum number of chunks to collect for testing.
         max_duration: The maximum duration to wait for testing.
     Returns:
         A dictionary containing the streaming response.
     """
-    stream_data = []
+    stream_data: List[str] = []
+    append_chunk = stream_data.append
+    test_note = "Streaming connection test completed, only collected partial data for verification"
+
+    def _build_stream_result(
+        note: str, warning: Optional[str] = None
+    ) -> Dict[str, Any]:
+        test_successful = len(stream_data) > 0
+        response_payload: Dict[str, Any] = {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "data": stream_data,
+            "is_stream": True,
+            "test_note": note,
+        }
+        if warning:
+            response_payload["warning"] = warning
+        return {
+            "status": "success" if test_successful else "error",
+            "response": response_payload,
+            "error": None if test_successful else "No streaming data received",
+        }
+
     try:
         # If status code is not 200, return error response immediately
         if response.status_code != 200:
@@ -1082,46 +1100,29 @@ async def _handle_streaming_response(
                 "error": f"HTTP {response.status_code}. {error_content}",
             }
 
-        # For testing purposes, we limit the time and data we collect
+        # For testing purposes, we limit the time we spend collecting data
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max_duration
 
-        start_time = asyncio.get_event_loop().time()
-
-        # Process streaming data with time and chunk limits
+        # Process streaming data with only time limit
         async for chunk in response.aiter_lines():
             if chunk:
                 chunk_str = chunk.strip()
                 if chunk_str:
-                    stream_data.append(chunk_str)
-
-                    # For testing, we can return early after getting a few valid chunks
-                    if len(stream_data) >= max_chunks:
-                        stream_data.append(
-                            f"... (testing completed, collected {len(stream_data)} chunks, connection is normal)"
-                        )
-                        break
+                    append_chunk(chunk_str)
 
                     # Check if we've spent too much time
-                    current_time = asyncio.get_event_loop().time()
-                    if current_time - start_time > max_duration:
-                        stream_data.append(
-                            f"... (testing time reached {max_duration} seconds, connection is normal)"
+                    if loop.time() >= deadline:
+                        test_note = (
+                            "Streaming connection test completed after reaching the "
+                            f"{max_duration}-second limit"
+                        )
+                        logger.info(
+                            f"Stopped streaming test after {max_duration} seconds",
                         )
                         break
 
-        # If we got at least one chunk, the connection is working
-        test_successful = len(stream_data) > 0
-
-        return {
-            "status": "success" if test_successful else "error",
-            "response": {
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
-                "data": stream_data,
-                "is_stream": True,
-                "test_note": "Streaming connection test completed, only collected partial data for verification",
-            },
-            "error": None if test_successful else "No streaming data received",
-        }
+        return _build_stream_result(test_note)
 
     except asyncio.TimeoutError:
         logger.error("Stream processing timeout")
@@ -1129,7 +1130,14 @@ async def _handle_streaming_response(
             ErrorMessages.STREAM_PROCESSING_TIMEOUT
         )
     except Exception as stream_error:
-        logger.error(
-            f"Error processing stream: {stream_error}. stream data: {stream_data}"
-        )
+        if stream_data:
+            warning_text = str(stream_error).strip() or "Stream closed unexpectedly."
+            logger.error(
+                f"Stream test ended with error: {warning_text}",
+            )
+            return _build_stream_result(
+                test_note, warning=f"Stream ended early: {warning_text}"
+            )
+
+        logger.error(f"Error processing stream: {stream_error}")
         raise ErrorResponse.internal_server_error(ErrorMessages.STREAM_PROCESSING_ERROR)

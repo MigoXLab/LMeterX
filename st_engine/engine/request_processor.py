@@ -489,7 +489,7 @@ class PayloadBuilder:
                     )
                 else:
                     self.task_logger.warning(
-                        "custom-chat requires field_mapping configuration for dataset integration"
+                        "The field_mapping configuration is empty, the original payload will be used for the request."
                     )
             else:
                 # Fallback: No dataset integration for unknown types

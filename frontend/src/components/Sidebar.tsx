@@ -35,7 +35,7 @@ const Sidebar: React.FC = () => {
       key: '/result-comparison',
       icon: <BarChartOutlined style={{ color: '#52c41a' }} />,
       label: (
-        <span className='text-bold text-xl'>{t('sidebar.modelArena')}</span>
+        <span className='text-bold text-xl'>{t('sidebar.perfCompare')}</span>
       ),
     },
     {

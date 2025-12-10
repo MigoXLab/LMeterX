@@ -3,20 +3,17 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import json
-import os
 import time
 from typing import Any, Dict, List
 
 from engine.core import GlobalStateManager
-
-from utils.logger import logger
 
 
 class StatsManager:
     """Statistics manager"""
 
     def __init__(self):
+        """Prepare shared global state handles used for aggregation."""
         self.global_state = GlobalStateManager()
         self.task_logger = self.global_state.get_task_logger()
 

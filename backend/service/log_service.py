@@ -5,8 +5,6 @@ Copyright (c) 2025, All Rights Reserved.
 
 import os.path
 
-from starlette.responses import JSONResponse
-
 from model.log import LogContentResponse
 from utils.be_config import LOG_DIR
 from utils.error_handler import ErrorMessages, ErrorResponse
@@ -141,13 +139,13 @@ async def get_service_log_svc(service_name: str, offset: int, tail: int):
         message on failure.
     """
     if not service_name:
-        return ErrorResponse.bad_request(ErrorMessages.SERVICE_NAME_EMPTY)
+        raise ErrorResponse.bad_request(ErrorMessages.SERVICE_NAME_EMPTY)
 
     log_file_path = os.path.join(LOG_DIR, f"{service_name}.log")
 
     if not os.path.exists(log_file_path):
         logger.warning(f"Log file not found: {log_file_path}")
-        return ErrorResponse.not_found(
+        raise ErrorResponse.not_found(
             f"Log file for service '{service_name}' not found"
         )
     try:
@@ -156,7 +154,7 @@ async def get_service_log_svc(service_name: str, offset: int, tail: int):
         return LogContentResponse(content=content, file_size=file_size)
     except Exception as e:
         logger.error("Failed to read log file {}: {}", log_file_path, e)
-        return ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)
+        raise ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)
 
 
 async def get_task_log_svc(task_id: str, offset: int, tail: int):
@@ -167,13 +165,13 @@ async def get_task_log_svc(task_id: str, offset: int, tail: int):
     based on the offset and tail parameters.
     """
     if not task_id:
-        return ErrorResponse.bad_request(ErrorMessages.TASK_ID_EMPTY)
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_EMPTY)
 
     log_file_path = os.path.join(LOG_DIR, "task", f"task_{task_id}.log")
 
     if not os.path.exists(log_file_path):
         logger.warning(f"Log file not found: {log_file_path}")
-        return ErrorResponse.not_found(
+        raise ErrorResponse.not_found(
             f"Log file for task '{task_id}' not found at {log_file_path}"
         )
 
@@ -183,4 +181,4 @@ async def get_task_log_svc(task_id: str, offset: int, tail: int):
         return LogContentResponse(content=content, file_size=file_size)
     except Exception as e:
         logger.error("Failed to read log file {}: {}", log_file_path, e)
-        return ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)
+        raise ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)

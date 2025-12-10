@@ -13,26 +13,16 @@ from typing import Any, Dict, Optional
 
 import urllib3
 from gevent import queue
-from locust import HttpUser, between, events, task
+from locust import HttpUser, events, task
 from urllib3.exceptions import InsecureRequestWarning
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.base import (
-    DEFAULT_PROMPT,
-    DEFAULT_TIMEOUT,
-    DEFAULT_WAIT_TIME_MAX,
-    DEFAULT_WAIT_TIME_MIN,
-)
+from config.base import DEFAULT_PROMPT
 
 # Local imports after path setup
-from engine.core import (
-    CertificateManager,
-    ConfigManager,
-    GlobalStateManager,
-    ValidationManager,
-)
+from engine.core import ConfigManager, GlobalStateManager, ValidationManager
 from engine.request_processor import APIClient, PayloadBuilder
 from utils.common import mask_sensitive_data
 from utils.error_handler import ErrorResponse
@@ -49,6 +39,83 @@ _shutdown_in_progress = False
 custom_metrics_aggregated: Dict[str, Any] = {}
 global_state = GlobalStateManager()
 stats_manager = StatsManager()
+
+
+def _register_signal_handlers(task_logger):
+    """Register graceful shutdown handlers with safety logging."""
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, graceful_signal_handler)
+        except Exception as exc:  # pragma: no cover - platform dependent
+            task_logger.warning(f"Failed to register handler for {sig}: {exc}")
+
+
+def _ensure_prompt_queue(environment, options, task_logger):
+    """
+    Ensure the Locust environment carries a prompt_queue.
+    Returns the queue instance for chaining.
+    """
+    if hasattr(environment, "prompt_queue"):
+        return environment.prompt_queue
+
+    try:
+        from utils.dataset_loader import init_prompt_queue
+
+        environment.prompt_queue = init_prompt_queue(
+            chat_type=int(getattr(options, "chat_type", 0)),
+            test_data=getattr(options, "test_data", "") or "",
+            task_logger=task_logger,
+        )
+    except Exception as exc:
+        task_logger.error(f"Failed to initialize prompt queue: {exc}")
+        environment.prompt_queue = queue.Queue()
+    return environment.prompt_queue
+
+
+def _register_master_message_handlers(environment, task_logger):
+    """Register custom message handlers when running as Master."""
+    try:
+        from locust.runners import MasterRunner
+
+        runner = getattr(environment, "runner", None)
+        if not isinstance(runner, MasterRunner):
+            return
+
+        def on_token_stats(environment, msg, **kwargs):
+            """Master received token stats from Worker"""
+            data = msg.data
+            stats_manager.update_stats(
+                reqs=data.get("reqs", 0),
+                completion_tokens=data.get("completion_tokens", 0),
+                total_tokens=data.get("total_tokens", 0),
+            )
+            task_logger.debug(f"[Master] Received stats from worker: {data}")
+
+        runner.register_message("token_stats", on_token_stats)
+    except Exception as exc:
+        task_logger.warning(f"Error registering message handlers: {exc}")
+
+
+def _write_result_file(task_id, final_stats, locust_stats, task_logger) -> str:
+    """Persist aggregated metrics to a temporary location."""
+    result_file = os.path.join(
+        tempfile.gettempdir(), "locust_result", task_id, "result.json"
+    )
+    os.makedirs(os.path.dirname(result_file), exist_ok=True)
+
+    with open(result_file, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "custom_metrics": final_stats,
+                "locust_stats": locust_stats,
+            },
+            f,
+            indent=4,
+            ensure_ascii=False,
+        )
+
+    task_logger.info(f"Saved aggregated result to {result_file}")
+    return result_file
 
 
 def graceful_signal_handler(signum, frame):
@@ -189,34 +256,15 @@ def on_locust_init(environment, **kwargs):
     task_logger = global_state.get_task_logger(task_id)
 
     # Register custom signal handler to handle graceful shutdown
-    try:
-        signal.signal(signal.SIGTERM, graceful_signal_handler)
-        signal.signal(signal.SIGINT, graceful_signal_handler)
-    except Exception as e:
-        task_logger.warning(f"Failed to register custom signal handlers: {e}")
+    _register_signal_handlers(task_logger)
 
     try:
         # Update global config
-        config = global_state.config
-        config.task_id = task_id
-        config.api_path = options.api_path
-        config.api_type = options.api_type or "openai-chat"
-        config.request_payload = options.request_payload
-        config.model_name = options.model_name
-        config.user_prompt = options.user_prompt
-        config.stream_mode = str(options.stream_mode).lower() in ("true", "1")
-        config.chat_type = int(options.chat_type)
-        config.cert_file = options.cert_file
-        config.key_file = options.key_file
-        config.field_mapping = options.field_mapping
-        config.test_data = options.test_data
-        config.duration = int(options.duration)
-
-        # Parse and validate configuration
-        config.headers = ConfigManager.parse_headers(options.headers, task_logger)
-        config.cookies = ConfigManager.parse_cookies(options.cookies, task_logger)
-        config.cert_config = CertificateManager.configure_certificates(
-            config.cert_file, config.key_file, task_logger
+        config = ConfigManager.apply_options(
+            global_state.config,
+            options,
+            task_logger,
+            overrides={"task_id": task_id},
         )
 
         # Validate configuration before proceeding
@@ -224,43 +272,15 @@ def on_locust_init(environment, **kwargs):
             raise ValueError("Invalid configuration provided")
 
         # Initialize prompt queue
-        if not hasattr(environment, "prompt_queue"):
-            try:
-                from utils.dataset_loader import init_prompt_queue
-
-                environment.prompt_queue = init_prompt_queue(
-                    chat_type=options.chat_type,
-                    test_data=options.test_data or "",
-                    task_logger=task_logger,
-                )
-            except Exception as e:
-                task_logger.error(f"Failed to initialize prompt queue: {e}")
-                environment.prompt_queue = queue.Queue()
+        _ensure_prompt_queue(environment, options, task_logger)
 
         environment.global_config = config
         masked_config = mask_sensitive_data(config.__dict__)
+        task_logger.info(f"Loaded task configuration: {masked_config}")
         global_state.start_time = time.time()
 
         # Register message handlers
-        runner = environment.runner
-        try:
-            from locust.runners import MasterRunner
-
-            if isinstance(runner, MasterRunner):
-
-                def on_token_stats(environment, msg, **kwargs):
-                    """Master received token stats from Worker"""
-                    data = msg.data
-                    stats_manager.update_stats(
-                        reqs=data.get("reqs", 0),
-                        completion_tokens=data.get("completion_tokens", 0),
-                        total_tokens=data.get("total_tokens", 0),
-                    )
-                    task_logger.debug(f"[Master] Received stats from worker: {data}")
-
-                runner.register_message("token_stats", on_token_stats)
-        except Exception as e:
-            task_logger.warning(f"Error registering message handlers: {e}")
+        _register_master_message_handlers(environment, task_logger)
 
     except Exception as e:
         task_logger.error(f"Error during Locust initialization: {e}", exc_info=True)
@@ -289,10 +309,6 @@ def on_test_stop(environment, **kwargs):
 
         final_stats = stats_manager.get_final_stats()
         task_id = global_state.config.task_id
-        result_file = os.path.join(
-            tempfile.gettempdir(), "locust_result", task_id, "result.json"
-        )
-        os.makedirs(os.path.dirname(result_file), exist_ok=True)
 
         # Get Locust standard stats
         try:
@@ -302,18 +318,7 @@ def on_test_stop(environment, **kwargs):
             task_logger.warning(f"Failed to get Locust stats: {e}")
             locust_stats = {}
 
-        # Save results
-        with open(result_file, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "custom_metrics": final_stats,
-                    "locust_stats": locust_stats,
-                },
-                f,
-                indent=4,
-                ensure_ascii=False,
-            )
-
+        _write_result_file(task_id, final_stats, locust_stats, task_logger)
         task_logger.info(f"Final statistics: {final_stats}")
 
     except Exception as e:

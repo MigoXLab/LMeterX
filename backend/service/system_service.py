@@ -3,11 +3,10 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import json
 import uuid
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +23,72 @@ from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
 from utils.tools import mask_api_key, mask_config_value
 
+AI_CONFIG_KEYS = ("ai_service_host", "ai_service_model", "ai_service_api_key")
+
+
+def _to_string(value: Optional[Any]) -> str:
+    return str(value) if value is not None else ""
+
+
+def _build_config_response(
+    config: SystemConfig, *, mask_sensitive: bool = True
+) -> SystemConfigResponse:
+    config_key = _to_string(config.config_key)
+    raw_value = _to_string(config.config_value)
+    config_value = (
+        mask_config_value(config_key, raw_value) if mask_sensitive else raw_value
+    )
+
+    return SystemConfigResponse(
+        config_key=config_key,
+        config_value=config_value,
+        description=(
+            _to_string(config.description) if config.description is not None else None
+        ),
+        created_at=config.created_at.isoformat() if config.created_at else "",
+        updated_at=config.updated_at.isoformat() if config.updated_at else "",
+    )
+
+
+async def _fetch_all_configs(db: AsyncSession) -> List[SystemConfig]:
+    config_query = select(SystemConfig)
+    config_result = await db.execute(config_query)
+    configs = config_result.scalars().all()
+    return list(configs)
+
+
+async def _fetch_configs_by_keys(
+    db: AsyncSession, keys: Sequence[str]
+) -> Dict[str, SystemConfig]:
+    config_query = select(SystemConfig).where(SystemConfig.config_key.in_(keys))
+    config_result = await db.execute(config_query)
+    config_objects = config_result.scalars().all()
+    return {_to_string(config.config_key): config for config in config_objects}
+
+
+async def _resolve_ai_service_configs(db: AsyncSession) -> Dict[str, str]:
+    configs = await _fetch_configs_by_keys(db, AI_CONFIG_KEYS)
+
+    resolved: Dict[str, str] = {}
+    missing_configs = []
+
+    for key in AI_CONFIG_KEYS:
+        config = configs.get(key)
+        value = (
+            _to_string(config.config_value) if config and config.config_value else ""
+        )
+        if not value:
+            missing_configs.append(key)
+        else:
+            resolved[key] = value
+
+    if missing_configs:
+        raise ErrorResponse.bad_request(
+            f"{ErrorMessages.MISSING_AI_CONFIG}: {', '.join(missing_configs)}"
+        )
+
+    return resolved
+
 
 async def get_system_configs_svc(request: Request) -> SystemConfigListResponse:
     """
@@ -38,37 +103,10 @@ async def get_system_configs_svc(request: Request) -> SystemConfigListResponse:
     db: AsyncSession = request.state.db
 
     try:
-        config_query = select(SystemConfig)
-        config_result = await db.execute(config_query)
-        configs = config_result.scalars().all()
-
-        config_responses = []
-        for config in configs:
-            config_key = str(config.config_key) if config.config_key is not None else ""
-            config_value = (
-                str(config.config_value) if config.config_value is not None else ""
-            )
-
-            # Mask sensitive configuration values for System Configuration page
-            masked_value = mask_config_value(config_key, config_value)
-
-            config_responses.append(
-                SystemConfigResponse(
-                    config_key=config_key,
-                    config_value=masked_value,
-                    description=(
-                        str(config.description)
-                        if config.description is not None
-                        else None
-                    ),
-                    created_at=(
-                        config.created_at.isoformat() if config.created_at else ""
-                    ),
-                    updated_at=(
-                        config.updated_at.isoformat() if config.updated_at else ""
-                    ),
-                )
-            )
+        configs = await _fetch_all_configs(db)
+        config_responses = [
+            _build_config_response(config, mask_sensitive=True) for config in configs
+        ]
 
         return SystemConfigListResponse(
             data=config_responses,
@@ -98,35 +136,10 @@ async def get_system_configs_internal_svc(request: Request) -> SystemConfigListR
     db: AsyncSession = request.state.db
 
     try:
-        config_query = select(SystemConfig)
-        config_result = await db.execute(config_query)
-        configs = config_result.scalars().all()
-
-        config_responses = []
-        for config in configs:
-            config_key = str(config.config_key) if config.config_key is not None else ""
-            config_value = (
-                str(config.config_value) if config.config_value is not None else ""
-            )
-
-            # Return real values for internal use (no masking)
-            config_responses.append(
-                SystemConfigResponse(
-                    config_key=config_key,
-                    config_value=config_value,
-                    description=(
-                        str(config.description)
-                        if config.description is not None
-                        else None
-                    ),
-                    created_at=(
-                        config.created_at.isoformat() if config.created_at else ""
-                    ),
-                    updated_at=(
-                        config.updated_at.isoformat() if config.updated_at else ""
-                    ),
-                )
-            )
+        configs = await _fetch_all_configs(db)
+        config_responses = [
+            _build_config_response(config, mask_sensitive=False) for config in configs
+        ]
 
         return SystemConfigListResponse(
             data=config_responses,
@@ -157,7 +170,7 @@ async def create_system_config_svc(
         SystemConfigResponse: The created configuration.
 
     Raises:
-        HTTPException: If the configuration already exists.
+        ErrorResponse: If the configuration already exists or persistence fails.
     """
     db: AsyncSession = request.state.db
 
@@ -170,9 +183,7 @@ async def create_system_config_svc(
         existing_config = existing_result.scalar_one_or_none()
 
         if existing_config:
-            raise HTTPException(
-                status_code=400, detail=ErrorMessages.CONFIG_ALREADY_EXISTS
-            )
+            raise ErrorResponse.bad_request(ErrorMessages.CONFIG_ALREADY_EXISTS)
 
         # Create new config - store original payload without encryption
         config_id = str(uuid.uuid4())
@@ -187,28 +198,13 @@ async def create_system_config_svc(
         await db.commit()
         await db.refresh(config)
 
-        # Return masked value for response (for security)
-        config_key_str = str(config.config_key) if config.config_key is not None else ""
-        config_value_str = (
-            str(config.config_value) if config.config_value is not None else ""
-        )
-        masked_value = mask_config_value(config_key_str, config_value_str)
+        return _build_config_response(config)
 
-        return SystemConfigResponse(
-            config_key=config_key_str,
-            config_value=masked_value,
-            description=(
-                str(config.description) if config.description is not None else None
-            ),
-            created_at=config.created_at.isoformat() if config.created_at else "",
-            updated_at=config.updated_at.isoformat() if config.updated_at else "",
-        )
-
-    except HTTPException:
+    except ErrorResponse:
         raise
     except Exception as e:
         logger.error("Failed to create system config: {}", e)
-        raise HTTPException(status_code=500, detail=ErrorMessages.TASK_CREATION_FAILED)
+        raise ErrorResponse.internal_server_error(ErrorMessages.TASK_CREATION_FAILED)
 
 
 async def update_system_config_svc(
@@ -226,7 +222,7 @@ async def update_system_config_svc(
         SystemConfigResponse: The updated configuration.
 
     Raises:
-        HTTPException: If the configuration doesn't exist.
+        ErrorResponse: If the configuration doesn't exist or persistence fails.
     """
     db: AsyncSession = request.state.db
 
@@ -237,7 +233,7 @@ async def update_system_config_svc(
         config = config_result.scalar_one_or_none()
 
         if not config:
-            raise HTTPException(status_code=404, detail="Configuration not found")
+            raise ErrorResponse.not_found("Configuration not found")
 
         # Update config - store original payload without encryption
         setattr(
@@ -249,28 +245,13 @@ async def update_system_config_svc(
         await db.commit()
         await db.refresh(config)
 
-        # Return masked value for response (for security)
-        config_key_str = str(config.config_key) if config.config_key is not None else ""
-        config_value_str = (
-            str(config.config_value) if config.config_value is not None else ""
-        )
-        masked_value = mask_config_value(config_key_str, config_value_str)
+        return _build_config_response(config)
 
-        return SystemConfigResponse(
-            config_key=config_key_str,
-            config_value=masked_value,
-            description=(
-                str(config.description) if config.description is not None else None
-            ),
-            created_at=config.created_at.isoformat() if config.created_at else "",
-            updated_at=config.updated_at.isoformat() if config.updated_at else "",
-        )
-
-    except HTTPException:
+    except ErrorResponse:
         raise
     except Exception as e:
         logger.error("Failed to update system config: {}", e)
-        raise HTTPException(status_code=500, detail=ErrorMessages.TASK_UPDATE_FAILED)
+        raise ErrorResponse.internal_server_error(ErrorMessages.TASK_UPDATE_FAILED)
 
 
 async def delete_system_config_svc(request: Request, config_key: str) -> Dict:
@@ -285,7 +266,7 @@ async def delete_system_config_svc(request: Request, config_key: str) -> Dict:
         Dict: Success response.
 
     Raises:
-        HTTPException: If the configuration doesn't exist.
+        ErrorResponse: If the configuration doesn't exist or deletion fails.
     """
     db: AsyncSession = request.state.db
 
@@ -296,7 +277,7 @@ async def delete_system_config_svc(request: Request, config_key: str) -> Dict:
         config = config_result.scalar_one_or_none()
 
         if not config:
-            raise HTTPException(status_code=404, detail=ErrorMessages.CONFIG_NOT_FOUND)
+            raise ErrorResponse.not_found(ErrorMessages.CONFIG_NOT_FOUND)
 
         # Delete config
         await db.delete(config)
@@ -304,11 +285,11 @@ async def delete_system_config_svc(request: Request, config_key: str) -> Dict:
 
         return {"status": "success", "message": "Configuration deleted successfully"}
 
-    except HTTPException:
+    except ErrorResponse:
         raise
     except Exception as e:
         logger.error("Failed to delete system config: {}", e)
-        raise HTTPException(status_code=500, detail=ErrorMessages.TASK_DELETION_FAILED)
+        raise ErrorResponse.internal_server_error(ErrorMessages.TASK_DELETION_FAILED)
 
 
 async def get_ai_service_config_svc(request: Request) -> AIServiceConfig:
@@ -322,54 +303,23 @@ async def get_ai_service_config_svc(request: Request) -> AIServiceConfig:
         AIServiceConfig: The AI service configuration with masked API key.
 
     Raises:
-        HTTPException: If the configuration is incomplete.
+        ErrorResponse: If the configuration is incomplete or query fails.
     """
     db: AsyncSession = request.state.db
 
     try:
-        # Get AI service configs
-        config_keys = ["ai_service_host", "ai_service_model", "ai_service_api_key"]
-        configs = {}
-
-        for key in config_keys:
-            config_query = select(SystemConfig).where(SystemConfig.config_key == key)
-            config_result = await db.execute(config_query)
-            config = config_result.scalar_one_or_none()
-            configs[key] = config.config_value if config else None
-
-        # Check if all required configs exist
-        missing_configs = [key for key, value in configs.items() if not value]
-        if missing_configs:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{ErrorMessages.MISSING_AI_CONFIG}: {', '.join(missing_configs)}",
-            )
-
-        api_key_value = (
-            str(configs["ai_service_api_key"])
-            if configs["ai_service_api_key"] is not None
-            else ""
-        )
-
+        configs = await _resolve_ai_service_configs(db)
         return AIServiceConfig(
-            host=(
-                str(configs["ai_service_host"])
-                if configs["ai_service_host"] is not None
-                else ""
-            ),
-            model=(
-                str(configs["ai_service_model"])
-                if configs["ai_service_model"] is not None
-                else ""
-            ),
-            api_key=mask_api_key(api_key_value),
+            host=configs["ai_service_host"],
+            model=configs["ai_service_model"],
+            api_key=mask_api_key(configs["ai_service_api_key"]),
         )
 
-    except HTTPException:
+    except ErrorResponse:
         raise
     except Exception as e:
         logger.error("Failed to get AI service config: {}", e)
-        raise HTTPException(status_code=500, detail=ErrorMessages.DATABASE_ERROR)
+        raise ErrorResponse.internal_server_error(ErrorMessages.DATABASE_ERROR)
 
 
 async def get_ai_service_config_internal_svc(request: Request) -> AIServiceConfig:
@@ -383,53 +333,23 @@ async def get_ai_service_config_internal_svc(request: Request) -> AIServiceConfi
         AIServiceConfig: The AI service configuration with real API key.
 
     Raises:
-        HTTPException: If the configuration is incomplete.
+        ErrorResponse: If the configuration is incomplete or query fails.
     """
     db: AsyncSession = request.state.db
 
     try:
-        # Get AI service configs
-        config_keys = ["ai_service_host", "ai_service_model", "ai_service_api_key"]
-        configs = {}
-
-        for key in config_keys:
-            config_query = select(SystemConfig).where(SystemConfig.config_key == key)
-            config_result = await db.execute(config_query)
-            config = config_result.scalar_one_or_none()
-            configs[key] = config.config_value if config else None
-
-        # Check if all required configs exist
-        missing_configs = [key for key, value in configs.items() if not value]
-        if missing_configs:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{ErrorMessages.MISSING_AI_CONFIG}: {', '.join(missing_configs)}",
-            )
-
-        api_key_value = (
-            str(configs["ai_service_api_key"])
-            if configs["ai_service_api_key"] is not None
-            else ""
-        )
+        configs = await _resolve_ai_service_configs(db)
         return AIServiceConfig(
-            host=(
-                str(configs["ai_service_host"])
-                if configs["ai_service_host"] is not None
-                else ""
-            ),
-            model=(
-                str(configs["ai_service_model"])
-                if configs["ai_service_model"] is not None
-                else ""
-            ),
-            api_key=api_key_value,  # Return real API key for internal use
+            host=configs["ai_service_host"],
+            model=configs["ai_service_model"],
+            api_key=configs["ai_service_api_key"],
         )
 
-    except HTTPException:
+    except ErrorResponse:
         raise
     except Exception as e:
         logger.error("Failed to get AI service config: {}", e)
-        raise HTTPException(status_code=500, detail=ErrorMessages.DATABASE_ERROR)
+        raise ErrorResponse.internal_server_error(ErrorMessages.DATABASE_ERROR)
 
 
 async def batch_upsert_system_configs_svc(
@@ -486,32 +406,7 @@ async def batch_upsert_system_configs_svc(
                 await db.flush()
                 await db.refresh(config)
 
-                # Return masked value for response (for security)
-                config_key_str = (
-                    str(config.config_key) if config.config_key is not None else ""
-                )
-                config_value_str = (
-                    str(config.config_value) if config.config_value is not None else ""
-                )
-                masked_value = mask_config_value(config_key_str, config_value_str)
-
-                config_responses.append(
-                    SystemConfigResponse(
-                        config_key=config_key_str,
-                        config_value=masked_value,
-                        description=(
-                            str(config.description)
-                            if config.description is not None
-                            else None
-                        ),
-                        created_at=(
-                            config.created_at.isoformat() if config.created_at else ""
-                        ),
-                        updated_at=(
-                            config.updated_at.isoformat() if config.updated_at else ""
-                        ),
-                    )
-                )
+                config_responses.append(_build_config_response(config))
 
         return BatchSystemConfigResponse(
             data=config_responses,

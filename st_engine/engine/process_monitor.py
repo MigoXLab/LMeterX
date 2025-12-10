@@ -3,8 +3,6 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import os
-import signal
 import threading
 import time
 from dataclasses import dataclass, field
@@ -29,6 +27,7 @@ class ProcessInfo:
     children: List[int] = field(default_factory=list)
 
     def __post_init__(self):
+        """Ensure children list is always initialized."""
         if self.children is None:
             self.children = []
 
@@ -37,6 +36,7 @@ class ProcessMonitor:
     """Enhanced process monitor for multiprocess management."""
 
     def __init__(self):
+        """Initialize monitoring state and threading primitives."""
         self._monitored_processes: Dict[int, ProcessInfo] = {}
         self._process_groups: Dict[str, Set[int]] = {}
         self._lock = threading.RLock()

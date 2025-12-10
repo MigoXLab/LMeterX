@@ -90,6 +90,7 @@ class GlobalStateManager:
     _lock = threading.Lock()
 
     def __new__(cls):
+        """Create or return the singleton instance."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -142,18 +143,22 @@ class GlobalStateManager:
 
     @property
     def worker_count(self) -> int:
+        """Get the number of active worker processes."""
         return self._worker_count
 
     @worker_count.setter
     def worker_count(self, value: int):
+        """Set the number of active worker processes."""
         self._worker_count = value
 
     @property
     def concurrent_users(self) -> int:
+        """Get current concurrent user count."""
         return self._concurrent_users
 
     @concurrent_users.setter
     def concurrent_users(self, value: int):
+        """Set current concurrent user count."""
         self._concurrent_users = value
 
     def get_task_logger(self, task_id: str = ""):
@@ -177,9 +182,11 @@ class SimpleLock:
     """Simple lock implementation as fallback when multiprocessing fails."""
 
     def __enter__(self):
+        """Enter the dummy lock context."""
         pass
 
     def __exit__(self, *args):
+        """Exit the dummy lock context."""
         pass
 
 
@@ -232,6 +239,122 @@ class ConfigManager:
                 return None
 
         return None
+
+    @staticmethod
+    def _normalize_optional_str(value: Optional[Any]) -> Optional[str]:
+        """Normalize optional string values."""
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
+
+    @staticmethod
+    def _safe_int(value: Any, default: int) -> int:
+        """Safely convert value to int with default fallback."""
+        try:
+            if value is None:
+                return default
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _as_bool(value: Any, default: bool = False) -> bool:
+        """Best-effort conversion to boolean."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "y", "on")
+        return default
+
+    @staticmethod
+    def apply_options(
+        config: GlobalConfig,
+        options: Any,
+        task_logger,
+        overrides: Optional[Dict[str, Any]] = None,
+    ) -> GlobalConfig:
+        """
+        Apply runtime options to the global config with basic validation and type safety.
+        This keeps option parsing centralized and easier to test.
+        """
+
+        overrides = overrides or {}
+
+        def _get_option(name: str, fallback: Any = None) -> Any:
+            return getattr(options, name, fallback)
+
+        config.task_id = (
+            overrides.get("task_id")
+            or ConfigManager._normalize_optional_str(_get_option("task_id"))
+            or config.task_id
+        )
+        config.api_path = (
+            ConfigManager._normalize_optional_str(_get_option("api_path"))
+            or config.api_path
+            or DEFAULT_API_PATH
+        )
+        config.api_type = (
+            ConfigManager._normalize_optional_str(_get_option("api_type"))
+            or config.api_type
+        )
+        config.request_payload = (
+            ConfigManager._normalize_optional_str(_get_option("request_payload"))
+            or config.request_payload
+        )
+        config.model_name = (
+            ConfigManager._normalize_optional_str(_get_option("model_name"))
+            or config.model_name
+        )
+        config.user_prompt = (
+            ConfigManager._normalize_optional_str(_get_option("user_prompt"))
+            or config.user_prompt
+        )
+        config.stream_mode = ConfigManager._as_bool(
+            _get_option("stream_mode", config.stream_mode), default=config.stream_mode
+        )
+        config.chat_type = ConfigManager._safe_int(
+            _get_option("chat_type", config.chat_type), default=config.chat_type
+        )
+        config.cert_file = ConfigManager._normalize_optional_str(
+            _get_option("cert_file", config.cert_file)
+        )
+        config.key_file = ConfigManager._normalize_optional_str(
+            _get_option("key_file", config.key_file)
+        )
+        config.field_mapping = (
+            ConfigManager._normalize_optional_str(_get_option("field_mapping"))
+            or config.field_mapping
+        )
+        config.test_data = (
+            ConfigManager._normalize_optional_str(_get_option("test_data"))
+            or config.test_data
+        )
+        config.duration = ConfigManager._safe_int(
+            _get_option("duration", config.duration or 60),
+            default=config.duration or 60,
+        )
+
+        headers_input = _get_option("headers", None)
+        config.headers = ConfigManager.parse_headers(
+            headers_input if headers_input is not None else config.headers, task_logger
+        )
+
+        cookies_input = _get_option("cookies", None)
+        cookies_source = (
+            cookies_input
+            if cookies_input is not None
+            else config.cookies if config.cookies is not None else ""
+        )
+        config.cookies = ConfigManager.parse_cookies(cookies_source, task_logger)
+
+        config.cert_config = CertificateManager.configure_certificates(
+            config.cert_file, config.key_file, task_logger
+        )
+
+        return config
 
     @staticmethod
     def parse_field_mapping(field_mapping_str: str) -> FieldMapping:
@@ -324,6 +447,54 @@ class ConfigManager:
         else:
             # For custom-chat or unknown types, return empty field mapping
             return FieldMapping()
+
+    @staticmethod
+    def _should_generate_default_mapping(
+        field_mapping: FieldMapping,
+        config: GlobalConfig,
+        required_fields: Optional[Tuple[str, ...]] = None,
+    ) -> bool:
+        """Determine whether we should auto-generate a field mapping."""
+        has_custom_mapping = bool(
+            config.field_mapping and str(config.field_mapping).strip()
+        )
+        if not has_custom_mapping:
+            return True
+        if not required_fields:
+            return False
+        for field_name in required_fields:
+            if not getattr(field_mapping, field_name, None):
+                return True
+        return False
+
+    @staticmethod
+    def resolve_field_mapping(
+        config: GlobalConfig,
+        *,
+        required_fields: Optional[Tuple[str, ...]] = None,
+        fallback_to_api_defaults: bool = True,
+    ) -> FieldMapping:
+        """
+        Resolve the effective field mapping with optional automatic defaults.
+
+        Args:
+            config: The active global configuration
+            required_fields: If provided, ensure these fields exist; otherwise fallback
+            fallback_to_api_defaults: Whether to auto-generate defaults when needed
+        """
+        mapping = ConfigManager.parse_field_mapping(config.field_mapping or "")
+
+        if not fallback_to_api_defaults:
+            return mapping
+
+        if ConfigManager._should_generate_default_mapping(
+            mapping, config, required_fields
+        ):
+            return ConfigManager.generate_field_mapping_by_api_type(
+                getattr(config, "api_type", "custom-chat"), config.stream_mode
+            )
+
+        return mapping
 
 
 # === CERTIFICATE MANAGEMENT ===

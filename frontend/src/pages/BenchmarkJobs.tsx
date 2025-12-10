@@ -62,7 +62,6 @@ const BenchmarkJobs: React.FC = () => {
     refreshing,
     error,
     lastRefreshTime,
-    searchText,
     searchInput,
     statusFilter,
     createJob,

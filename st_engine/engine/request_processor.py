@@ -1,7 +1,6 @@
 """
 Author: Charm
 Copyright (c) 2025, All Rights Reserved.
-
 """
 
 import time
@@ -67,21 +66,43 @@ class StreamProcessor:
             return ""
 
     @staticmethod
-    def is_sse_event_line(chunk_str: str) -> bool:
-        """Check if the line is an SSE event line (not data line) that should be skipped.
-        Only skip event control lines, not data lines that start with 'data: '.
-        """
-        chunk_str = chunk_str.strip()
+    def should_skip_non_json_chunk(chunk_str: str) -> bool:
+        """Return True when the chunk is a control/heartbeat line that should be skipped."""
 
-        # Check for SSE event control prefixes that should be skipped
-        # Only 'event:', 'id:', 'retry:' are control lines, 'data:' contains actual data
-        control_prefixes = ["event:", "event: ", "id:", "id: ", "retry:", "retry: "]
+        normalized = chunk_str.strip()
+        if not normalized:
+            return True
 
-        for prefix in control_prefixes:
-            if chunk_str.startswith(prefix):
+        normalized_lower = normalized.lower()
+
+        if normalized_lower.startswith(":"):
+            return True
+
+        # SSE control prefixes that never contain payload data
+        SSE_CONTROL_PREFIXES = (
+            "event:",
+            "id:",
+            "retry:",
+        )
+        if any(normalized_lower.startswith(prefix) for prefix in SSE_CONTROL_PREFIXES):
+            return True
+
+        # Strip leading 'data:' prefix if present to inspect actual payload
+        chunk_data = normalized_lower
+        if normalized_lower.startswith("data:"):
+            chunk_data = normalized_lower[5:].strip()
+            if not chunk_data:
                 return True
 
-        return False
+        IGNORE_HEARTBEAT_TOKENS = {
+            "heartbeat",
+            "keepalive",
+            "keep-alive",
+            "ping",
+            "pong",
+        }
+
+        return chunk_data in IGNORE_HEARTBEAT_TOKENS
 
     @staticmethod
     def remove_chunk_prefix(chunk_str: str, field_mapping: FieldMapping) -> str:
@@ -273,6 +294,9 @@ class StreamProcessor:
         if not chunk_str:
             return False, None, metrics
 
+        if StreamProcessor.should_skip_non_json_chunk(chunk_str):
+            return False, None, metrics
+
         # Remove prefix if present
         processed_chunk = StreamProcessor.remove_chunk_prefix(chunk_str, field_mapping)
 
@@ -283,14 +307,12 @@ class StreamProcessor:
         if StreamProcessor.check_stop_flag(processed_chunk, field_mapping):
             return True, None, metrics  # Normal stream end
 
-        if StreamProcessor.is_sse_event_line(chunk_str):
-            return False, None, metrics
         # Check if data format is JSON
         if field_mapping.data_format == "json":
             try:
                 chunk_data = orjson.loads(processed_chunk)
             except (orjson.JSONDecodeError, TypeError) as e:
-                task_logger.error(
+                task_logger.warning(
                     f"Failed to parse chunk as JSON: {e} | Chunk: {processed_chunk}"
                 )
                 return True, f"JSON parsing error: {e}", metrics
@@ -455,9 +477,11 @@ class PayloadBuilder:
             elif api_type == "embeddings":
                 self._update_embeddings_payload(payload, user_prompt)
             elif api_type == "custom-chat":
-                # For custom-chat, use field mapping
-                field_mapping = ConfigManager.parse_field_mapping(
-                    self.config.field_mapping or ""
+                # For custom-chat, rely on explicit field mapping without auto defaults
+                field_mapping = ConfigManager.resolve_field_mapping(
+                    self.config,
+                    required_fields=("prompt", "image"),
+                    fallback_to_api_defaults=False,
                 )
                 if field_mapping.prompt or field_mapping.image:
                     self._update_payload_by_field_mapping(
@@ -465,7 +489,7 @@ class PayloadBuilder:
                     )
                 else:
                     self.task_logger.warning(
-                        "custom-chat requires field_mapping configuration for dataset integration"
+                        "The field_mapping configuration is empty, the original payload will be used for the request."
                     )
             else:
                 # Fallback: No dataset integration for unknown types
@@ -672,17 +696,9 @@ class PayloadBuilder:
     def _extract_prompt_from_payload(self, payload: Dict[str, Any]) -> str:
         """Extract prompt content from custom payload using field mapping."""
         try:
-            field_mapping = ConfigManager.parse_field_mapping(
-                self.config.field_mapping or ""
+            field_mapping = ConfigManager.resolve_field_mapping(
+                self.config, required_fields=("prompt",)
             )
-
-            # Auto-generate field mapping for standard API types if not configured
-            if not field_mapping.prompt and hasattr(self.config, "api_type"):
-                api_type = getattr(self.config, "api_type", "")
-                if api_type in ("openai-chat", "claude-chat", "embeddings"):
-                    field_mapping = ConfigManager.generate_field_mapping_by_api_type(
-                        api_type, self.config.stream_mode
-                    )
 
             if field_mapping.prompt:
                 prompt_value = StreamProcessor.get_field_value(
@@ -768,7 +784,7 @@ class APIClient:
         self.error_handler = ErrorResponse(config, task_logger)
 
     def _iter_stream_lines(self, response) -> Any:
-        """Yield complete SSE lines using \n\n as delimiter. Robust version for HttpUser."""
+        """Yield SSE lines separated by blank lines for HttpUser streaming."""
         # For HttpUser, response is a requests.Response object
         if not hasattr(response, "iter_lines"):
             self.task_logger.error("Response object does not support streaming.")
@@ -795,18 +811,9 @@ class APIClient:
         """Handle streaming API request with comprehensive metrics collection."""
         metrics = StreamMetrics()
         request_kwargs = {**base_request_kwargs, "stream": True}
-        field_mapping = ConfigManager.parse_field_mapping(
-            self.config.field_mapping or ""
+        field_mapping = ConfigManager.resolve_field_mapping(
+            self.config, required_fields=("content",)
         )
-
-        # Auto-generate field mapping for standard API types if not configured
-        if not field_mapping.prompt and hasattr(self.config, "api_type"):
-            api_type = getattr(self.config, "api_type", "")
-            self.task_logger.debug(f"handle_stream_request-api_type: {api_type}")
-            if api_type in ("openai-chat", "claude-chat", "embeddings"):
-                field_mapping = ConfigManager.generate_field_mapping_by_api_type(
-                    api_type, self.config.stream_mode
-                )
         response = None
         actual_start_time = 0.0
         request_name = base_request_kwargs.get("name", "failure")
@@ -848,7 +855,6 @@ class APIClient:
                                             chunk if chunk else "No chunk data"
                                         ),
                                         "api_path": self.config.api_path,
-                                        "request_name": request_name,
                                     },
                                 )
                                 return "", "", usage
@@ -896,10 +902,7 @@ class APIClient:
                         error_msg=f"Stream data parsing error: {e}",
                         response=response,
                         response_time=response_time,
-                        additional_context={
-                            "api_path": self.config.api_path,
-                            "request_name": request_name,
-                        },
+                        additional_context={"api_path": self.config.api_path},
                     )
                     return "", "", usage
         except (ConnectionError, TimeoutError) as e:
@@ -908,10 +911,7 @@ class APIClient:
                 error_msg=f"Connection error: {e}",
                 response=response,
                 response_time=response_time,
-                additional_context={
-                    "api_path": self.config.api_path,
-                    "request_name": request_name,
-                },
+                additional_context={"api_path": self.config.api_path},
             )
             return "", "", usage
         except Exception as e:
@@ -923,7 +923,6 @@ class APIClient:
                 response_time=response_time,
                 additional_context={
                     "api_path": self.config.api_path,
-                    "request_name": request_name,
                 },
             )
             return "", "", usage
@@ -1023,9 +1022,6 @@ class APIClient:
                 response_time=response_time,
                 additional_context={
                     "api_path": self.config.api_path,
-                    "request_name": base_request_kwargs.get(
-                        "name", "non_stream_mismatch"
-                    ),
                 },
             )
             return (
@@ -1039,17 +1035,9 @@ class APIClient:
 
         request_kwargs = {**base_request_kwargs, "stream": False}
         content, reasoning_content = "", ""
-        field_mapping = ConfigManager.parse_field_mapping(
-            self.config.field_mapping or ""
+        field_mapping = ConfigManager.resolve_field_mapping(
+            self.config, required_fields=("content",)
         )
-
-        # Auto-generate field mapping for standard API types if not configured
-        if not field_mapping.prompt and hasattr(self.config, "api_type"):
-            api_type = getattr(self.config, "api_type", "")
-            if api_type in ("openai-chat", "claude-chat", "embeddings"):
-                field_mapping = ConfigManager.generate_field_mapping_by_api_type(
-                    api_type, self.config.stream_mode
-                )
         request_name = base_request_kwargs.get("name", "failure")
         usage: Dict[str, Optional[int]] = {
             "completion_tokens": 0,
@@ -1076,7 +1064,6 @@ class APIClient:
                         response_time=total_time,
                         additional_context={
                             "api_path": self.config.api_path,
-                            "request_name": request_name,
                         },
                     )
                     return "", "", usage
@@ -1088,11 +1075,7 @@ class APIClient:
                         response=response,
                         response_time=total_time,
                         additional_context={
-                            "response_preview": (
-                                str(resp_json) if resp_json else "No response data"
-                            ),
                             "api_path": self.config.api_path,
-                            "request_name": request_name,
                         },
                     )
                     return "", "", usage
@@ -1125,7 +1108,6 @@ class APIClient:
                 response_time=response_time,
                 additional_context={
                     "api_path": self.config.api_path,
-                    "request_name": request_name,
                 },
             )
             return "", "", usage

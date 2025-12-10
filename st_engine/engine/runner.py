@@ -42,6 +42,7 @@ class LocustRunner:
     _process_dict: dict[str, subprocess.Popen] = {}
 
     def __init__(self, base_dir: str):
+        """Create a runner rooted at the given repository directory."""
         self.base_dir = base_dir
         self._locustfile_path = os.path.join(self.base_dir, "engine", "locustfile.py")
 

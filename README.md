@@ -13,34 +13,33 @@
   </p>
 </div>
 
-# LMeterX
+⭐ If you like this project, please click the "Star" button in the upper right corner to support us. Your support is our motivation to move forward!
 
 ## Contents
-- [LMeterX](#lmeterx)
-  - [Contents](#contents)
-  - [📋 Project Overview](#-project-overview)
-  - [✨ Core Features](#-core-features)
-    - [Feature Comparison](#feature-comparison)
-  - [🏗️ System Architecture](#️-system-architecture)
-  - [🚀 Quick Start](#-quick-start)
-    - [Environment Checklist](#environment-checklist)
-    - [One-Click Deployment (Recommended)](#one-click-deployment-recommended)
-    - [Data \& Volume Layout](#data--volume-layout)
-    - [Usage Guide](#usage-guide)
-  - [🔧 Configuration](#-configuration)
-    - [Database Configuration](#database-configuration)
-    - [Resource Configuration](#resource-configuration)
-  - [🤝 Development Guide](#-development-guide)
-    - [Technology Stack](#technology-stack)
-    - [Project Structure](#project-structure)
-    - [Development Environment Setup](#development-environment-setup)
-  - [🗺️ Development Roadmap](#️-development-roadmap)
-    - [In Development](#in-development)
-    - [Planned](#planned)
-  - [🗂️ Dataset Reference Notes](#️-dataset-reference-notes)
-  - [👥 Contributing](#-contributing)
-  - [📝 Citation](#-citation)
-  - [📄 Open Source License](#-open-source-license)
+- [Contents](#contents)
+- [📋 Project Overview](#-project-overview)
+- [✨ Core Features](#-core-features)
+  - [Feature Comparison](#feature-comparison)
+- [🏗️ System Architecture](#️-system-architecture)
+- [🚀 Quick Start](#-quick-start)
+  - [Environment Checklist](#environment-checklist)
+  - [One-Click Deployment (Recommended)](#one-click-deployment-recommended)
+  - [Data \& Volume Layout](#data--volume-layout)
+  - [Usage Guide](#usage-guide)
+- [🔧 Configuration](#-configuration)
+  - [Database Configuration](#database-configuration)
+  - [Resource Configuration](#resource-configuration)
+- [🤝 Development Guide](#-development-guide)
+  - [Technology Stack](#technology-stack)
+  - [Project Structure](#project-structure)
+  - [Development Environment Setup](#development-environment-setup)
+- [🗺️ Development Roadmap](#️-development-roadmap)
+  - [In Development](#in-development)
+  - [Planned](#planned)
+- [🗂️ Dataset Reference Notes](#️-dataset-reference-notes)
+- [👥 Contributing](#-contributing)
+- [📝 Citation](#-citation)
+- [📄 Open Source License](#-open-source-license)
 
 ## 📋 Project Overview
 
@@ -123,8 +122,8 @@ For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md
 3. **API Testing**: In Test Tasks → Create Task, click the "Test" button in the Basic Information panel to quickly test API connectivity (use a lightweight prompt for faster feedback).
 4. **Real-time Monitoring**: Navigate to Test Tasks → Logs/Monitoring Center to view full-chain test logs and troubleshoot exceptions
 5. **Result Analysis**: Navigate to Test Tasks → Results to view detailed performance results and export reports
-6. **Result Comparison**: Navigate to Model Arena to select multiple models or versions for multi-dimensional performance comparison
-7. **AI Analysis**: In Test Tasks → Results/Model Arena, after configuring AI analysis service, support intelligent performance evaluation for single/multiple tasks
+6. **Result Comparison**: Navigate to Pref Insight to select multiple models or versions for multi-dimensional performance comparison
+7. **AI Analysis**: In Test Tasks → Results or Pref Insight, support intelligent performance evaluation for single or multiple tasks
 
 ## 🔧 Configuration
 
@@ -243,8 +242,3 @@ If you use EvalScope in your research, please cite our work:
 ## 📄 Open Source License
 
 This project is licensed under the [Apache 2.0 License](LICENSE).
-
----
-<div align="center">
-**⭐ If this project helps you, please give us a Star! Your support is our motivation for continuous improvement.**
-</div>

@@ -4,7 +4,14 @@
  * @author Charm
  * @copyright 2025
  */
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface LanguageContextType {
@@ -46,15 +53,21 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [i18n]);
 
-  const changeLanguage = (language: string) => {
-    i18n.changeLanguage(language);
-  };
+  const changeLanguage = useCallback(
+    (language: string) => {
+      i18n.changeLanguage(language);
+    },
+    [i18n]
+  );
 
-  const value = {
-    currentLanguage,
-    changeLanguage,
-    isLanguageReady,
-  };
+  const value = useMemo(
+    () => ({
+      currentLanguage,
+      changeLanguage,
+      isLanguageReady,
+    }),
+    [changeLanguage, currentLanguage, isLanguageReady]
+  );
 
   return (
     <LanguageContext.Provider value={value}>

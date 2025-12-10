@@ -56,6 +56,19 @@ import { createFileTimestamp, formatDate } from '../utils/date';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+const TASK_COLORS = [
+  '#1890ff', // Blue
+  '#52c41a', // Green
+  '#fa8c16', // Orange
+  '#eb2f96', // Pink
+  '#722ed1', // Purple
+  '#13c2c2', // Cyan
+  '#f5222d', // Red
+  '#a0d911', // Lime
+  '#fa541c', // Dark Orange
+  '#2f54eb', // Dark Blue
+];
+
 interface ModelTaskInfo {
   model_name: string;
   concurrent_users: number;
@@ -90,6 +103,26 @@ interface SelectedTask {
   created_at: string;
   duration?: number;
 }
+
+type NumericMetricKey =
+  | 'first_token_latency'
+  | 'total_time'
+  | 'total_tps'
+  | 'completion_tps'
+  | 'avg_total_tokens_per_req'
+  | 'avg_completion_tokens_per_req'
+  | 'rps';
+
+interface MetricCardConfig {
+  metricKey: NumericMetricKey;
+  title: string;
+  description: string;
+  chartTitle: string;
+  unit?: string;
+  decimals?: number;
+}
+
+const CHART_VISIBLE_COUNT = 6;
 
 const ResultComparison: React.FC = () => {
   const { t } = useTranslation();
@@ -274,19 +307,13 @@ const ResultComparison: React.FC = () => {
     return models.sort();
   }, [availableTasks]);
 
-  // Color mapping for tasks
-  const taskColors = [
-    '#1890ff', // Blue
-    '#52c41a', // Green
-    '#fa8c16', // Orange
-    '#eb2f96', // Pink
-    '#722ed1', // Purple
-    '#13c2c2', // Cyan
-    '#f5222d', // Red
-    '#a0d911', // Lime
-    '#fa541c', // Dark Orange
-    '#2f54eb', // Dark Blue
-  ];
+  const taskColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    comparisonResults.forEach((result, index) => {
+      map[result.task_id] = TASK_COLORS[index % TASK_COLORS.length];
+    });
+    return map;
+  }, [comparisonResults]);
 
   const getModelColor = (modelName: string) => {
     // Assign colors based on the actual order of data appearance to maintain consistency with data display order
@@ -308,15 +335,12 @@ const ResultComparison: React.FC = () => {
     });
 
     const index = uniqueModelsList.indexOf(modelName);
-    return taskColors[index % taskColors.length];
+    return TASK_COLORS[index % TASK_COLORS.length];
   };
 
   // Get color for task by task_id
   const getTaskColor = (taskId: string) => {
-    const index = comparisonResults.findIndex(
-      result => result.task_id === taskId
-    );
-    return taskColors[index % taskColors.length];
+    return taskColorMap[taskId] || TASK_COLORS[0];
   };
 
   // Table columns for available tasks in modal
@@ -485,84 +509,233 @@ const ResultComparison: React.FC = () => {
     return lines.join('\n');
   };
 
+  const formatMetricValue = (
+    value: number | string,
+    decimals: number = 2,
+    unit?: string
+  ) => {
+    if (value === null || value === undefined || value === '') {
+      return '-';
+    }
+
+    const numericValue =
+      typeof value === 'number' ? value : Number.parseFloat(value);
+
+    if (Number.isNaN(numericValue)) {
+      return '-';
+    }
+
+    const fixed =
+      Math.abs(numericValue) >= 1000
+        ? numericValue.toFixed(0)
+        : numericValue.toFixed(decimals);
+
+    return unit ? `${fixed}${unit}` : fixed;
+  };
+
   // Chart configurations
-  const createChartConfig = (
-    yField: keyof ComparisonMetrics,
-    title: string
-  ) => ({
-    data: comparisonResults.map((result, index) => ({
+  const createChartConfig = ({
+    metricKey,
+    chartTitle,
+    decimals = 2,
+    unit,
+  }: MetricCardConfig) => {
+    const data = comparisonResults.map((result, index) => ({
       task: wrapTaskName(result.task_name),
-      value: result[yField] as number,
+      rawTaskName: result.task_name,
+      value: Number(result[metricKey]) || 0,
       taskId: result.task_id,
       index,
-    })),
-    xField: 'task',
-    yField: 'value',
-    colorField: 'taskId',
-    height: 350,
-    maxColumnWidth: 50,
-    columnWidthRatio: 0.5,
-    appendPadding: [30, 0, 80, 0],
-    title: { visible: true, text: title },
-    color: comparisonResults.reduce(
-      (acc, result) => {
-        acc[result.task_id] = getTaskColor(result.task_id);
-        return acc;
+    }));
+
+    const showLabels = data.length <= 8;
+    const slider =
+      data.length > CHART_VISIBLE_COUNT
+        ? {
+            start: 0,
+            end: Math.min(1, CHART_VISIBLE_COUNT / data.length),
+          }
+        : undefined;
+
+    return {
+      data,
+      xField: 'task',
+      yField: 'value',
+      colorField: 'taskId',
+      height: 360,
+      maxColumnWidth: 46,
+      columnWidthRatio: 0.55,
+      appendPadding: [24, 16, slider ? 64 : 48, 16],
+      color: (datum: { taskId: string; index: number }) =>
+        getTaskColor(datum.taskId) ||
+        TASK_COLORS[datum.index % TASK_COLORS.length],
+      columnStyle: {
+        radius: [8, 8, 0, 0],
+        fillOpacity: 0.92,
+        shadowColor: 'rgba(0, 0, 0, 0.08)',
+        shadowBlur: 6,
       },
-      {} as Record<string, string>
-    ),
-    label: {
-      position: 'top',
-      // offset: 8,
-      style: {
-        fill: '#000',
-        fontSize: 12,
-        fontWeight: 500,
-        textAlign: 'center',
-        textBaseline: 'bottom',
-        dy: -8,
+      tooltip: {
+        showMarkers: false,
+        shared: true,
+        formatter: (datum: { value: number }) => ({
+          name: chartTitle,
+          value: formatMetricValue(datum.value, decimals, unit),
+        }),
       },
-      formatter: (datum: any) => {
-        const value = datum.value || datum;
-        return `${parseFloat(value).toFixed(3)}`;
-      },
-    },
-    meta: {
-      value: {
-        alias: title,
-      },
-    },
-    xAxis: {
-      label: {
-        autoRotate: false,
-        autoHide: false,
-        autoEllipsis: false,
-        style: {
-          fontSize: 11,
-          textAlign: 'center',
-          fill: '#666',
+      label: showLabels
+        ? {
+            position: 'top' as const,
+            style: {
+              fill: '#262626',
+              fontSize: 12,
+              fontWeight: 500,
+            },
+            formatter: (datum: { value: number }) =>
+              formatMetricValue(datum.value, decimals, unit),
+          }
+        : undefined,
+      legend: false,
+      meta: {
+        value: {
+          alias: chartTitle,
         },
       },
-    },
-  });
-
-  // Metric descriptions for tooltips
-  const metricDescriptions = {
-    RPS: t('pages.resultComparison.metricDescriptions.rps'),
-    'TTFT (s)': t('pages.resultComparison.metricDescriptions.ttft'),
-    'Total TPS (tokens/s)': t(
-      'pages.resultComparison.metricDescriptions.totalTps'
-    ),
-    'Completion TPS (tokens/s)': t(
-      'pages.resultComparison.metricDescriptions.completionTps'
-    ),
-    'Avg. Total TPR (tokens/req)': t(
-      'pages.resultComparison.metricDescriptions.avgTotalTpr'
-    ),
-    'Avg. Completion TPR (tokens/req)': t(
-      'pages.resultComparison.metricDescriptions.avgCompletionTpr'
-    ),
+      xAxis: {
+        label: {
+          autoRotate: false,
+          autoHide: false,
+          autoEllipsis: false,
+          style: {
+            fontSize: 11,
+            textAlign: 'center',
+            lineHeight: 16,
+            fill: '#666',
+          },
+        },
+      },
+      yAxis: {
+        nice: true,
+        label: {
+          formatter: (val: string) =>
+            formatMetricValue(Number(val), decimals, unit),
+          style: {
+            fontSize: 11,
+            fill: '#666',
+          },
+        },
+        grid: {
+          line: {
+            style: {
+              stroke: 'rgba(0,0,0,0.15)',
+              lineDash: [4, 4],
+            },
+          },
+        },
+      },
+      interactions: [{ type: 'active-region' }, { type: 'element-active' }],
+      slider,
+      animation: {
+        appear: {
+          animation: 'scale-in-y',
+          duration: 400,
+        },
+      },
+      state: {
+        active: {
+          style: {
+            fillOpacity: 1,
+            shadowColor: 'rgba(0,0,0,0.2)',
+            shadowBlur: 8,
+          },
+        },
+      },
+    };
   };
+
+  const metricCardConfigs = useMemo<MetricCardConfig[]>(
+    () => [
+      {
+        metricKey: 'first_token_latency',
+        title: t('pages.resultComparison.timeToFirstToken'),
+        description: t('pages.resultComparison.metricDescriptions.ttft'),
+        chartTitle: t('pages.resultComparison.chartTitles.ttft'),
+        unit: 's',
+        decimals: 3,
+      },
+      {
+        metricKey: 'total_time',
+        title: t('pages.resultComparison.totalTime'),
+        description: t('pages.resultComparison.metricDescriptions.totalTime'),
+        chartTitle: t('pages.resultComparison.chartTitles.totalTime'),
+        unit: 's',
+        decimals: 3,
+      },
+      {
+        metricKey: 'total_tps',
+        title: t('pages.resultComparison.totalTokensPerSecond'),
+        description: t('pages.resultComparison.metricDescriptions.totalTps'),
+        chartTitle: t('pages.resultComparison.chartTitles.totalTps'),
+        unit: ' tokens/s',
+        decimals: 2,
+      },
+      {
+        metricKey: 'completion_tps',
+        title: t('pages.resultComparison.completionTokensPerSecond'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.completionTps'
+        ),
+        chartTitle: t('pages.resultComparison.chartTitles.completionTps'),
+        unit: ' tokens/s',
+        decimals: 2,
+      },
+      {
+        metricKey: 'avg_total_tokens_per_req',
+        title: t('pages.resultComparison.averageTotalTokensPerRequest'),
+        description: t('pages.resultComparison.metricDescriptions.avgTotalTpr'),
+        chartTitle: t('pages.resultComparison.chartTitles.avgTotalTpr'),
+        unit: ' tokens/req',
+        decimals: 2,
+      },
+      {
+        metricKey: 'avg_completion_tokens_per_req',
+        title: t('pages.resultComparison.averageCompletionTokensPerRequest'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.avgCompletionTpr'
+        ),
+        chartTitle: t('pages.resultComparison.chartTitles.avgCompletionTpr'),
+        unit: ' tokens/req',
+        decimals: 2,
+      },
+      {
+        metricKey: 'rps',
+        title: t('pages.resultComparison.requestsPerSecond'),
+        description: t('pages.resultComparison.metricDescriptions.rps'),
+        chartTitle: t('pages.resultComparison.chartTitles.rps'),
+        unit: ' req/s',
+        decimals: 2,
+      },
+    ],
+    [t]
+  );
+
+  const metricHasData = useCallback(
+    (metricKey: NumericMetricKey) =>
+      comparisonResults.some(result => {
+        const value = result[metricKey];
+        if (value === null || value === undefined) {
+          return false;
+        }
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) && numericValue !== 0;
+      }),
+    [comparisonResults]
+  );
+
+  const visibleMetricCardConfigs = useMemo(
+    () => metricCardConfigs.filter(config => metricHasData(config.metricKey)),
+    [metricCardConfigs, metricHasData]
+  );
 
   // Helper function to create card title with tooltip
   const createCardTitle = (title: string, description: string) => (
@@ -874,7 +1047,7 @@ const ResultComparison: React.FC = () => {
                 e.currentTarget.style.borderColor = '#faad14';
               }}
             >
-              {t('pages.resultComparison.selectModel')}
+              {t('pages.resultComparison.selectTask')}
             </Button>
             {selectedTasks.length > 0 && (
               <Button
@@ -897,7 +1070,7 @@ const ResultComparison: React.FC = () => {
         <Card>
           {selectedTasks.length === 0 ? (
             <Empty
-              description={t('pages.resultComparison.pleaseSelectModel')}
+              description={t('pages.resultComparison.pleaseSelectTask')}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           ) : (
@@ -919,110 +1092,33 @@ const ResultComparison: React.FC = () => {
             {t('pages.resultComparison.comparisonResults')}
           </Title>
 
-          <Row gutter={[16, 16]}>
-            <Col span={12}>
-              <Card
-                title={createCardTitle(
-                  t('pages.resultComparison.timeToFirstToken'),
-                  metricDescriptions['TTFT (s)']
-                )}
-                size='small'
-              >
-                <Column
-                  {...createChartConfig(
-                    'first_token_latency',
-                    t('pages.resultComparison.chartTitles.ttft')
-                  )}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card
-                title={createCardTitle(
-                  t('pages.resultComparison.requestsPerSecond'),
-                  metricDescriptions.RPS
-                )}
-                size='small'
-              >
-                <Column
-                  {...createChartConfig(
-                    'rps',
-                    t('pages.resultComparison.chartTitles.rps')
-                  )}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card
-                title={createCardTitle(
-                  t('pages.resultComparison.totalTokensPerSecond'),
-                  metricDescriptions['Total TPS (tokens/s)']
-                )}
-                size='small'
-              >
-                <Column
-                  {...createChartConfig(
-                    'total_tps',
-                    t('pages.resultComparison.chartTitles.totalTps')
-                  )}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card
-                title={createCardTitle(
-                  t('pages.resultComparison.completionTokensPerSecond'),
-                  metricDescriptions['Completion TPS (tokens/s)']
-                )}
-                size='small'
-              >
-                <Column
-                  {...createChartConfig(
-                    'completion_tps',
-                    t('pages.resultComparison.chartTitles.completionTps')
-                  )}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card
-                title={createCardTitle(
-                  t('pages.resultComparison.averageTotalTokensPerRequest'),
-                  metricDescriptions['Avg. Total TPR (tokens/req)']
-                )}
-                size='small'
-              >
-                <Column
-                  {...createChartConfig(
-                    'avg_total_tokens_per_req',
-                    t('pages.resultComparison.chartTitles.avgTotalTpr')
-                  )}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card
-                title={createCardTitle(
-                  t('pages.resultComparison.averageCompletionTokensPerRequest'),
-                  metricDescriptions['Avg. Completion TPR (tokens/req)']
-                )}
-                size='small'
-              >
-                <Column
-                  {...createChartConfig(
-                    'avg_completion_tokens_per_req',
-                    t('pages.resultComparison.chartTitles.avgCompletionTpr')
-                  )}
-                />
-              </Card>
-            </Col>
-          </Row>
+          {visibleMetricCardConfigs.length > 0 ? (
+            <Row gutter={[16, 16]}>
+              {visibleMetricCardConfigs.map(config => (
+                <Col span={12} key={config.metricKey}>
+                  <Card
+                    title={createCardTitle(config.title, config.description)}
+                    size='small'
+                  >
+                    <Column {...createChartConfig(config)} />
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          ) : (
+            <Card>
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t('pages.resultComparison.noMetricData')}
+              />
+            </Card>
+          )}
         </div>
       )}
 
       {/* Select Model Modal */}
       <Modal
-        title={t('pages.resultComparison.selectModelForComparison')}
+        title={t('pages.resultComparison.selectModelForTask')}
         open={isModalVisible}
         onCancel={() => {
           setIsModalVisible(false);

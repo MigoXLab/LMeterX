@@ -16,6 +16,7 @@ class ErrorResponse:
     """Centralized error handling for various scenarios."""
 
     def __init__(self, config: GlobalConfig, task_logger):
+        """Store configuration and task-specific logger for later use."""
         self.config = config
         self.task_logger = task_logger
 
@@ -104,10 +105,7 @@ class ErrorResponse:
                 error_msg=error_msg,
                 response=None,
                 response_time=response_time,
-                additional_context={
-                    "api_path": self.config.api_path,
-                    "request_name": request_name,
-                },
+                additional_context={"api_path": self.config.api_path},
             )
             return True
 
@@ -123,10 +121,7 @@ class ErrorResponse:
                     error_msg=error_msg,
                     response=response,
                     response_time=response_time,
-                    additional_context={
-                        "api_path": self.config.api_path,
-                        "request_name": request_name,
-                    },
+                    additional_context={"api_path": self.config.api_path},
                 )
                 return True
 
@@ -143,10 +138,7 @@ class ErrorResponse:
                     error_msg=error_msg,
                     response=response,
                     response_time=response_time,
-                    additional_context={
-                        "api_path": self.config.api_path,
-                        "request_name": request_name,
-                    },
+                    additional_context={"api_path": self.config.api_path},
                 )
                 return True
         except Exception as e:
@@ -156,10 +148,7 @@ class ErrorResponse:
                 error_msg=error_msg,
                 response=response,
                 response_time=response_time,
-                additional_context={
-                    "api_path": self.config.api_path,
-                    "request_name": request_name,
-                },
+                additional_context={"api_path": self.config.api_path},
             )
             return True
 
@@ -185,8 +174,5 @@ class ErrorResponse:
             error_msg=error_msg,
             response=response,
             response_time=response_time,
-            additional_context={
-                "api_path": self.config.api_path,
-                "request_name": request_name,
-            },
+            additional_context={"api_path": self.config.api_path},
         )

@@ -3,13 +3,12 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import mimetypes
 import os
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, List, Optional, Sequence, cast
 
 import aiofiles  # type: ignore[import-untyped]
-from fastapi import HTTPException, Request, UploadFile
+from fastapi import Request, UploadFile
 from werkzeug.utils import secure_filename
 
 from model.upload import UploadedFileInfo, UploadFileRsp
@@ -19,7 +18,6 @@ from utils.logger import logger
 from utils.security import (
     safe_join,
     validate_file_extension,
-    validate_file_size,
     validate_filename,
     validate_mime_type,
     validate_task_id,
@@ -28,9 +26,109 @@ from utils.security import (
 
 # Chunk size for streaming upload (1MB)
 CHUNK_SIZE = 1024 * 1024
+HEADER_READ_BYTES = 1024
+DEFAULT_FILE_TYPE = "dataset"
+SUPPORTED_FILE_TYPES = {"cert", "dataset"}
+
+FileInfo = Dict[str, Any]
 
 # In-memory dictionary to store certificate configurations per task.
 _task_cert_configs: Dict[str, Dict[str, str]] = {}
+
+
+def _require_files(files: Sequence[UploadFile]) -> None:
+    first_valid = next((file for file in files if file and file.filename), None)
+    if not first_valid:
+        raise ErrorResponse.bad_request(ErrorMessages.NO_FILES_PROVIDED)
+    logger.info("Uploading file: {}", first_valid.filename)
+
+
+def _normalize_file_type(file_type: Optional[str]) -> str:
+    normalized = (file_type or DEFAULT_FILE_TYPE).lower()
+    if normalized not in SUPPORTED_FILE_TYPES:
+        raise ErrorResponse.bad_request(
+            f"{ErrorMessages.UNSupported_FILE_TYPE}: {file_type or 'unknown'}"
+        )
+    return normalized
+
+
+def _resolve_task_identifier(task_id: Optional[str]) -> str:
+    if not task_id:
+        return str(uuid.uuid4())
+    try:
+        return validate_task_id(task_id)
+    except ValueError as exc:
+        logger.error("Task ID validation failed: {}", exc)
+        raise ErrorResponse.bad_request(str(exc))
+
+
+def _prepare_upload_directory(task_id: str) -> str:
+    try:
+        task_upload_dir = safe_join(UPLOAD_FOLDER, task_id)
+        validate_upload_path(task_upload_dir, UPLOAD_FOLDER)
+        os.makedirs(task_upload_dir, exist_ok=True)
+        return task_upload_dir
+    except ValueError as exc:
+        raise ErrorResponse.bad_request(str(exc)) from exc
+
+
+async def _validate_and_save_file(
+    file: UploadFile,
+    upload_dir: str,
+    allowed_extensions: Collection[str],
+    header_type: str,
+    log_label: str,
+) -> FileInfo:
+    if not file.filename:
+        raise ErrorResponse.bad_request(ErrorMessages.NO_FILES_PROVIDED)
+
+    filename_input = cast(str, file.filename)
+
+    try:
+        validated_filename = validate_filename(filename_input)
+        validate_file_extension(validated_filename, set(allowed_extensions))
+        await validate_file_header(file, validated_filename, header_type)
+
+        filename = secure_filename(validated_filename)
+        absolute_file_path = safe_join(upload_dir, filename)
+        validate_upload_path(absolute_file_path, UPLOAD_FOLDER)
+
+        file_size = await save_file_stream(file, absolute_file_path)
+        logger.info(
+            "{} file uploaded successfully: {}, size: {} bytes",
+            log_label.capitalize(),
+            filename,
+            file_size,
+        )
+        return {
+            "originalname": filename,
+            "path": absolute_file_path,
+            "size": file_size,
+        }
+    except ValueError as exc:
+        raise ErrorResponse.bad_request(str(exc)) from exc
+
+
+async def _collect_uploaded_files(
+    files: Sequence[UploadFile],
+    upload_dir: str,
+    allowed_extensions: Collection[str],
+    header_type: str,
+    log_label: str,
+) -> List[FileInfo]:
+    uploaded_files: List[FileInfo] = []
+    for file in files:
+        if not file or not file.filename:
+            continue
+        file_info = await _validate_and_save_file(
+            file,
+            upload_dir,
+            allowed_extensions,
+            header_type,
+            log_label,
+        )
+        uploaded_files.append(file_info)
+    return uploaded_files
 
 
 def save_task_cert_config(task_id: str, config: Dict[str, str]):
@@ -67,8 +165,12 @@ async def save_file_stream(file: UploadFile, file_path: str) -> int:
                 await f.close()
                 if os.path.exists(file_path):
                     os.remove(file_path)
-                raise ValueError(
-                    f"File size exceeds maximum allowed size of {MAX_FILE_SIZE / (1024*1024*1024):.1f}GB"
+                max_size_gb = MAX_FILE_SIZE / (1024 * 1024 * 1024)
+                raise ErrorResponse.bad_request(
+                    ErrorMessages.VALIDATION_ERROR,
+                    details=(
+                        f"File size exceeds maximum allowed size of {max_size_gb:.1f}GB"
+                    ),
                 )
 
     return total_size
@@ -83,9 +185,9 @@ async def validate_file_header(file: UploadFile, filename: str, file_type: str) 
         filename: filename
         file_type: file type ('cert' or 'dataset')
     """
-    # Only read the first 1024 bytes of the file for MIME type check
+    # Only read the first HEADER_READ_BYTES of the file for MIME type check
     current_position = file.file.tell()
-    header_content = await file.read(1024)
+    header_content = await file.read(HEADER_READ_BYTES)
     await file.seek(current_position)  # Reset file pointer
 
     # Validate MIME type based on file content and filename
@@ -145,70 +247,27 @@ async def process_cert_files(
         A tuple containing the list of uploaded file info and the certificate configuration.
     """
     try:
-        # Validate task_id
-        validated_task_id = validate_task_id(task_id)
-
-        # Create safe upload directory path using safe_join
-        task_upload_dir = safe_join(UPLOAD_FOLDER, validated_task_id)
-
-        # Validate upload path
-        validate_upload_path(task_upload_dir, UPLOAD_FOLDER)
-
-        os.makedirs(task_upload_dir, exist_ok=True)
-
-        uploaded_files_info = []
-        for file in files:
-            if file and file.filename:
-                # Validate filename
-                validated_filename = validate_filename(file.filename)
-
-                # Validate file extension
-                validate_file_extension(validated_filename, ALLOWED_EXTENSIONS["cert"])
-
-                # Fast validation of file header, instead of reading the entire file
-                await validate_file_header(file, validated_filename, "cert")
-
-                filename = secure_filename(validated_filename)
-                # Use safe_join for final file path
-                absolute_file_path = safe_join(task_upload_dir, filename)
-
-                # Additional safety check for the final path
-                validate_upload_path(absolute_file_path, UPLOAD_FOLDER)
-
-                # Use streaming to save file
-                file_size = await save_file_stream(file, absolute_file_path)
-
-                file_info = {
-                    "originalname": filename,
-                    "path": absolute_file_path,  # Keep absolute path for file info
-                    "size": file_size,
-                }
-                uploaded_files_info.append(file_info)
-                logger.info(
-                    "Certificate file uploaded successfully, type: {}, size: {} bytes",
-                    cert_type,
-                    file_size,
-                )
-
-        # Retrieve existing config for the task, if any.
-        existing_config = get_task_cert_config(validated_task_id)
-        # Determine the new config based on the uploaded files - use absolute paths
-        uploaded_files_with_absolute_paths = []
-        for file_info in uploaded_files_info:
-            uploaded_files_with_absolute_paths.append(file_info)
-
-        cert_config = determine_cert_config(
-            uploaded_files_with_absolute_paths, cert_type, existing_config
+        task_upload_dir = _prepare_upload_directory(task_id)
+        uploaded_files_info = await _collect_uploaded_files(
+            files,
+            task_upload_dir,
+            ALLOWED_EXTENSIONS["cert"],
+            "cert",
+            "certificate",
         )
-        # Save the updated configuration
-        save_task_cert_config(validated_task_id, cert_config)
+
+        existing_config = get_task_cert_config(task_id)
+        cert_config = determine_cert_config(
+            uploaded_files_info, cert_type, existing_config
+        )
+        save_task_cert_config(task_id, cert_config)
 
         return uploaded_files_info, cert_config
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ErrorResponse:
+        raise
     except Exception as e:
         logger.error("Error processing certificate files: {}", e)
-        raise HTTPException(status_code=500, detail="Upload failed")
+        raise ErrorResponse.internal_server_error(ErrorMessages.FILE_UPLOAD_FAILED)
 
 
 async def process_dataset_files(task_id: str, files: List[UploadFile]):
@@ -224,62 +283,21 @@ async def process_dataset_files(task_id: str, files: List[UploadFile]):
         A tuple containing the list of uploaded file info and the file path.
     """
     try:
-        # Validate task_id
-        validated_task_id = validate_task_id(task_id)
-
-        # Create safe upload directory path using safe_join
-        task_upload_dir = safe_join(UPLOAD_FOLDER, validated_task_id)
-
-        # Validate upload path
-        validate_upload_path(task_upload_dir, UPLOAD_FOLDER)
-
-        os.makedirs(task_upload_dir, exist_ok=True)
-
-        uploaded_files_info = []
-        file_path = None
-
-        for file in files:
-            if file and file.filename:
-                # Validate filename
-                validated_filename = validate_filename(file.filename)
-
-                # Validate file extension
-                validate_file_extension(
-                    validated_filename, ALLOWED_EXTENSIONS["dataset"]
-                )
-
-                # Fast validation of file header, instead of reading the entire file
-                await validate_file_header(file, validated_filename, "dataset")
-
-                filename = secure_filename(validated_filename)
-                # Use safe_join for final file path
-                absolute_file_path = safe_join(task_upload_dir, filename)
-
-                # Additional safety check for the final path
-                validate_upload_path(absolute_file_path, UPLOAD_FOLDER)
-
-                # Use streaming to save file, avoid memory overflow
-                file_size = await save_file_stream(file, absolute_file_path)
-
-                file_info = {
-                    "originalname": filename,
-                    "path": absolute_file_path,  # Keep absolute path for file info
-                    "size": file_size,
-                }
-                uploaded_files_info.append(file_info)
-                file_path = absolute_file_path  # Use absolute path for test_data
-                logger.info(
-                    "Dataset file uploaded successfully: {}, size: {} bytes",
-                    filename,
-                    file_size,
-                )
-
+        task_upload_dir = _prepare_upload_directory(task_id)
+        uploaded_files_info = await _collect_uploaded_files(
+            files,
+            task_upload_dir,
+            ALLOWED_EXTENSIONS["dataset"],
+            "dataset",
+            "dataset",
+        )
+        file_path = uploaded_files_info[-1]["path"] if uploaded_files_info else None
         return uploaded_files_info, file_path
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ErrorResponse:
+        raise
     except Exception as e:
         logger.error("Error processing dataset files: {}", e)
-        raise HTTPException(status_code=500, detail="Upload failed")
+        raise ErrorResponse.internal_server_error(ErrorMessages.FILE_UPLOAD_FAILED)
 
 
 async def upload_file_svc(
@@ -295,29 +313,12 @@ async def upload_file_svc(
     It validates the request, generates a task ID if not provided, and routes
     the processing to the appropriate handler based on the file type.
     """
-    if files and files[0].filename:
-        logger.info("Uploading file: {}", files[0].filename)
+    _require_files(files)
 
-    if not files or not files[0].filename:
-        return ErrorResponse.bad_request(ErrorMessages.NO_FILES_PROVIDED)
+    normalized_file_type = _normalize_file_type(file_type)
+    effective_task_id = _resolve_task_identifier(task_id)
 
-    # Generate a new task_id if one is not provided.
-    effective_task_id = str(uuid.uuid4())
-
-    # Validate task_id if provided
-    if task_id:
-        try:
-            effective_task_id = validate_task_id(task_id)
-            # logger.info(f"Validated task_id: {effective_task_id}")
-        except ValueError as e:
-            logger.error("Task ID validation failed: {}", e)
-            return ErrorResponse.bad_request(str(e))
-
-    if not file_type:
-        file_type = "dataset"
-
-    if file_type == "cert":
-        # logger.info(f"Processing certificate files for task: {effective_task_id}")
+    if normalized_file_type == "cert":
         uploaded_files, cert_config = await process_cert_files(
             effective_task_id, files, cert_type
         )
@@ -328,21 +329,10 @@ async def upload_file_svc(
             cert_config=cert_config,
         )
 
-    if file_type == "dataset":
-        # logger.info(f"Processing dataset files for task: {effective_task_id}")
-        uploaded_files, file_path = await process_dataset_files(
-            effective_task_id, files
-        )
-        return UploadFileRsp(
-            message="Dataset files uploaded successfully",
-            task_id=effective_task_id,
-            files=[UploadedFileInfo(**f) for f in uploaded_files],
-            test_data=file_path,  # Return the file path for backend processing
-        )
-
-    # In the future, it could handle other file types here.
-    # e.g., if file_type == "dataset": ...
-
-    return ErrorResponse.bad_request(
-        f"{ErrorMessages.UNSupported_FILE_TYPE}: {file_type}"
+    uploaded_files, file_path = await process_dataset_files(effective_task_id, files)
+    return UploadFileRsp(
+        message="Dataset files uploaded successfully",
+        task_id=effective_task_id,
+        files=[UploadedFileInfo(**f) for f in uploaded_files],
+        test_data=file_path,
     )

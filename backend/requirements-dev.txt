@@ -1,5 +1,6 @@
 black==24.3.0
 isort==5.13.2
+setuptools>=70.0.0
 
 
 flake8==7.0.0

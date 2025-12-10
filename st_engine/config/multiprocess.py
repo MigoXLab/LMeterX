@@ -4,7 +4,7 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import os
-from functools import lru_cache
+from functools import cached_property
 from typing import Any, Dict, Optional
 
 
@@ -49,20 +49,17 @@ class MultiprocessingConfig:
     def __init__(self) -> None:
         self._config_reader = self._ConfigReader()
 
-    @property
-    @lru_cache(maxsize=1)
+    @cached_property
     def config(self) -> Dict[str, Any]:
         """Cached configuration dictionary."""
         return self._config_reader.as_dict()
 
-    @property
-    @lru_cache(maxsize=1)
+    @cached_property
     def cpu_count(self) -> int:
         """Detect and cache CPU core count."""
         return self._get_detected_cpu_count()
 
-    @property
-    @lru_cache(maxsize=1)
+    @cached_property
     def is_docker(self) -> bool:
         """Detect and cache if running in Docker."""
         return (

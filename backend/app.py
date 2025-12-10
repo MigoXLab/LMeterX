@@ -5,7 +5,7 @@ Copyright (c) 2025, All Rights Reserved.
 
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -15,12 +15,20 @@ from api.api_system import router as system
 from api.api_task import router as task
 from api.api_upload import router as upload
 from middleware.db_middleware import DBSessionMiddleware
+from utils.error_handler import ErrorResponse
 
 app = FastAPI(
     title="LMeterX Backend API",
     description="LMeterX Backend",
     version="1.0.0",
 )
+
+
+@app.exception_handler(ErrorResponse)
+async def handle_service_error(_: Request, exc: ErrorResponse):
+    """Return a unified response body for all ErrorResponse exceptions."""
+    return exc.to_response()
+
 
 # Add database middleware
 app.add_middleware(DBSessionMiddleware)

@@ -3,126 +3,12 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+from datetime import datetime, timezone
+from http import HTTPStatus
 from typing import Any, Dict, Optional, Union
 
 from fastapi import HTTPException
 from starlette.responses import JSONResponse
-
-
-class ErrorResponse:
-    """Error response handler"""
-
-    @staticmethod
-    def create(
-        status_code: int,
-        error: str,
-        details: Optional[Union[str, Dict[str, Any]]] = None,
-        code: Optional[str] = None,
-    ) -> JSONResponse:
-        """
-        Create a standard error response
-
-        Args:
-            status_code: HTTP status code
-            error: Error message
-            details: Detailed error information (optional)
-            code: Error code (optional)
-
-        Returns:
-            JSONResponse: Standardized error response
-        """
-        response_content: Dict[str, Any] = {"status": "error", "error": error}
-
-        if details:
-            response_content["details"] = details
-
-        if code:
-            response_content["code"] = code
-
-        return JSONResponse(status_code=status_code, content=response_content)
-
-    @staticmethod
-    def bad_request(
-        error: str,
-        details: Optional[Union[str, Dict[str, Any]]] = None,
-        code: Optional[str] = None,
-    ) -> JSONResponse:
-        """400 Bad Request"""
-        return ErrorResponse.create(400, error, details, code)
-
-    @staticmethod
-    def not_found(
-        error: str,
-        details: Optional[Union[str, Dict[str, Any]]] = None,
-        code: Optional[str] = None,
-    ) -> JSONResponse:
-        """404 Not Found"""
-        return ErrorResponse.create(404, error, details, code)
-
-    @staticmethod
-    def internal_server_error(
-        error: str = "Internal server error",
-        details: Optional[Union[str, Dict[str, Any]]] = None,
-        code: Optional[str] = None,
-    ) -> JSONResponse:
-        """500 Internal Server Error"""
-        return ErrorResponse.create(500, error, details, code)
-
-    @staticmethod
-    def unauthorized(
-        error: str = "Unauthorized",
-        details: Optional[Union[str, Dict[str, Any]]] = None,
-        code: Optional[str] = None,
-    ) -> JSONResponse:
-        """401 Unauthorized"""
-        return ErrorResponse.create(401, error, details, code)
-
-    @staticmethod
-    def forbidden(
-        error: str = "Forbidden",
-        details: Optional[Union[str, Dict[str, Any]]] = None,
-        code: Optional[str] = None,
-    ) -> JSONResponse:
-        """403 Forbidden"""
-        return ErrorResponse.create(403, error, details, code)
-
-    @staticmethod
-    def conflict(
-        error: str,
-        details: Optional[Union[str, Dict[str, Any]]] = None,
-        code: Optional[str] = None,
-    ) -> JSONResponse:
-        """409 Conflict"""
-        return ErrorResponse.create(409, error, details, code)
-
-
-class SuccessResponse:
-    """Standard success response format"""
-
-    @staticmethod
-    def create(
-        data: Any = None, message: Optional[str] = None, status_code: int = 200
-    ) -> JSONResponse:
-        """
-        Create a standard success response
-
-        Args:
-            data: Response data
-            message: Success message
-            status_code: HTTP status code
-
-        Returns:
-            JSONResponse: Standardized success response
-        """
-        response_content: Dict[str, Any] = {"status": "success"}
-
-        if data is not None:
-            response_content["data"] = data
-
-        if message:
-            response_content["message"] = message
-
-        return JSONResponse(status_code=status_code, content=response_content)
 
 
 class ErrorMessages:
@@ -140,6 +26,10 @@ class ErrorMessages:
     INTERNAL_SERVER_ERROR = "Internal server error"
     DATABASE_ERROR = "Database operation failed"
     VALIDATION_ERROR = "Validation failed"
+    INVALID_LANGUAGE = "Invalid language option"
+    HEADERS_LIMIT_EXCEEDED = "Header count exceeds the allowed maximum"
+    COOKIES_LIMIT_EXCEEDED = "Cookie count exceeds the allowed maximum"
+    REQUEST_PAYLOAD_INVALID = "Request payload is invalid"
 
     # File related errors
     FILE_UPLOAD_FAILED = "File upload failed"
@@ -154,6 +44,7 @@ class ErrorMessages:
     TASK_STOP_FAILED = "Failed to stop task"
     TASK_NO_RESULTS = "No results found for this task"
     ANALYSIS_NOT_FOUND = "Analysis not found for this task"
+    MODEL_TASKS_FETCH_FAILED = "Failed to retrieve model tasks for comparison"
 
     # Configuration related errors
     CONFIG_NOT_FOUND = "Configuration not found"
@@ -166,3 +57,151 @@ class ErrorMessages:
     INVALID_CREDENTIALS = "Invalid credentials"
     TOKEN_EXPIRED = "Token expired"  # nosec
     INSUFFICIENT_PERMISSIONS = "Insufficient permissions"
+
+    # Streaming/test errors
+    STREAM_PROCESSING_TIMEOUT = "Streaming data processing timeout"
+    STREAM_PROCESSING_ERROR = "Streaming data processing error"
+
+
+class ErrorResponse(HTTPException):
+    """Single source of truth for standardized error payloads."""
+
+    def __init__(
+        self,
+        status_code: int,
+        error: str,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize the error payload and base HTTPException."""
+        self.error = error
+        self.details = details
+        self.code = self._resolve_code(status_code, code)
+        self.extra = extra
+        self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.payload: Dict[str, Any] = {
+            "success": False,
+            "status": "error",
+            "error": error,  # legacy field kept for backwards compatibility
+            "message": error,
+            "code": self.code,
+            "status_code": status_code,
+            "timestamp": self.timestamp,
+        }
+
+        if details is not None:
+            self.payload["details"] = details
+        if extra:
+            self.payload["meta"] = extra
+
+        super().__init__(status_code=status_code, detail=self.payload)
+
+    @staticmethod
+    def _resolve_code(status_code: int, explicit_code: Optional[str]) -> str:
+        """Infer a normalized code from HTTP status when not explicitly provided."""
+        if explicit_code:
+            return explicit_code
+
+        try:
+            phrase = HTTPStatus(status_code).phrase
+            return phrase.lower().replace(" ", "_")
+        except ValueError:
+            return str(status_code)
+
+    def to_response(self) -> JSONResponse:
+        """Serialize the service error into a standardized JSON response."""
+        return JSONResponse(status_code=self.status_code, content=self.payload)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return the serialized payload."""
+        return dict(self.payload)
+
+    @classmethod
+    def response(
+        cls,
+        status_code: int,
+        error: str,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> JSONResponse:
+        """Return a JSONResponse without forcing the caller to raise."""
+        return cls(status_code, error, details, code, extra).to_response()
+
+    @classmethod
+    def bad_request(
+        cls,
+        error: str,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> "ErrorResponse":
+        """Create a 400 Bad Request error response."""
+        return cls(400, error, details, code, extra)
+
+    @classmethod
+    def not_found(
+        cls,
+        error: str,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> "ErrorResponse":
+        """Create a 404 Not Found error response."""
+        return cls(404, error, details, code, extra)
+
+    @classmethod
+    def internal_server_error(
+        cls,
+        error: str = ErrorMessages.INTERNAL_SERVER_ERROR,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> "ErrorResponse":
+        """Create a 500 Internal Server Error response."""
+        return cls(500, error, details, code, extra)
+
+    @classmethod
+    def unauthorized(
+        cls,
+        error: str = ErrorMessages.UNAUTHORIZED,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> "ErrorResponse":
+        """Create a 401 Unauthorized error response."""
+        return cls(401, error, details, code, extra)
+
+    @classmethod
+    def forbidden(
+        cls,
+        error: str = ErrorMessages.INSUFFICIENT_PERMISSIONS,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> "ErrorResponse":
+        """Create a 403 Forbidden error response."""
+        return cls(403, error, details, code, extra)
+
+    @classmethod
+    def conflict(
+        cls,
+        error: str,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> "ErrorResponse":
+        """Create a 409 Conflict error response."""
+        return cls(409, error, details, code, extra)
+
+    @classmethod
+    def unprocessable_entity(
+        cls,
+        error: str,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+        code: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> "ErrorResponse":
+        """Create a 422 Unprocessable Entity error response."""
+        return cls(422, error, details, code, extra)

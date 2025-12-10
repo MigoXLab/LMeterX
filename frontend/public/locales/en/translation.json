@@ -1,7 +1,7 @@
 {
   "sidebar": {
     "testTasks": "Test Tasks",
-    "modelArena": "Model Arena",
+    "perfCompare": "Perf Insight",
     "monitorHub": "Monitor Hub",
     "systemConfig": "System Config"
   },
@@ -183,7 +183,7 @@
       "enterApiKeyWithoutBearer": "Enter your API key without Bearer prefix"
     },
     "resultComparison": {
-      "title": "Model Arena",
+      "title": "Metric Comparison",
       "selectModels": "Select Models",
       "compare": "Compare",
       "addModel": "Add Model",
@@ -193,7 +193,7 @@
       "selectTasks": "Select Tasks",
       "comparisonChart": "Comparison Chart",
       "exportComparison": "Export Comparison",
-      "description": "Model performance comparison with multi-metric",
+      "description": "Performance comparison and analysis with multi-metric",
       "clearAllTasks": "Clear All Selected Tasks",
       "clearAllTasksConfirm": "Are you sure you want to clear all selected tasks?",
       "allTasksCleared": "All tasks cleared",
@@ -208,12 +208,13 @@
       "downloadFailed": "Download failed: {{error}}",
       "modelInfo": "Model Info",
       "download": "Download Report",
-      "selectModel": "Select Model",
+      "selectTask": "Select Task",
       "clearAll": "Clear All",
-      "pleaseSelectModel": "Please select the model for comparison",
+      "pleaseSelectTask": "Please select the task for comparison",
       "comparisonResults": "Comparison Results",
+      "noMetricData": "No metric data available to visualize",
       "tasksSelected": "{{count}} task(s) selected",
-      "compareResult": "Compare Result",
+      "compareResult": "Submit",
       "searchTaskOrModel": "Search task name or model name",
       "filterModel": "Filter model",
       "noAvailableTasks": "No available tasks found",
@@ -222,14 +223,14 @@
       "fetchAvailableTasksError": "Failed to fetch available tasks",
       "selectAtLeast2Tasks": "Please select at least 2 tasks for comparison",
       "max5TasksAllowed": "Maximum 5 tasks can be selected for comparison",
-      "comparisonCompleted": "Result comparison completed",
+      "comparisonCompleted": "Comparison completed",
       "compareResultFailed": "Failed to compare Result",
       "compareResultError": "Failed to compare Result",
       "generatingComparisonReport": "Generating comparison report...",
       "comparisonComponentsNotLoaded": "Comparison components not fully loaded, please try again later.",
       "unableToCaptureComparisonContent": "Unable to capture any comparison content.",
       "unableToCreateCanvasContext": "Unable to create Canvas drawing context.",
-      "selectModelForComparison": "Select Model for Comparison",
+      "selectModelForTask": "Select Task",
       "unknownError": "Unknown error",
       "timeToFirstToken": "Time to First Token (TTFT)",
       "requestsPerSecond": "Requests Per Second (RPS)",
@@ -237,13 +238,15 @@
       "completionTokensPerSecond": "Completion Tokens Per Second",
       "averageTotalTokensPerRequest": "Average Total Tokens Per Request",
       "averageCompletionTokensPerRequest": "Average Completion Tokens Per Request",
+      "totalTime": "Total Time",
       "metricDescriptions": {
         "rps": "Number of requests sent per second",
         "ttft": "Time to first token (s)",
         "totalTps": "Number of input and generated tokens per second",
         "completionTps": "Number of generated tokens per second",
         "avgTotalTpr": "Average number of input and generated tokens per request",
-        "avgCompletionTpr": "Average number of generated tokens per request"
+        "avgCompletionTpr": "Average number of generated tokens per request",
+        "totalTime": "Average time spent from request start to output completion"
       },
       "concurrentUsersSuffix": "u",
       "chartTitles": {
@@ -252,7 +255,8 @@
         "totalTps": "Total TPS",
         "completionTps": "Completion TPS",
         "avgTotalTpr": "Avg Total TPR",
-        "avgCompletionTpr": "Avg Completion TPR"
+        "avgCompletionTpr": "Avg Completion TPR",
+        "totalTime": "Total Time (s)"
       },
       "aiAnalysis": "AI Summary",
       "aiAnalysisResults": "AI Summary Results",
@@ -400,8 +404,8 @@
       "selectJsonlFile": "Select JSONL File",
       "selectDatasetFile": "Select Dataset File",
       "jsonlFormatDescription": "Required format: .jsonl file with each line containing {\"id\": \"...\", \"prompt\": \"...\"}",
-      "datasetFileFormatDescription": "Supports JSON (ShareGPT format) and JSONL formats. ShareGPT: [{\"id\": \"...\", \"conversations\": [...]}], JSONL: one JSON object per line {\"id\": \"...\", \"prompt\": \"...\"}",
-      "datasetImageMountWarning": "⚠️ If the dataset contains images, ensure image files are mounted to the container. See DATASET_GUIDE for details.",
+      "datasetFileFormatDescription": "Supports JSON (ShareGPT format) and JSONL formats:\n• JSON: [{\"id\": \"...\", \"conversations\": [...]}, ...]\n• JSONL: one JSON object per line {\"id\": \"...\", \"prompt\": \"...\"}",
+      "datasetImageMountWarning": "⚠️ If the dataset contains images paths, ensure image files are mounted to the container before starting the service. See DATASET_GUIDE for details.",
       "jsonlData": "JSONL Data",
       "jsonlDataTooltip": "Each line must be a valid JSON object with \"id\" and \"prompt\" fields.",
       "testDuration": "Test Duration (seconds)",

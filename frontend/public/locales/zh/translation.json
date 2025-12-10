@@ -183,7 +183,7 @@
       "enterApiKeyWithoutBearer": "输入API密钥（不包含Bearer前缀）"
     },
     "resultComparison": {
-      "title": "指标对比",
+      "title": "性能对比",
       "selectModels": "选择模型",
       "compare": "对比",
       "addModel": "添加模型",
@@ -211,7 +211,7 @@
       "selectTask": "选择任务",
       "clearAll": "清除全部",
       "pleaseSelectTask": "请选择要对比的任务",
-      "comparisonResults": "性能对比",
+      "comparisonResults": "指标对比",
       "noMetricData": "暂无可展示的指标数据",
       "tasksSelected": "已选择{{count}}个任务",
       "compareResult": "提交",

@@ -183,7 +183,7 @@
       "enterApiKeyWithoutBearer": "Enter your API key without Bearer prefix"
     },
     "resultComparison": {
-      "title": "Metric Comparison",
+      "title": "Perf Insight",
       "selectModels": "Select Models",
       "compare": "Compare",
       "addModel": "Add Model",
@@ -211,7 +211,7 @@
       "selectTask": "Select Task",
       "clearAll": "Clear All",
       "pleaseSelectTask": "Please select the task for comparison",
-      "comparisonResults": "Comparison Results",
+      "comparisonResults": "Metric Comparison",
       "noMetricData": "No metric data available to visualize",
       "tasksSelected": "{{count}} task(s) selected",
       "compareResult": "Submit",

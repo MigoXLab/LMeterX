@@ -79,6 +79,33 @@ const TaskResults: React.FC = () => {
   const detailsCardRef = useRef<HTMLDivElement | null>(null);
   const responseTimeCardRef = useRef<HTMLDivElement | null>(null);
 
+  const getNumericValue = (item: any, fields: string[]): number | undefined => {
+    if (!item) {
+      return undefined;
+    }
+
+    for (let index = 0; index < fields.length; index += 1) {
+      const field = fields[index];
+      if (field in item) {
+        const rawValue = item[field];
+        if (rawValue !== null && rawValue !== undefined && rawValue !== '') {
+          const numericValue = Number(rawValue);
+          if (Number.isFinite(numericValue)) {
+            return numericValue;
+          }
+        }
+      }
+    }
+
+    return undefined;
+  };
+
+  const getRequestCountValue = (item?: any): number | undefined =>
+    getNumericValue(item, ['num_requests', 'request_count']);
+
+  const getFailureCountValue = (item?: any): number | undefined =>
+    getNumericValue(item, ['num_failures', 'failure_count']);
+
   const getBuiltInDatasetLabel = (value?: number | null) => {
     switch (value) {
       case 1:
@@ -193,10 +220,14 @@ const TaskResults: React.FC = () => {
     }
 
     results.forEach(item => {
+      const hasRequestStats =
+        getRequestCountValue(item) !== undefined ||
+        getFailureCountValue(item) !== undefined;
+
       if (
         item?.metric_type &&
         !SUMMARY_METRIC_TYPES.has(item.metric_type) &&
-        Number.isFinite(Number(item?.failure_count))
+        hasRequestStats
       ) {
         typeSet.add(item.metric_type);
       }
@@ -205,25 +236,18 @@ const TaskResults: React.FC = () => {
     return typeSet;
   }, [results, taskInfo?.api_path]);
 
-  // Calculate total failed requests from multiple sources
   const calculateFailedRequests = () => {
-    // Get failure requests from 'failure' metric type
-    const failureMetricRequests = failResult?.request_count || 0;
+    const failureRequests = getRequestCountValue(failResult);
+    if (failureRequests !== undefined) {
+      return failureRequests;
+    }
 
-    // Sum failure counts from request-specific metrics
-    const requestFailures = results.reduce((total, item) => {
-      if (
-        !item?.metric_type ||
-        SUMMARY_METRIC_TYPES.has(item.metric_type) ||
-        !Number.isFinite(Number(item?.failure_count))
-      ) {
-        return total;
-      }
+    const fallbackFailures = getFailureCountValue(failResult);
+    if (fallbackFailures !== undefined) {
+      return fallbackFailures;
+    }
 
-      return total + Number(item.failure_count);
-    }, 0);
-
-    return failureMetricRequests + requestFailures;
+    return 0;
   };
 
   // Check if we have any valid test results
@@ -264,7 +288,10 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.totalRequestsCol'),
       dataIndex: 'request_count',
       key: 'request_count',
-      render: (text: number) => text || 0,
+      render: (_: number, record: any) => {
+        const requestCount = getRequestCountValue(record);
+        return requestCount !== undefined ? requestCount : 0;
+      },
     },
 
     {
@@ -357,13 +384,41 @@ const TaskResults: React.FC = () => {
       );
     }
 
-    const baseRequestCount =
-      CompletionResult?.request_count || firstTokenResult?.request_count || 0;
     const failedRequestCount = calculateFailedRequests();
-    const actualTotalRequests = baseRequestCount + failedRequestCount;
+    const apiPathMetric = taskInfo?.api_path
+      ? results.find(item => item.metric_type === taskInfo.api_path)
+      : undefined;
+    const apiPathRequestCount = getRequestCountValue(apiPathMetric);
+    const completionRequests = getRequestCountValue(CompletionResult);
+    const firstTokenRequests = getRequestCountValue(firstTokenResult);
+    const outputCompletionRequests = getRequestCountValue(
+      outputCompletionResult
+    );
+
+    const successCandidates = [
+      completionRequests,
+      firstTokenRequests,
+      outputCompletionRequests,
+    ].filter((count): count is number => count !== undefined);
+
+    const fallbackSuccessRequests =
+      successCandidates.find(count => count > 0) ??
+      (successCandidates.length > 0 ? successCandidates[0] : 0) ??
+      0;
+
+    const totalRequestCount =
+      apiPathRequestCount !== undefined
+        ? apiPathRequestCount
+        : fallbackSuccessRequests + failedRequestCount;
+
+    const successfulRequestCount = Math.max(
+      totalRequestCount - failedRequestCount,
+      0
+    );
+
     const actualSuccessRate =
-      actualTotalRequests > 0
-        ? (baseRequestCount / actualTotalRequests) * 100
+      totalRequestCount > 0
+        ? (successfulRequestCount / totalRequestCount) * 100
         : 0;
 
     const formatMetricValue = (
@@ -435,7 +490,7 @@ const TaskResults: React.FC = () => {
       {
         key: 'totalRequests',
         title: t('pages.results.totalRequests'),
-        value: formatMetricValue(actualTotalRequests),
+        value: formatMetricValue(totalRequestCount),
       },
       {
         key: 'successRate',

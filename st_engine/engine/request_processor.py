@@ -855,7 +855,6 @@ class APIClient:
                                             chunk if chunk else "No chunk data"
                                         ),
                                         "api_path": self.config.api_path,
-                                        "request_name": request_name,
                                     },
                                 )
                                 return "", "", usage
@@ -903,10 +902,7 @@ class APIClient:
                         error_msg=f"Stream data parsing error: {e}",
                         response=response,
                         response_time=response_time,
-                        additional_context={
-                            "api_path": self.config.api_path,
-                            "request_name": request_name,
-                        },
+                        additional_context={"api_path": self.config.api_path},
                     )
                     return "", "", usage
         except (ConnectionError, TimeoutError) as e:
@@ -915,10 +911,7 @@ class APIClient:
                 error_msg=f"Connection error: {e}",
                 response=response,
                 response_time=response_time,
-                additional_context={
-                    "api_path": self.config.api_path,
-                    "request_name": request_name,
-                },
+                additional_context={"api_path": self.config.api_path},
             )
             return "", "", usage
         except Exception as e:
@@ -930,7 +923,6 @@ class APIClient:
                 response_time=response_time,
                 additional_context={
                     "api_path": self.config.api_path,
-                    "request_name": request_name,
                 },
             )
             return "", "", usage
@@ -1030,9 +1022,6 @@ class APIClient:
                 response_time=response_time,
                 additional_context={
                     "api_path": self.config.api_path,
-                    "request_name": base_request_kwargs.get(
-                        "name", "non_stream_mismatch"
-                    ),
                 },
             )
             return (
@@ -1075,7 +1064,6 @@ class APIClient:
                         response_time=total_time,
                         additional_context={
                             "api_path": self.config.api_path,
-                            "request_name": request_name,
                         },
                     )
                     return "", "", usage
@@ -1087,11 +1075,7 @@ class APIClient:
                         response=response,
                         response_time=total_time,
                         additional_context={
-                            "response_preview": (
-                                str(resp_json) if resp_json else "No response data"
-                            ),
                             "api_path": self.config.api_path,
-                            "request_name": request_name,
                         },
                     )
                     return "", "", usage
@@ -1124,7 +1108,6 @@ class APIClient:
                 response_time=response_time,
                 additional_context={
                     "api_path": self.config.api_path,
-                    "request_name": request_name,
                 },
             )
             return "", "", usage

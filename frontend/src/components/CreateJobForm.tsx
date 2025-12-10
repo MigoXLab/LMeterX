@@ -1882,17 +1882,23 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 <Text strong style={{ fontSize: 16 }}>
                   {t('components.createJobForm.selectDatasetFile')}
                 </Text>
-                <p
+                <div
                   style={{
                     marginTop: 12,
                     color: token.colorTextSecondary,
                     fontSize: 12,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
                   }}
                 >
-                  {t('components.createJobForm.datasetFileFormatDescription')}
-                  <br />
-                  {t('components.createJobForm.datasetImageMountWarning')}
-                </p>
+                  <span style={{ whiteSpace: 'pre-line' }}>
+                    {t('components.createJobForm.datasetFileFormatDescription')}
+                  </span>
+                  <span>
+                    {t('components.createJobForm.datasetImageMountWarning')}
+                  </span>
+                </div>
               </Upload.Dragger>
             </Form.Item>
           );

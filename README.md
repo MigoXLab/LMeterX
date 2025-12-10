@@ -122,8 +122,8 @@ For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md
 3. **API Testing**: In Test Tasks → Create Task, click the "Test" button in the Basic Information panel to quickly test API connectivity (use a lightweight prompt for faster feedback).
 4. **Real-time Monitoring**: Navigate to Test Tasks → Logs/Monitoring Center to view full-chain test logs and troubleshoot exceptions
 5. **Result Analysis**: Navigate to Test Tasks → Results to view detailed performance results and export reports
-6. **Result Comparison**: Navigate to Pref Comparison to select multiple models or versions for multi-dimensional performance comparison
-7. **AI Analysis**: In Test Tasks → Results/Pref Comparison, after configuring AI analysis service, support intelligent performance evaluation for single/multiple tasks
+6. **Result Comparison**: Navigate to Pref Insight to select multiple models or versions for multi-dimensional performance comparison
+7. **AI Analysis**: In Test Tasks → Results or Pref Insight, support intelligent performance evaluation for single or multiple tasks
 
 ## 🔧 Configuration
 

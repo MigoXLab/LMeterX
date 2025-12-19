@@ -4,6 +4,7 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import json
+import ssl
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -21,6 +22,7 @@ from model.analysis import (
 )
 from model.task import Task, TaskResult
 from service.system_service import get_ai_service_config_internal_svc
+from utils.converters import truthy
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
 from utils.prompt import get_analysis_prompt, get_comparison_analysis_prompt
@@ -60,14 +62,6 @@ class TaskMetricSnapshot:
             "avg_completion_tokens_per_req": self.avg_completion_tokens_per_req,
             "rps": self.rps,
         }
-
-
-def _normalize_stream_mode(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() == "true"
-    return bool(value)
 
 
 def _resolve_dataset_type(task: Task) -> str:
@@ -131,8 +125,9 @@ async def _fetch_latest_metric_entries(
     metric_result = await db.execute(metric_query)
     latest_metrics: Dict[str, TaskResult] = {}
     for metric in metric_result.scalars().all():
-        if metric.metric_type not in latest_metrics:
-            latest_metrics[metric.metric_type] = metric
+        metric_type = str(metric.metric_type)
+        if metric_type not in latest_metrics:
+            latest_metrics[metric_type] = metric
     return latest_metrics
 
 
@@ -241,7 +236,7 @@ async def _build_model_info_payload(
 
 
 async def extract_task_metrics(
-    db, task_id: str, task: Optional[object] = None
+    db, task_id: str, task: Optional[Task] = None
 ) -> Optional[Dict]:
     """
     Extract key metrics from TaskResult for a single task.
@@ -272,28 +267,28 @@ async def extract_task_metrics(
         snapshot = TaskMetricSnapshot()
 
         if ttft_reasoning_data and ttft_reasoning_data.avg_latency:
-            snapshot.first_token_latency = ttft_reasoning_data.avg_latency / 1000.0
+            snapshot.first_token_latency = (
+                float(ttft_reasoning_data.avg_latency) / 1000.0
+            )
         elif ttft_output_data and ttft_output_data.avg_latency:
-            snapshot.first_token_latency = ttft_output_data.avg_latency / 1000.0
+            snapshot.first_token_latency = float(ttft_output_data.avg_latency) / 1000.0
 
         if total_time_data and total_time_data.avg_latency:
-            snapshot.total_time = total_time_data.avg_latency / 1000.0
+            snapshot.total_time = float(total_time_data.avg_latency) / 1000.0
 
-        snapshot.rps = (
-            _first_non_empty(
-                getattr(total_time_data, "rps", None) if total_time_data else None,
-                getattr(ttft_output_data, "rps", None) if ttft_output_data else None,
-            )
-            or 0.0
+        rps_value = _first_non_empty(
+            float(getattr(total_time_data, "rps", 0.0)) if total_time_data else None,
+            float(getattr(ttft_output_data, "rps", 0.0)) if ttft_output_data else None,
         )
+        snapshot.rps = float(rps_value) if rps_value is not None else 0.0
 
         if token_data:
-            snapshot.total_tps = token_data.total_tps or 0.0
-            snapshot.completion_tps = token_data.completion_tps or 0.0
-            snapshot.avg_total_tokens_per_req = (
+            snapshot.total_tps = float(token_data.total_tps or 0.0)
+            snapshot.completion_tps = float(token_data.completion_tps or 0.0)
+            snapshot.avg_total_tokens_per_req = float(
                 token_data.avg_total_tokens_per_req or 0.0
             )
-            snapshot.avg_completion_tokens_per_req = (
+            snapshot.avg_completion_tokens_per_req = float(
                 token_data.avg_completion_tokens_per_req or 0.0
             )
 
@@ -305,7 +300,7 @@ async def extract_task_metrics(
             "model_name": getattr(task, "model", ""),
             "concurrent_users": getattr(task, "concurrent_users", 0),
             "duration": f"{getattr(task, 'duration', 0)}s",
-            "stream_mode": _normalize_stream_mode(getattr(task, "stream_mode", False)),
+            "stream_mode": truthy(getattr(task, "stream_mode", False)),
             "dataset_type": dataset_type,
             **snapshot.to_dict(),
         }
@@ -398,7 +393,8 @@ async def _call_ai_service(
 
     try:
         timeout = httpx.Timeout(AI_SERVICE_TIMEOUT_SECONDS)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # Use verify=False to skip SSL certificate verification for self-signed certificates
+        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
             response = await client.post(
                 url,
                 headers=headers,
@@ -423,6 +419,13 @@ async def _call_ai_service(
             extra={"response": response_data},
         )
 
+    except ssl.SSLError as e:
+        error_msg = f"AI service SSL error: {str(e)}"
+        logger.error("AI service SSL error: {}", error_msg)
+        raise ErrorResponse.internal_server_error(
+            error="AI service SSL certificate verification failed",
+            details=error_msg,
+        )
     except httpx.TimeoutException as e:
         error_msg = f"AI service request timeout: {str(e)}"
         logger.error("AI service timeout error: {}", error_msg)
@@ -568,9 +571,11 @@ async def get_analysis_svc(request: Request, task_id: str) -> GetAnalysisRespons
         analysis = analysis_result.scalar_one_or_none()
 
         if not analysis:
-            raise ErrorResponse.not_found(
-                ErrorMessages.ANALYSIS_NOT_FOUND,
-                details=f"Analysis not found for task {task_id}",
+            # Gracefully return empty result instead of 404 to avoid noisy errors on UI load
+            return GetAnalysisResponse(
+                data=None,
+                status="not_found",
+                error=ErrorMessages.ANALYSIS_NOT_FOUND,
             )
 
         return GetAnalysisResponse(

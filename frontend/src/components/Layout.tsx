@@ -34,10 +34,10 @@ const Layout: React.FC = () => {
       onClick: () => navigate('/datasets'),
     },
     {
-      key: 'tasks',
+      key: 'jobs',
       icon: <RocketOutlined />,
-      label: 'Benchmark Jobs',
-      onClick: () => navigate('/tasks'),
+      label: 'Jobs',
+      onClick: () => navigate('/jobs'),
     },
   ];
 

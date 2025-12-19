@@ -29,10 +29,10 @@ import {
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { benchmarkJobApi, logApi } from '../api/services';
+import { jobApi, logApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingState';
 import { PageHeader } from '../components/ui/PageHeader';
-import { BenchmarkJob } from '../types';
+import { Job } from '../types/job';
 
 const { Search } = Input;
 
@@ -63,7 +63,7 @@ const TaskLogs: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [tailLines, setTailLines] = useState<number>(100);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [task, setTask] = useState<BenchmarkJob | null>(null);
+  const [task, setTask] = useState<Job | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isStatusRefreshing, setIsStatusRefreshing] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -177,7 +177,7 @@ const TaskLogs: React.FC = () => {
 
     try {
       if (isInitialLoad) {
-        const taskResponse = await benchmarkJobApi.getJob(id);
+        const taskResponse = await jobApi.getJob(id);
         if (taskResponse.data) {
           const currentTask = taskResponse.data;
           setTask(currentTask);
@@ -187,7 +187,7 @@ const TaskLogs: React.FC = () => {
           return currentTask;
         }
       } else {
-        const taskResponse = await benchmarkJobApi.getJobStatus(id);
+        const taskResponse = await jobApi.getJobStatus(id);
         if (taskResponse.data) {
           const currentTaskStatus = taskResponse.data;
           const updatedTask = {
@@ -197,7 +197,7 @@ const TaskLogs: React.FC = () => {
             status: currentTaskStatus.status,
             error_message: currentTaskStatus.error_message,
             updated_at: currentTaskStatus.updated_at,
-          } as BenchmarkJob;
+          } as Job;
 
           setTask(updatedTask);
 
@@ -209,7 +209,7 @@ const TaskLogs: React.FC = () => {
       }
     } catch (err) {
       try {
-        const taskResponse = await benchmarkJobApi.getJob(id);
+        const taskResponse = await jobApi.getJob(id);
         if (taskResponse.data) {
           const currentTask = taskResponse.data;
           setTask(currentTask);

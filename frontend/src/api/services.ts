@@ -5,7 +5,8 @@
  * @copyright 2025
  * */
 
-import { BenchmarkJob, BenchmarkResult, Dataset } from '../types';
+import { Dataset, JobResultLegacy } from '../types';
+import { CommonJob, Job } from '../types/job';
 import api, { uploadFiles } from './apiClient';
 
 type BasicFileLike =
@@ -108,22 +109,22 @@ export const datasetApi = {
   deleteDataset: (id: string) => api.delete<void>(`/datasets/${id}`),
 };
 
-// Benchmark Job API methods
-export const benchmarkJobApi = {
-  // Get all benchmark jobs
+// Job API methods
+export const jobApi = {
+  // Get all  jobs
   getAllJobs: (status?: string, limit?: number, skip?: number) => {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (limit) params.append('limit', limit.toString());
     if (skip) params.append('skip', skip.toString());
 
-    return api.get<BenchmarkJob[]>(`/tasks?${params.toString()}`);
+    return api.get<Job[]>(`/tasks?${params.toString()}`);
   },
 
-  // Get a specific benchmark job by ID
-  getJob: (id: string) => api.get<BenchmarkJob>(`/tasks/${id}`),
+  // Get a specific job by ID
+  getJob: (id: string) => api.get<Job>(`/tasks/${id}`),
 
-  // Get only the status of a specific benchmark job by ID (lightweight)
+  // Get only the status of a specific job by ID (lightweight)
   getJobStatus: (id: string) =>
     api.get<{
       id: string;
@@ -133,44 +134,65 @@ export const benchmarkJobApi = {
       updated_at?: string;
     }>(`/tasks/${id}/status`),
 
-  // Create a new benchmark job
+  // Create a new job
   createJob: (
-    data: Omit<
-      BenchmarkJob,
-      'id' | 'created_at' | 'updated_at' | 'status' | 'result_id'
-    >
-  ) => api.post<BenchmarkJob>('/tasks', data),
+    data: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'status' | 'result_id'>
+  ) => api.post<Job>('/tasks', data),
 
-  // Update a benchmark job
-  updateJob: (id: string, data: Partial<BenchmarkJob>) =>
-    api.put<BenchmarkJob>(`/tasks/${id}`, data),
+  // Update a job
+  updateJob: (id: string, data: Partial<Job>) =>
+    api.put<Job>(`/tasks/${id}`, data),
 
-  // Delete a benchmark job
+  // Delete a job
   deleteJob: (id: string) => api.delete<void>(`/tasks/${id}`),
 
-  // Stop a running benchmark job
-  stopJob: (id: string) => api.post<BenchmarkJob>(`/tasks/stop/${id}`),
+  // Stop a running job
+  stopJob: (id: string) => api.post<Job>(`/tasks/stop/${id}`),
 
   // Test API endpoint
   testApiEndpoint: (data: any) => api.post<any>('/tasks/test', data),
 };
 
-// Results API methods
-export const resultApi = {
-  // Get all results
-  getAllResults: (benchmarkJobId?: string, limit?: number, skip?: number) => {
+// Common API job methods
+export const commonJobApi = {
+  getAllJobs: (status?: string, limit?: number, skip?: number) => {
     const params = new URLSearchParams();
-    if (benchmarkJobId) params.append('benchmark_job_id', benchmarkJobId);
+    if (status) params.append('status', status);
     if (limit) params.append('limit', limit.toString());
     if (skip) params.append('skip', skip.toString());
 
-    return api.get<BenchmarkResult[]>(`/results?${params.toString()}`);
+    return api.get<CommonJob[]>(`/common-tasks?${params.toString()}`);
+  },
+
+  getJob: (id: string) => api.get(`/common-tasks/${id}`),
+
+  getJobStatus: (id: string) => api.get(`/common-tasks/${id}/status`),
+
+  createJob: (data: any) => api.post<CommonJob>('/common-tasks', data),
+
+  testJob: (data: any) => api.post('/common-tasks/test', data),
+
+  stopJob: (id: string) => api.post<CommonJob>(`/common-tasks/stop/${id}`),
+
+  getJobResult: (jobId: string) => api.get(`/common-tasks/${jobId}/results`),
+};
+
+// Results API methods
+export const resultApi = {
+  // Get all results
+  getAllResults: (JobId?: string, limit?: number, skip?: number) => {
+    const params = new URLSearchParams();
+    if (JobId) params.append('job_id', JobId);
+    if (limit) params.append('limit', limit.toString());
+    if (skip) params.append('skip', skip.toString());
+
+    return api.get<JobResultLegacy[]>(`/results?${params.toString()}`);
   },
 
   // Get a specific result by ID
-  getResult: (id: string) => api.get<BenchmarkResult>(`/results/${id}`),
+  getResult: (id: string) => api.get<JobResultLegacy>(`/results/${id}`),
 
-  // Get the result for a specific benchmark job
+  // Get the result for a specific job
   getJobResult: (jobId: string) => api.get<any>(`/tasks/${jobId}/results`),
 };
 
@@ -209,6 +231,46 @@ export const comparisonApi = {
       status: string;
       error?: string;
     }>('/tasks/comparison', { selected_tasks: selectedTasks }),
+
+  // Get available common API tasks for comparison
+  getAvailableCommonTasks: () =>
+    api.get<{
+      data: Array<{
+        task_id: string;
+        task_name: string;
+        method: string;
+        target_url: string;
+        concurrent_users: number;
+        created_at: string;
+        duration: number;
+      }>;
+      status: string;
+      error?: string;
+    }>('/common-tasks/comparison/available'),
+
+  // Compare performance metrics for common API tasks
+  compareCommonPerformance: (selectedTasks: string[]) =>
+    api.post<{
+      data: Array<{
+        task_id: string;
+        task_name: string;
+        method: string;
+        target_url: string;
+        concurrent_users: number;
+        duration: string;
+        request_count: number;
+        failure_count: number;
+        success_rate: number;
+        rps: number;
+        avg_response_time: number;
+        p90_response_time: number;
+        min_response_time: number;
+        max_response_time: number;
+        avg_content_length: number;
+      }>;
+      status: string;
+      error?: string;
+    }>('/common-tasks/comparison', { selected_tasks: selectedTasks }),
 };
 
 // Get log content (supports incremental fetching)

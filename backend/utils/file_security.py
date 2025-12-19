@@ -7,7 +7,7 @@ Copyright (c) 2025, All Rights Reserved.
 import mimetypes
 import os
 import re
-from typing import Set
+from typing import Optional, Set
 
 from utils.be_config import (
     ALLOWED_EXTENSIONS,
@@ -18,6 +18,7 @@ from utils.be_config import (
     MAX_TASK_ID_LENGTH,
     TASK_ID_PATTERN,
 )
+from utils.logger import logger
 
 
 def safe_join(base_path: str, *paths: str) -> str:
@@ -222,3 +223,38 @@ def sanitize_path(path: str) -> str:
         path = re.sub(pattern, "", path)
 
     return path
+
+
+def normalize_file_type(
+    file_type: Optional[str], default: str, supported: Set[str]
+) -> str:
+    """
+    Normalize and validate file type with a default and supported set.
+    """
+    normalized = (file_type or default).lower()
+    if normalized not in supported:
+        raise ValueError(f"Unsupported file type: {file_type or 'unknown'}")
+    return normalized
+
+
+def normalize_relative_upload_path(file_path: str, base_upload_dir: str) -> str:
+    """
+    Normalize upload file paths to a relative path under base_upload_dir.
+    Handles legacy absolute prefixes safely.
+    """
+    if not file_path or file_path.strip() == "":
+        return ""
+
+    normalized_base = os.path.realpath(base_upload_dir).rstrip("/") + "/"
+    docker_prefix = "/app/upload_files/"
+    root_prefix = "/upload_files/"
+
+    if file_path.startswith(normalized_base):
+        return file_path.replace(normalized_base, "", 1)
+    if file_path.startswith(docker_prefix):
+        return file_path.replace(docker_prefix, "", 1)
+    if file_path.startswith(root_prefix):
+        return file_path.replace(root_prefix, "", 1)
+
+    logger.debug("Returning original path without normalization: {}", file_path)
+    return file_path

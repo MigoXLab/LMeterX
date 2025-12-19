@@ -11,7 +11,12 @@ import uvicorn
 from fastapi import FastAPI
 
 from db.database import init_db
-from service.poller import task_create_poller, task_stop_poller
+from service.poller import (
+    common_task_create_poller,
+    common_task_stop_poller,
+    task_create_poller,
+    task_stop_poller,
+)
 from utils.logger import logger
 
 
@@ -24,8 +29,20 @@ def start_polling():
     task_stop_thread = threading.Thread(
         target=task_stop_poller, daemon=True, name="TaskStopPollerThread"
     )
+    common_task_create_thread = threading.Thread(
+        target=common_task_create_poller,
+        daemon=True,
+        name="CommonTaskCreatePollerThread",
+    )
+    common_task_stop_thread = threading.Thread(
+        target=common_task_stop_poller,
+        daemon=True,
+        name="CommonTaskStopPollerThread",
+    )
     task_create_thread.start()
     task_stop_thread.start()
+    common_task_create_thread.start()
+    common_task_stop_thread.start()
     logger.info("Polling threads started successfully.")
 
 

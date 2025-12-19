@@ -11,7 +11,6 @@ from utils.logger import logger
 
 SENSITIVE_KEYS = [
     "api_key",
-    "api_key",
     "token",
     "password",
     "secret",
@@ -22,6 +21,8 @@ SENSITIVE_KEYS = [
     "private_key",
     "access_key",
     "secret_key",
+    "bearer",
+    "session",
 ]
 
 

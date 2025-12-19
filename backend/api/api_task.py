@@ -27,7 +27,7 @@ from service.task_service import (
     get_tasks_status_svc,
     get_tasks_svc,
     stop_task_svc,
-    test_api_endpoint_svc,
+    test_llm_api_svc,
 )
 
 # Create an API router for task-related endpoints
@@ -179,7 +179,7 @@ async def compare_performance(request: Request, comparison_request: ComparisonRe
 
 
 @router.post("/test", response_model=Dict[str, Any])
-async def test_api_endpoint(request: Request, task_create: TaskCreateReq):
+async def test_llm_api(request: Request, task_create: TaskCreateReq):
     """
     Test the API endpoint with the provided configuration.
 
@@ -190,4 +190,4 @@ async def test_api_endpoint(request: Request, task_create: TaskCreateReq):
     Returns:
         Dict[str, Any]: A response containing the test result.
     """
-    return await test_api_endpoint_svc(request, task_create)
+    return await test_llm_api_svc(request, task_create)

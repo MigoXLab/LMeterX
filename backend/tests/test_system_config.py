@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import app
-from utils.tools import mask_config_value
+from utils.masking import mask_config_value
 
 
 @pytest.mark.asyncio

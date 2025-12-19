@@ -7,6 +7,8 @@ import os
 from functools import cached_property
 from typing import Any, Dict, Optional
 
+from utils.logger import logger
+
 
 class MultiprocessingConfig:
     """Multiprocessing configuration manager with caching for performance."""
@@ -153,8 +155,8 @@ class MultiprocessingConfig:
             soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
             if soft < 1000:
                 return False
-        except Exception:
-            pass
+        except Exception as exc:  # pragma: no cover - platform dependent
+            logger.debug("Skipping file descriptor check: %s", exc)
 
         # Memory check
         try:
@@ -164,7 +166,9 @@ class MultiprocessingConfig:
             if memory.available < 500 * 1024 * 1024:  # 500MB
                 return False
         except ImportError:
-            pass
+            logger.debug("psutil not installed; skipping memory check")
+        except Exception as exc:  # pragma: no cover - platform dependent
+            logger.debug("Skipping memory check due to error: %s", exc)
 
         return True
 

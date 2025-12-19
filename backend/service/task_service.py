@@ -16,6 +16,7 @@ from fastapi import Query, Request
 from sqlalchemy import func, or_, select, text
 from starlette.responses import JSONResponse
 
+from model.common_task import CommonTask
 from model.task import (
     ComparisonMetrics,
     ComparisonRequest,
@@ -34,6 +35,14 @@ from model.task import (
 )
 from service.analysis_service import extract_multiple_task_metrics
 from utils.be_config import UPLOAD_FOLDER
+from utils.converters import (
+    dict_to_kv_list,
+    enforce_collection_limit,
+    kv_items_to_dict,
+    safe_isoformat,
+    safe_json_loads,
+    truthy,
+)
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
 
@@ -46,51 +55,8 @@ DEFAULT_API_TYPE = "openai-chat"
 AUTO_FIELD_MAPPING_APIS = {"openai-chat", "claude-chat"}
 
 
-def _safe_isoformat(value) -> Optional[str]:
-    return value.isoformat() if value else None
-
-
-def _truthy_value(value: Union[str, bool, int, None]) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() == "true"
-    return bool(value)
-
-
-def _safe_json_loads(value: Optional[str], context: str, default: Any) -> Any:
-    if not value:
-        return default
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        logger.warning("Could not parse {} JSON: {}", context, value)
-        return default
-
-
-def _kv_items_to_dict(items: Sequence[Any]) -> Dict[str, str]:
-    result: Dict[str, str] = {}
-    for item in items:
-        key = getattr(item, "key", None)
-        value = getattr(item, "value", None)
-        if key and value is not None:
-            result[str(key)] = value
-    return result
-
-
-def _dict_to_kv_list(data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return [{"key": k, "value": v} for k, v in data.items()] if data else []
-
-
-def _enforce_collection_limit(
-    items: Sequence[Any], limit: int, error_message: str
-) -> None:
-    if len(items) > limit:
-        raise ErrorResponse.bad_request(error_message)
-
-
 def _build_task_summary(task: Task) -> Dict[str, Any]:
-    field_mapping_dict = _safe_json_loads(
+    field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
     return {
@@ -107,20 +73,20 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
         "duration": task.duration,
         "spawn_rate": task.spawn_rate,
         "chat_type": task.chat_type,
-        "stream_mode": _truthy_value(task.stream_mode),
+        "stream_mode": truthy(task.stream_mode),
         "headers": "",
         "cookies": "",
         "cert_config": "",
         "test_data": task.test_data or "",
-        "created_at": _safe_isoformat(task.created_at),
-        "updated_at": _safe_isoformat(task.updated_at),
+        "created_at": safe_isoformat(task.created_at),
+        "updated_at": safe_isoformat(task.updated_at),
     }
 
 
 def _build_task_detail(task: Task) -> Dict[str, Any]:
-    headers_dict = _safe_json_loads(task.headers, f"headers for task {task.id}", {})
-    cookies_dict = _safe_json_loads(task.cookies, f"cookies for task {task.id}", {})
-    field_mapping_dict = _safe_json_loads(
+    headers_dict = safe_json_loads(task.headers, f"headers for task {task.id}", {})
+    cookies_dict = safe_json_loads(task.cookies, f"cookies for task {task.id}", {})
+    field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
 
@@ -134,9 +100,9 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "concurrent_users": task.concurrent_users,
         "spawn_rate": task.spawn_rate,
         "chat_type": task.chat_type,
-        "stream_mode": _truthy_value(task.stream_mode),
-        "headers": _dict_to_kv_list(headers_dict),
-        "cookies": _dict_to_kv_list(cookies_dict),
+        "stream_mode": truthy(task.stream_mode),
+        "headers": dict_to_kv_list(headers_dict),
+        "cookies": dict_to_kv_list(cookies_dict),
         "cert_config": {"cert_file": task.cert_file, "key_file": task.key_file},
         "api_path": task.api_path,
         "request_payload": task.request_payload,
@@ -144,36 +110,37 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "api_type": task.api_type or DEFAULT_API_TYPE,
         "test_data": task.test_data or "",
         "error_message": task.error_message,
-        "created_at": _safe_isoformat(task.created_at),
-        "updated_at": _safe_isoformat(task.updated_at),
+        "created_at": safe_isoformat(task.created_at),
+        "updated_at": safe_isoformat(task.updated_at),
     }
 
 
-def _normalize_file_path(file_path: str) -> str:
-    """
-    Normalize file path to ensure cross-service compatibility.
-    Converts various absolute path formats to relative paths.
-
-    Args:
-        file_path: The file path to normalize
-
-    Returns:
-        The normalized relative path
-    """
-    if not file_path or file_path.strip() == "":
-        return ""
-
-    # Convert various absolute path formats to relative paths
-    if file_path.startswith(UPLOAD_FOLDER + "/"):
-        return file_path.replace(UPLOAD_FOLDER + "/", "")
-    elif file_path.startswith("/app/upload_files/"):
-        # For backward compatibility with existing Docker paths
-        return file_path.replace("/app/upload_files/", "")
-    elif file_path.startswith("/upload_files/"):
-        # Handle paths starting with /upload_files/
-        return file_path[len("/upload_files/") :]
-
-    return file_path
+def _build_common_task_detail(task: CommonTask) -> Dict[str, Any]:
+    """Build a task-like payload for common API tasks so shared pages work."""
+    return {
+        "id": task.id,
+        "name": task.name,
+        "status": task.status,
+        "target_host": task.target_host,
+        "api_path": task.api_path,
+        "model": task.method,  # reuse method label for display
+        "duration": task.duration,
+        "concurrent_users": task.concurrent_users,
+        "spawn_rate": task.spawn_rate,
+        "chat_type": 0,
+        "stream_mode": False,
+        "headers": [],
+        "cookies": [],
+        "cert_config": {"cert_file": "", "key_file": ""},
+        "api_path": getattr(task, "api_path", ""),
+        "request_payload": task.request_body or "",
+        "field_mapping": {},
+        "api_type": "common-api",
+        "test_data": task.request_body or "",
+        "error_message": task.error_message,
+        "created_at": safe_isoformat(task.created_at),
+        "updated_at": safe_isoformat(task.updated_at),
+    }
 
 
 def _get_cert_config(body: TaskCreateReq) -> Tuple[str, str]:
@@ -385,15 +352,18 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
 
     cert_file, key_file = _get_cert_config(body)
 
-    _enforce_collection_limit(
-        body.headers, MAX_HEADER_ITEMS, ErrorMessages.HEADERS_LIMIT_EXCEEDED
-    )
-    _enforce_collection_limit(
-        body.cookies, MAX_COOKIE_ITEMS, ErrorMessages.COOKIES_LIMIT_EXCEEDED
-    )
+    try:
+        enforce_collection_limit(
+            body.headers, MAX_HEADER_ITEMS, ErrorMessages.HEADERS_LIMIT_EXCEEDED
+        )
+        enforce_collection_limit(
+            body.cookies, MAX_COOKIE_ITEMS, ErrorMessages.COOKIES_LIMIT_EXCEEDED
+        )
+    except ValueError as exc:
+        raise ErrorResponse.bad_request(str(exc))
 
-    headers_json = json.dumps(_kv_items_to_dict(body.headers))
-    cookies_json = json.dumps(_kv_items_to_dict(body.cookies))
+    headers_json = json.dumps(kv_items_to_dict(body.headers))
+    cookies_json = json.dumps(kv_items_to_dict(body.cookies))
 
     test_data = body.test_data or ""
 
@@ -507,11 +477,16 @@ async def get_task_svc(request: Request, task_id: str):
     db = request.state.db
     try:
         task = await db.get(Task, task_id)
-        if not task:
+        if task:
+            return _build_task_detail(task)
+
+        # Fallback to common API task to support shared log/detail pages
+        common_task = await db.get(CommonTask, task_id)
+        if common_task:
+            return _build_common_task_detail(common_task)
+
             logger.warning("Get request for non-existent task ID: {}", task_id)
             raise ErrorResponse.not_found("Task not found")
-
-        return _build_task_detail(task)
     except ErrorResponse:
         raise
     except Exception as e:
@@ -542,6 +517,25 @@ async def get_task_status_svc(request: Request, task_id: str):
         task_data = result.first()
 
         if not task_data:
+            # Fallback to common task
+            common_query = select(
+                CommonTask.id,
+                CommonTask.name,
+                CommonTask.status,
+                CommonTask.error_message,
+                CommonTask.updated_at,
+            ).where(CommonTask.id == task_id)
+            common_result = await db.execute(common_query)
+            common_data = common_result.first()
+            if common_data:
+                return {
+                    "id": common_data.id,
+                    "name": common_data.name,
+                    "status": common_data.status,
+                    "error_message": common_data.error_message,
+                    "updated_at": safe_isoformat(common_data.updated_at),
+                }
+
             logger.warning("Status request for non-existent task ID: {}", task_id)
             raise ErrorResponse.not_found("Task not found")
 
@@ -551,7 +545,7 @@ async def get_task_status_svc(request: Request, task_id: str):
             "name": task_data.name,
             "status": task_data.status,
             "error_message": task_data.error_message,
-            "updated_at": _safe_isoformat(task_data.updated_at),
+            "updated_at": safe_isoformat(task_data.updated_at),
         }
         return status_dict
     except ErrorResponse:
@@ -932,7 +926,7 @@ async def _handle_non_streaming_response(response) -> Dict:
     }
 
 
-async def test_api_endpoint_svc(request: Request, body: TaskCreateReq):
+async def test_llm_api_svc(request: Request, body: TaskCreateReq):
     """
     Test a custom API endpoint with the provided configuration.
 

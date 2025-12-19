@@ -86,29 +86,29 @@ class LocustRunner:
                 )
                 # We create a dummy process object just to satisfy the _cleanup_task signature.
                 # The actual PID might be invalid, but _cleanup_task will handle it gracefully.
+                dummy_true = shutil.which("true") or "/bin/true"
                 dummy_process = subprocess.Popen(
-                    ["true"]
-                )  # This is a dummy, we just need an object with a `poll` method.
+                    [dummy_true],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )  # nosec B607,B603 - absolute path; no untrusted input
                 dummy_process.pid = -1  # Mark it as invalid
                 self._cleanup_task(task, dummy_process, task_logger)
 
     def _prepare_task(self, task: Task, task_logger) -> None:
-        """Prepare task environment: cleanup, validate."""
-        cleanup_count = cleanup_all_locust_processes()
-        if cleanup_count > 0:
-            task_logger.info(f"Cleaned up {cleanup_count} existing Locust processes")
-
-        orphaned_count = force_cleanup_orphaned_processes()
-        if orphaned_count > 0:
-            task_logger.info(f"Cleaned up {orphaned_count} orphaned processes")
-
+        """Prepare task environment: validate config and files."""
+        # NOTE: Avoid global process cleanup here; it can terminate unrelated
+        # Locust runs (e.g., model vs common API tasks) that are running
+        # concurrently. Stale processes are reconciled in pollers/startup
+        # routines instead of per-task execution.
         if not os.path.exists(self._locustfile_path):
             raise FileNotFoundError(f"Locustfile not found at {self._locustfile_path}")
 
     def _build_locust_command(self, task: Task, task_logger) -> List[str]:
         """Build Locust command based on task config."""
+        locust_bin = shutil.which("locust") or "locust"
         cmd = [
-            "locust",
+            locust_bin,
             "-f",
             self._locustfile_path,
             "--host",
@@ -175,6 +175,13 @@ class LocustRunner:
         env = os.environ.copy()
         env["TASK_ID"] = str(task.id)
         env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
+        # Ensure Locust subprocess can import project modules
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            f"{self.base_dir}{os.pathsep}{existing_pythonpath}"
+            if existing_pythonpath
+            else self.base_dir
+        )
         task_logger.debug(
             f"Setting LOCUST_CONCURRENT_USERS={env['LOCUST_CONCURRENT_USERS']} from task.concurrent_users={task.concurrent_users}"
         )
@@ -185,7 +192,7 @@ class LocustRunner:
             text=True,
             bufsize=1,
             env=env,
-            shell=False,
+            shell=False,  # nosec B603 - command is constructed with validated args and no shell
         )
         self._process_dict[task.id] = process
         task_logger.info(f"Started Locust process PID={process.pid}")

@@ -21,7 +21,7 @@ from model.system import (
 )
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
-from utils.tools import mask_api_key, mask_config_value
+from utils.masking import mask_api_key, mask_config_value
 
 AI_CONFIG_KEYS = ("ai_service_host", "ai_service_model", "ai_service_api_key")
 

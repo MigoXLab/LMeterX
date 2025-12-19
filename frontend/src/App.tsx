@@ -11,7 +11,8 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { NavigationProvider } from './contexts/NavigationContext';
-import BenchmarkJobs from './pages/BenchmarkJobs';
+import JobsPage from './pages/Jobs';
+import CommonResults from './pages/CommonResults';
 import NotFound from './pages/NotFound';
 import ResultComparison from './pages/ResultComparison';
 import TaskResults from './pages/Results';
@@ -33,8 +34,12 @@ const App: React.FC = () => {
               <Content className='page-content'>
                 <Routes>
                   <Route path='/' element={<Navigate to='/jobs' replace />} />
-                  <Route path='/jobs' element={<BenchmarkJobs />} />
+                  <Route path='/jobs' element={<JobsPage />} />
                   <Route path='/results/:id' element={<TaskResults />} />
+                  <Route
+                    path='/common-results/:id'
+                    element={<CommonResults />}
+                  />
                   <Route path='/logs/task/:id' element={<TaskLog />} />
                   <Route
                     path='/result-comparison'

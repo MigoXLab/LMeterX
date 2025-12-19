@@ -1,16 +1,14 @@
 /**
- * @file useBenchmarkJobs.ts
- * @description Custom hook for managing benchmark jobs
- * @author Charm
- * @copyright 2025
- * */
+ * @file useCommonJobs.ts
+ * @description Custom hook for managing common API jobs
+ */
 import type { MessageInstance } from 'antd/es/message/interface';
 import axios from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pagination as ApiPagination, BenchmarkJob } from '../types/benchmark';
 
-// Frontend pagination state uses Ant Design's format
+import { Pagination as ApiPagination, CommonJob } from '../types/job';
+
 interface AntdPagination {
   current: number;
   pageSize: number;
@@ -19,9 +17,9 @@ interface AntdPagination {
 
 const VITE_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-export const useBenchmarkJobs = (messageApi: MessageInstance) => {
+export const useCommonJobs = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
-  const [jobs, setJobs] = useState<BenchmarkJob[]>([]);
+  const [jobs, setJobs] = useState<CommonJob[]>([]);
   const [pagination, setPagination] = useState<AntdPagination>({
     current: 1,
     pageSize: 10,
@@ -32,7 +30,7 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [searchText, setSearchText] = useState('');
-  const [searchInput, setSearchInput] = useState(''); // For input field display
+  const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
   const pollingTimerRef = useRef<number | null>(null);
@@ -40,25 +38,59 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
   const fetchingRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
 
-  const fetchJobs = useCallback(
-    async (isManualRefresh = false) => {
-      if (fetchingRef.current && !isManualRefresh) return;
+  const lastRequestParamsRef = useRef<{
+    page: number;
+    pageSize: number;
+    status: string;
+    search: string;
+  } | null>(null);
 
+  const fetchJobs = useCallback(
+    async (
+      isManualRefresh = false,
+      override?: Partial<{
+        page: number;
+        pageSize: number;
+        status: string;
+        search: string;
+      }>
+    ) => {
+      const currentParams = {
+        page: override?.page ?? pagination.current,
+        pageSize: override?.pageSize ?? pagination.pageSize,
+        status: override?.status ?? statusFilter,
+        search: override?.search ?? searchText,
+      };
+
+      // If a fetch is in-flight with identical params, skip; otherwise allow new fetch
+      if (
+        fetchingRef.current &&
+        !isManualRefresh &&
+        lastRequestParamsRef.current &&
+        lastRequestParamsRef.current.page === currentParams.page &&
+        lastRequestParamsRef.current.pageSize === currentParams.pageSize &&
+        lastRequestParamsRef.current.status === currentParams.status &&
+        lastRequestParamsRef.current.search === currentParams.search
+      ) {
+        return;
+      }
+
+      lastRequestParamsRef.current = currentParams;
       setLoading(true);
       fetchingRef.current = true;
       setError(null);
 
       try {
         const response = await axios.get<{
-          data: BenchmarkJob[];
+          data: CommonJob[];
           pagination?: ApiPagination;
           total?: number;
-        }>(`${VITE_API_BASE_URL}/tasks`, {
+        }>(`${VITE_API_BASE_URL}/common-tasks`, {
           params: {
-            page: pagination.current,
-            pageSize: pagination.pageSize,
-            ...(statusFilter && { status: statusFilter }),
-            ...(searchText && { search: searchText }),
+            page: currentParams.page,
+            pageSize: currentParams.pageSize,
+            ...(currentParams.status && { status: currentParams.status }),
+            ...(currentParams.search && { search: currentParams.search }),
             _t: Date.now(),
           },
           headers: {
@@ -77,17 +109,15 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
             setPagination(prev => ({
               ...prev,
               total: respPagination.total || 0,
-              current: respPagination.page || prev.current,
-              pageSize: respPagination.page_size || prev.pageSize,
+              current: respPagination.page || currentParams.page,
+              pageSize: respPagination.page_size || currentParams.pageSize,
             }));
           } else if (response.data.total) {
-            // Fallback for other pagination formats
             setPagination(prev => ({
               ...prev,
               total: response.data.total || 0,
             }));
           } else if (response.headers['x-total-count']) {
-            // Fallback for older API
             setPagination(prev => ({
               ...prev,
               total: parseInt(response.headers['x-total-count'], 10) || 0,
@@ -96,7 +126,6 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
           setLastRefreshTime(new Date());
         }
       } catch (err) {
-        // Failed to fetch tasks
         setError(t('common.fetchTasksFailed'));
       } finally {
         setLoading(false);
@@ -111,7 +140,7 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
 
   const fetchJobStatuses = useCallback(async () => {
     const hasRunningTasks = jobs.some(job =>
-      ['running', 'pending', 'created', 'queued'].includes(
+      ['running', 'pending', 'created', 'queued', 'locked'].includes(
         job.status?.toLowerCase() || ''
       )
     );
@@ -127,10 +156,13 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     abortControllerRef.current = controller;
 
     try {
-      const response = await axios.get(`${VITE_API_BASE_URL}/tasks/status`, {
-        signal: controller.signal,
-        timeout: 30000, // Increase to 30 seconds for status polling
-      });
+      const response = await axios.get(
+        `${VITE_API_BASE_URL}/common-tasks/status`,
+        {
+          signal: controller.signal,
+          timeout: 30000,
+        }
+      );
 
       if (controller.signal.aborted) return;
 
@@ -171,8 +203,8 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
           }
         }
       }
-    } catch (error) {
-      // Status update request failed
+    } catch {
+      /* ignore */
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
@@ -187,9 +219,9 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
       clearInterval(pollingTimerRef.current);
       pollingTimerRef.current = null;
       try {
-        localStorage.removeItem('benchmark_polling_active');
-      } catch (e) {
-        // localStorage error in stopPolling cleanup
+        localStorage.removeItem('common_job_polling_active');
+      } catch {
+        /* ignore */
       }
     }
   }, []);
@@ -203,7 +235,7 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     }
 
     const hasRunningTasks = jobs.some(job =>
-      ['running', 'pending', 'created', 'queued'].includes(
+      ['running', 'pending', 'created', 'queued', 'locked'].includes(
         job.status?.toLowerCase() || ''
       )
     );
@@ -215,16 +247,15 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     try {
       const now = Date.now();
       const existingPollingTimestamp = parseInt(
-        localStorage.getItem('benchmark_polling_timestamp') || '0'
+        localStorage.getItem('common_job_polling_timestamp') || '0'
       );
       if (now - existingPollingTimestamp < 25000) {
-        // Slightly less than interval
-        return; // Another tab is polling
+        return;
       }
-      localStorage.setItem('benchmark_polling_timestamp', now.toString());
-      localStorage.setItem('benchmark_polling_active', 'true');
-    } catch (e) {
-      // Could not set localStorage for polling coordination
+      localStorage.setItem('common_job_polling_timestamp', now.toString());
+      localStorage.setItem('common_job_polling_active', 'true');
+    } catch {
+      /* ignore */
     }
 
     const pollingInterval = 30000;
@@ -234,29 +265,26 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
         return;
       }
       try {
-        // Keep alive for this tab
         localStorage.setItem(
-          'benchmark_polling_timestamp',
+          'common_job_polling_timestamp',
           Date.now().toString()
         );
-      } catch (e) {
+      } catch {
         /* ignore */
       }
       fetchJobStatuses();
     }, pollingInterval);
-    pollingTimerRef.current = intervalId;
-  }, [jobs, fetchJobStatuses, stopPolling]);
 
-  // Main data fetching effect
+    pollingTimerRef.current = intervalId;
+  }, [fetchJobStatuses, jobs, stopPolling]);
+
   useEffect(() => {
-    // No dependency array, runs once on mount
     fetchJobs();
   }, []);
 
-  // Effect for re-fetching when filters or pagination change
   useEffect(() => {
     if (!initialLoadDoneRef.current) {
-      return; // Don't fetch on initial mount, the above effect handles it
+      return;
     }
     fetchJobs();
   }, [
@@ -267,13 +295,9 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     fetchJobs,
   ]);
 
-  // Only sync searchInput with searchText when searchText changes externally (not from user input)
-  // This prevents clearing the input while user is typing
-
-  // Polling lifecycle management
   useEffect(() => {
     const hasRunningTasks = jobs.some(job =>
-      ['running', 'pending', 'created', 'queued'].includes(
+      ['running', 'pending', 'created', 'queued', 'locked'].includes(
         job.status?.toLowerCase() || ''
       )
     );
@@ -287,13 +311,12 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     return () => stopPolling();
   }, [jobs, startPolling, stopPolling]);
 
-  // Page visibility handler
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const lastRefresh = lastRefreshTime?.getTime() || 0;
         if (Date.now() - lastRefresh > 30000) {
-          fetchJobs(true); // Force refresh
+          fetchJobs(true);
         } else {
           startPolling();
         }
@@ -309,110 +332,93 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
   }, [startPolling, stopPolling, fetchJobs, lastRefreshTime]);
 
   const createJob = useCallback(
-    async (
-      values: Omit<BenchmarkJob, 'id' | 'status' | 'created_at' | 'updated_at'>
-    ) => {
-      setLoading(true);
+    async (data: any) => {
       try {
-        const response = await axios.post(`${VITE_API_BASE_URL}/tasks`, values);
-        if (response.data?.task_id) {
-          messageApi.success(t('common.createSuccess'));
-          await fetchJobs(true); // Refresh list to show the new job
+        setLoading(true);
+        const response = await axios.post(
+          `${VITE_API_BASE_URL}/common-tasks`,
+          data
+        );
+        if (response.status === 200 || response.status === 201) {
+          messageApi.success(t('pages.jobs.createSuccess'));
+          await fetchJobs(true);
           return true;
         }
-        messageApi.error(t('common.createFailed'));
-        return false;
       } catch (error: any) {
-        const errorMsg =
-          error.response?.data?.error || t('common.createFailed');
-        messageApi.error(`${t('common.createFailed')}: ${errorMsg}`);
-        return false;
+        messageApi.error(
+          error?.response?.data?.message ||
+            error?.message ||
+            t('pages.jobs.createFailed')
+        );
       } finally {
         setLoading(false);
       }
+      return false;
     },
     [fetchJobs, messageApi, t]
   );
 
   const stopJob = useCallback(
-    async (jobId: string) => {
-      messageApi.loading({ content: t('common.stoppingTask'), key: jobId });
+    async (taskId: string) => {
       try {
-        await axios.post(`${VITE_API_BASE_URL}/tasks/stop/${jobId}`);
-        messageApi.success({ content: t('common.taskStopping'), key: jobId });
-        setTimeout(() => fetchJobs(true), 1000); // Refresh list after a short delay
+        const response = await axios.post(
+          `${VITE_API_BASE_URL}/common-tasks/stop/${taskId}`
+        );
+        if (response.status === 200) {
+          messageApi.success(t('pages.jobs.stopSuccess'));
+          await fetchJobs(true);
+          return true;
+        }
       } catch (error: any) {
-        const errorMsg =
-          error.response?.data?.message || t('common.stopTaskFailed');
-        messageApi.error({ content: errorMsg, key: jobId });
+        messageApi.error(
+          error?.response?.data?.message ||
+            error?.message ||
+            t('pages.jobs.stopFailed')
+        );
       }
+      return false;
     },
     [fetchJobs, messageApi, t]
   );
 
-  const performSearch = useCallback(
-    (text: string) => {
-      setSearchText(text);
-      setSearchInput(text);
-      // Reset pagination to first page when searching
-      if (text !== searchText) {
-        setPagination(prev => ({
-          ...prev,
-          current: 1,
-        }));
-      }
-    },
-    [searchText]
-  );
-
-  const updateSearchInput = useCallback((text: string) => {
-    setSearchInput(text);
-  }, []);
-
-  const setStatusFilterWithReset = useCallback(
-    (status: string) => {
-      setStatusFilter(status);
-      // Reset pagination to first page when filtering
-      if (status !== statusFilter) {
-        setPagination(prev => ({
-          ...prev,
-          current: 1,
-        }));
-      }
-    },
-    [statusFilter]
-  );
-
-  // Remove client-side filtering since server handles it
-  // const filteredJobs = useMemo(() => {
-  //   if (!searchText) return jobs;
-  //   return jobs.filter(job => {
-  //     const search = searchText.toLowerCase();
-  //     return (
-  //       (job.id || '').toLowerCase().includes(search) ||
-  //       (job.name || '').toLowerCase().includes(search) ||
-  //       (job.model || '').toLowerCase().includes(search)
-  //     );
-  //   });
-  // }, [jobs, searchText]);
-
   return {
-    jobs,
-    filteredJobs: jobs, // Use jobs directly since server handles filtering
+    filteredJobs: jobs,
     pagination,
     setPagination,
     loading,
     refreshing,
     error,
     lastRefreshTime,
-    searchText,
     searchInput,
     statusFilter,
     createJob,
     stopJob,
-    manualRefresh: () => fetchJobs(true),
-    performSearch,
-    updateSearchInput,
-    setStatusFilter: setStatusFilterWithReset,
+    manualRefresh: async (
+      override?: Partial<{
+        page: number;
+        pageSize: number;
+        status: string;
+        search: string;
+      }>
+    ) => {
+      setRefreshing(true);
+      await fetchJobs(true, override);
+      setRefreshing(false);
+    },
+    performSearch: (value: string) => {
+      setSearchText(value || '');
+      setPagination(prev => ({
+        ...prev,
+        current: 1,
+      }));
+    },
+    updateSearchInput: (value: string) => setSearchInput(value),
+    setStatusFilter: (status: string) => {
+      setStatusFilter(status);
+      setPagination(prev => ({
+        ...prev,
+        current: 1,
+      }));
+    },
   };
 };

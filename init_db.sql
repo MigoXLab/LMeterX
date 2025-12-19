@@ -72,6 +72,62 @@ CREATE TABLE `task_results` (
 ) ENGINE=InnoDB AUTO_INCREMENT=262 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
+-- Table structure for common_tasks
+-- ----------------------------
+DROP TABLE IF EXISTS `common_tasks`;
+CREATE TABLE `common_tasks` (
+  `id` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `method` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `target_url` varchar(2000) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `target_host` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `api_path` varchar(1024) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `headers` json DEFAULT NULL,
+  `cookies` json DEFAULT NULL,
+  `request_body` longtext COLLATE utf8mb4_unicode_ci,
+  `dataset_file` longtext COLLATE utf8mb4_unicode_ci,
+  `curl_command` longtext COLLATE utf8mb4_unicode_ci,
+  `stream_mode` varchar(8) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `concurrent_users` int(11) NOT NULL,
+  `spawn_rate` int(11) NOT NULL,
+  `duration` int(11) NOT NULL,
+  `log_file` longtext COLLATE utf8mb4_unicode_ci,
+  `result_file` longtext COLLATE utf8mb4_unicode_ci,
+  `error_message` text COLLATE utf8mb4_unicode_ci,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_common_status_created` (`status`,`created_at`),
+  KEY `idx_common_name` (`name`),
+  KEY `idx_common_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- Table structure for common_task_results
+-- ----------------------------
+DROP TABLE IF EXISTS `common_task_results`;
+CREATE TABLE `common_task_results` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `task_id` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'task id',
+  `metric_type` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `num_requests` int(11) NOT NULL DEFAULT '0',
+  `num_failures` int(11) NOT NULL DEFAULT '0',
+  `avg_latency` float NOT NULL DEFAULT '0',
+  `min_latency` float NOT NULL DEFAULT '0',
+  `max_latency` float NOT NULL DEFAULT '0',
+  `median_latency` float NOT NULL DEFAULT '0',
+  `p90_latency` float NOT NULL DEFAULT '0',
+  `rps` float NOT NULL DEFAULT '0',
+  `avg_content_length` float NOT NULL DEFAULT '0',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'create time',
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+  PRIMARY KEY (`id`),
+  KEY `idx_common_task_id` (`task_id`),
+  KEY `idx_common_task_metric_created` (`task_id`, `metric_type`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
 -- Table structure for test_insights
 -- ----------------------------
 DROP TABLE IF EXISTS `test_insights`;

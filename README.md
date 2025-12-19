@@ -26,6 +26,8 @@
   - [One-Click Deployment (Recommended)](#one-click-deployment-recommended)
   - [Data \& Volume Layout](#data--volume-layout)
   - [Usage Guide](#usage-guide)
+    - [LLM API Load Testing](#llm-api-load-testing)
+    - [General API Load Testing](#general-api-load-testing)
 - [🔧 Configuration](#-configuration)
   - [Database Configuration](#database-configuration)
   - [Resource Configuration](#resource-configuration)
@@ -53,6 +55,7 @@ LMeterX is a professional large language model performance testing platform that
 
 - **Universal Framework Support** - Compatible with mainstream inference frameworks (vLLM, LiteLLM, TensorRT-LLM) and cloud services (Azure, AWS, Google Cloud)
 - **Full Model Compatibility** - Supports mainstream LLMs like GPT, Claude, and Llama, also supports large document parsing models such as [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr).
+- **General API Load Testing** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports load testing for any business service HTTP APIs, with one-click curl command parsing and custom dataset batch testing
 - **High-Load Stress Testing** - Simulates high-concurrency requests to accurately detect model performance limits
 - **Multi-Scenario Coverage** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports streaming/non-streaming, supports text/multimodal/custom datasets
 - **Professional Metrics**  - Core performance metrics including first token latency, throughput(RPS、TPS), and success rate
@@ -113,6 +116,8 @@ For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md
 
 ### Usage Guide
 
+#### LLM API Load Testing
+
 1. **Access Web Interface**: Open http://localhost:8080
 2. **Create Test Task**: Navigate to Test Tasks → Create Task, configure API request information, test data, and request/response field mappings.
    - 2.1 Basic Information: For OpenAI-like and Claude-like APIs, you only need to configure API path, model, and response mode. You can also supplement the complete payload in request parameters.
@@ -124,6 +129,20 @@ For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md
 5. **Result Analysis**: Navigate to Test Tasks → Results to view detailed performance results and export reports
 6. **Result Comparison**: Navigate to Pref Insight to select multiple models or versions for multi-dimensional performance comparison
 7. **AI Analysis**: In Test Tasks → Results or Pref Insight, support intelligent performance evaluation for single or multiple tasks
+
+#### General API Load Testing
+
+1. **Access Web Interface**: Open http://localhost:8080, switch to the "General API" tab
+2. **Create Test Task**: Navigate to Test Tasks → Create Task
+   - Paste your complete curl command and click "One-Click Parse" to automatically parse request method, URL, headers, and request body
+   - Verify that the parsed request information is complete and accurate
+3. **API Testing**: Click the "Test" button to verify API connectivity and ensure request information is correct before load testing
+4. **Dataset Preparation** (Optional): If using dataset load testing, prepare a JSONL format file in advance. Each line must be a complete payload JSON object
+5. **Start Load Testing**: Configure concurrent users, test duration, and other parameters, then click "Create" to start the load testing task
+6. **Real-time Monitoring**: During testing, click the "Logs" button to view load testing status and real-time logs
+7. **Result Analysis**: After testing completes, click the "Results" button to view load testing results, including RPS, response time, success rate, and other metrics
+8. **Copy Template**: To test the same API again, click "..." → "Copy Template" in the actions column. Note that the dataset needs to be re-uploaded after copying, and it's recommended to repeat steps 3-7
+9. **Performance Comparison**: To compare performance across different versions or concurrency levels, navigate to the "Performance Comparison" page
 
 ## 🔧 Configuration
 

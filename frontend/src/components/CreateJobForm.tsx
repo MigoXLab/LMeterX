@@ -41,12 +41,13 @@ import {
 import React, { useCallback, useEffect, useState } from 'react';
 
 import {
-  benchmarkJobApi,
+  jobApi,
   uploadCertificateFiles,
   uploadDatasetFile,
 } from '@/api/services';
 import { useI18n } from '@/hooks/useI18n';
-import { BenchmarkJob } from '@/types/benchmark';
+import { Job } from '@/types/job';
+import { safeJsonParse } from '@/utils/data';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -58,7 +59,7 @@ interface CreateJobFormProps {
   onSubmit: (values: any) => Promise<void>;
   onCancel: () => void;
   loading?: boolean;
-  initialData?: Partial<BenchmarkJob> | null;
+  initialData?: Partial<Job> | null;
 }
 
 const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
@@ -793,7 +794,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       delete testData.cert_type;
 
       // Call test API
-      const apiResponse = await benchmarkJobApi.testApiEndpoint(testData);
+      const apiResponse = await jobApi.testApiEndpoint(testData);
       // Extract the actual backend response data
       const result = apiResponse.data;
 
@@ -839,6 +840,45 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const values = await form.validateFields();
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
+
+      // Normalize and validate field_mapping for non-standard APIs
+      const apiType = values.api_type || 'openai-chat';
+      const normalizedFieldMapping =
+        typeof values.field_mapping === 'string'
+          ? safeJsonParse<Record<string, string>>(values.field_mapping, {})
+          : values.field_mapping || {};
+
+      if (['custom-chat', 'embeddings'].includes(apiType)) {
+        if (
+          !normalizedFieldMapping ||
+          Object.keys(normalizedFieldMapping).length === 0
+        ) {
+          message.error('Field mapping is required for this API type');
+          setSubmitting(false);
+          return;
+        }
+        if (
+          !normalizedFieldMapping.prompt ||
+          !String(normalizedFieldMapping.prompt).trim()
+        ) {
+          message.error(
+            t('components.createJobForm.pleaseSpecifyPromptFieldPath')
+          );
+          setSubmitting(false);
+          return;
+        }
+        if (
+          apiType === 'custom-chat' &&
+          values.stream_mode !== false &&
+          (!normalizedFieldMapping.stop_flag ||
+            !String(normalizedFieldMapping.stop_flag).trim())
+        ) {
+          message.error(t('components.createJobForm.pleaseSpecifyStopSignal'));
+          setSubmitting(false);
+          return;
+        }
+      }
+      values.field_mapping = normalizedFieldMapping;
 
       // Ensure request_payload is available - auto-generate if empty
       if (!values.request_payload || !values.request_payload.trim()) {
@@ -3167,7 +3207,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         title={
           <Space>
             <BugOutlined />
-            <span>{t('components.createJobForm.apiTest')}</span>
+            <span>{t('components.createJobForm.apiTestTitle')}</span>
           </Space>
         }
         open={testModalVisible}
@@ -3245,7 +3285,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                   <Col>
                     <Space>
                       <Text strong style={{ fontSize: '16px' }}>
-                        {t('components.createJobForm.statusCode')}:
+                        {t('components.createJobForm.testStatusCode')}:
                       </Text>
                       <div
                         style={{
@@ -3319,7 +3359,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 >
                   <Space>
                     <Text strong style={{ fontSize: '16px' }}>
-                      {t('components.createJobForm.responseData')}
+                      {t('components.createJobForm.testResponse')}
                     </Text>
                     {testResult.response.is_stream &&
                       Array.isArray(testResult.response.data) && (

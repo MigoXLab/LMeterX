@@ -51,8 +51,8 @@ class MultiprocessManager:
         """Cleanup on destruction."""
         try:
             self._monitor.stop_monitoring()
-        except Exception:
-            pass
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            logger.debug("Monitor cleanup skipped: %s", exc)
 
     def cleanup_all_locust_processes(self) -> int:
         """

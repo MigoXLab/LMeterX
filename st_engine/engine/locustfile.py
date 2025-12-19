@@ -6,7 +6,6 @@ Copyright (c) 2025, All Rights Reserved.
 import json
 import os
 import signal
-import sys
 import tempfile
 import time
 from typing import Any, Dict, Optional
@@ -16,12 +15,7 @@ from gevent import queue
 from locust import HttpUser, events, task
 from urllib3.exceptions import InsecureRequestWarning
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from config.base import DEFAULT_PROMPT
-
-# Local imports after path setup
 from engine.core import ConfigManager, GlobalStateManager, ValidationManager
 from engine.request_processor import APIClient, PayloadBuilder
 from utils.common import mask_sensitive_data
@@ -500,7 +494,7 @@ class LLMTestUser(HttpUser):
         base_request_kwargs, user_prompt = self.request_handler.prepare_request_kwargs(
             prompt_data
         )
-        logger.debug(f"base_request_kwargs: {base_request_kwargs}")
+        self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
         if not base_request_kwargs:
             self.task_logger.error(
                 "Failed to generate request arguments. Skipping task."

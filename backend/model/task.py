@@ -320,6 +320,35 @@ class TaskCreateReq(BaseModel):
             raise ValueError("Test data size cannot exceed 1MB")
         return v
 
+    @validator("field_mapping", always=True)
+    def validate_field_mapping(cls, v, values):
+        """
+        Ensure field_mapping is provided for custom-chat and embeddings APIs.
+        """
+        api_type = values.get("api_type") or "openai-chat"
+        # For standard chat APIs we allow empty/auto mapping
+        if api_type in {"openai-chat", "claude-chat"}:
+            return v or {}
+
+        # For custom-chat / embeddings, field_mapping must be a non-empty dict
+        if not v or not isinstance(v, dict) or len(v) == 0:
+            raise ValueError("field_mapping is required for the selected api_type")
+
+        prompt = v.get("prompt")
+        if not prompt or not str(prompt).strip():
+            raise ValueError("field_mapping.prompt is required")
+
+        # Streaming custom chat requires stop_flag to end the stream
+        stream_mode = values.get("stream_mode", True)
+        if api_type == "custom-chat" and stream_mode:
+            stop_flag = v.get("stop_flag")
+            if not stop_flag or not str(stop_flag).strip():
+                raise ValueError(
+                    "field_mapping.stop_flag is required for streaming custom-chat"
+                )
+
+        return v
+
 
 class TaskResultItem(BaseModel):
     """

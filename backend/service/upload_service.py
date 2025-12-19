@@ -14,8 +14,8 @@ from werkzeug.utils import secure_filename
 from model.upload import UploadedFileInfo, UploadFileRsp
 from utils.be_config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE, UPLOAD_FOLDER
 from utils.error_handler import ErrorMessages, ErrorResponse
-from utils.logger import logger
-from utils.security import (
+from utils.file_security import (
+    normalize_file_type,
     safe_join,
     validate_file_extension,
     validate_filename,
@@ -23,6 +23,7 @@ from utils.security import (
     validate_task_id,
     validate_upload_path,
 )
+from utils.logger import logger
 
 # Chunk size for streaming upload (1MB)
 CHUNK_SIZE = 1024 * 1024
@@ -41,15 +42,6 @@ def _require_files(files: Sequence[UploadFile]) -> None:
     if not first_valid:
         raise ErrorResponse.bad_request(ErrorMessages.NO_FILES_PROVIDED)
     logger.info("Uploading file: {}", first_valid.filename)
-
-
-def _normalize_file_type(file_type: Optional[str]) -> str:
-    normalized = (file_type or DEFAULT_FILE_TYPE).lower()
-    if normalized not in SUPPORTED_FILE_TYPES:
-        raise ErrorResponse.bad_request(
-            f"{ErrorMessages.UNSupported_FILE_TYPE}: {file_type or 'unknown'}"
-        )
-    return normalized
 
 
 def _resolve_task_identifier(task_id: Optional[str]) -> str:
@@ -315,7 +307,14 @@ async def upload_file_svc(
     """
     _require_files(files)
 
-    normalized_file_type = _normalize_file_type(file_type)
+    try:
+        normalized_file_type = normalize_file_type(
+            file_type, DEFAULT_FILE_TYPE, SUPPORTED_FILE_TYPES
+        )
+    except ValueError:
+        raise ErrorResponse.bad_request(
+            f"{ErrorMessages.UNSupported_FILE_TYPE}: {file_type or 'unknown'}"
+        )
     effective_task_id = _resolve_task_identifier(task_id)
 
     if normalized_file_type == "cert":

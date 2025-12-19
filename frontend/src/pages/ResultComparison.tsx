@@ -29,6 +29,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -104,6 +105,48 @@ interface SelectedTask {
   duration?: number;
 }
 
+type ComparisonMode = 'model' | 'common';
+
+const MODE_STORAGE_KEY = 'resultComparisonMode';
+
+interface CommonTaskInfo {
+  task_id: string;
+  task_name: string;
+  method: string;
+  target_url: string;
+  concurrent_users: number;
+  created_at: string;
+  duration?: number;
+}
+
+interface CommonComparisonMetrics {
+  task_id: string;
+  task_name: string;
+  method: string;
+  target_url: string;
+  concurrent_users: number;
+  duration: string;
+  request_count: number;
+  failure_count: number;
+  success_rate: number;
+  rps: number;
+  avg_response_time: number;
+  p90_response_time: number;
+  min_response_time: number;
+  max_response_time: number;
+  avg_content_length: number;
+}
+
+interface SelectedCommonTask {
+  task_id: string;
+  task_name: string;
+  method: string;
+  target_url: string;
+  concurrent_users: number;
+  created_at: string;
+  duration?: number;
+}
+
 type NumericMetricKey =
   | 'first_token_latency'
   | 'total_time'
@@ -122,18 +165,48 @@ interface MetricCardConfig {
   decimals?: number;
 }
 
+type CommonNumericMetricKey =
+  | 'avg_response_time'
+  | 'p90_response_time'
+  | 'min_response_time'
+  | 'max_response_time'
+  | 'rps'
+  | 'success_rate';
+
+interface CommonMetricCardConfig {
+  metricKey: CommonNumericMetricKey;
+  title: string;
+  description: string;
+  chartTitle: string;
+  unit?: string;
+  decimals?: number;
+}
+
 const CHART_VISIBLE_COUNT = 6;
 
 const ResultComparison: React.FC = () => {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguage();
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>(() => {
+    const stored = localStorage.getItem(MODE_STORAGE_KEY);
+    return stored === 'common' ? 'common' : 'model';
+  });
   const [loading, setLoading] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [availableTasks, setAvailableTasks] = useState<ModelTaskInfo[]>([]);
+  const [availableCommonTasks, setAvailableCommonTasks] = useState<
+    CommonTaskInfo[]
+  >([]);
   const [selectedTasks, setSelectedTasks] = useState<SelectedTask[]>([]);
+  const [selectedCommonTasks, setSelectedCommonTasks] = useState<
+    SelectedCommonTask[]
+  >([]);
   const [comparisonResults, setComparisonResults] = useState<
     ComparisonMetrics[]
+  >([]);
+  const [commonComparisonResults, setCommonComparisonResults] = useState<
+    CommonComparisonMetrics[]
   >([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -155,29 +228,49 @@ const ResultComparison: React.FC = () => {
   const analysisModalContentRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch available tasks for comparison
-  const fetchAvailableTasks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await api.get<{
-        data: ModelTaskInfo[];
-        status: string;
-        error?: string;
-      }>('/tasks/comparison/available');
+  const fetchAvailableTasks = useCallback(
+    async (mode: ComparisonMode = comparisonMode) => {
+      setLoading(true);
+      try {
+        if (mode === 'model') {
+          const response = await api.get<{
+            data: ModelTaskInfo[];
+            status: string;
+            error?: string;
+          }>('/tasks/comparison/available');
 
-      if (response.data.status === 'success') {
-        setAvailableTasks(response.data.data);
-      } else {
-        messageApi.error(
-          response.data.error ||
-            t('pages.resultComparison.fetchAvailableTasksFailed')
-        );
+          if (response.data.status === 'success') {
+            setAvailableTasks(response.data.data);
+          } else {
+            messageApi.error(
+              response.data.error ||
+                t('pages.resultComparison.fetchAvailableTasksFailed')
+            );
+          }
+        } else {
+          const response = await api.get<{
+            data: CommonTaskInfo[];
+            status: string;
+            error?: string;
+          }>('/common-tasks/comparison/available');
+
+          if (response.data.status === 'success') {
+            setAvailableCommonTasks(response.data.data);
+          } else {
+            messageApi.error(
+              response.data.error ||
+                t('pages.resultComparison.fetchAvailableTasksFailed')
+            );
+          }
+        }
+      } catch (error) {
+        messageApi.error(t('pages.resultComparison.fetchAvailableTasksError'));
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      messageApi.error(t('pages.resultComparison.fetchAvailableTasksError'));
-    } finally {
-      setLoading(false);
-    }
-  }, [messageApi]);
+    },
+    [comparisonMode, messageApi, t]
+  );
 
   // Compare selected tasks
   const compareResult = useCallback(async () => {
@@ -193,44 +286,87 @@ const ResultComparison: React.FC = () => {
 
     setComparing(true);
     try {
-      const response = await api.post<{
-        data: ComparisonMetrics[];
-        status: string;
-        error?: string;
-      }>('/tasks/comparison', {
-        selected_tasks: tempSelectedTasks,
-      });
+      if (comparisonMode === 'model') {
+        const response = await api.post<{
+          data: ComparisonMetrics[];
+          status: string;
+          error?: string;
+        }>('/tasks/comparison', {
+          selected_tasks: tempSelectedTasks,
+        });
 
-      if (response.data.status === 'success') {
-        setComparisonResults(response.data.data);
+        if (response.data.status === 'success') {
+          setComparisonResults(response.data.data);
 
-        // Update selected tasks with the ones from tempSelectedTasks
-        const selectedTasksData = availableTasks
-          .filter(task => tempSelectedTasks.includes(task.task_id))
-          .map(task => ({
-            task_id: task.task_id,
-            model_name: task.model_name,
-            concurrent_users: task.concurrent_users,
-            task_name: task.task_name,
-            created_at: task.created_at,
-            duration: task.duration,
-          }));
+          const selectedTasksData = availableTasks
+            .filter(task => tempSelectedTasks.includes(task.task_id))
+            .map(task => ({
+              task_id: task.task_id,
+              model_name: task.model_name,
+              concurrent_users: task.concurrent_users,
+              task_name: task.task_name,
+              created_at: task.created_at,
+              duration: task.duration,
+            }));
 
-        setSelectedTasks(selectedTasksData);
-        setIsModalVisible(false);
-        setTempSelectedTasks([]);
-        messageApi.success(t('pages.resultComparison.comparisonCompleted'));
+          setSelectedTasks(selectedTasksData);
+          setIsModalVisible(false);
+          setTempSelectedTasks([]);
+          messageApi.success(t('pages.resultComparison.comparisonCompleted'));
+        } else {
+          messageApi.error(
+            response.data.error ||
+              t('pages.resultComparison.compareResultFailed')
+          );
+        }
       } else {
-        messageApi.error(
-          response.data.error || t('pages.resultComparison.compareResultFailed')
-        );
+        const response = await api.post<{
+          data: CommonComparisonMetrics[];
+          status: string;
+          error?: string;
+        }>('/common-tasks/comparison', {
+          selected_tasks: tempSelectedTasks,
+        });
+
+        if (response.data.status === 'success') {
+          setCommonComparisonResults(response.data.data);
+
+          const selectedTasksData = availableCommonTasks
+            .filter(task => tempSelectedTasks.includes(task.task_id))
+            .map(task => ({
+              task_id: task.task_id,
+              task_name: task.task_name,
+              method: task.method,
+              target_url: task.target_url,
+              concurrent_users: task.concurrent_users,
+              created_at: task.created_at,
+              duration: task.duration,
+            }));
+
+          setSelectedCommonTasks(selectedTasksData);
+          setIsModalVisible(false);
+          setTempSelectedTasks([]);
+          messageApi.success(t('pages.resultComparison.comparisonCompleted'));
+        } else {
+          messageApi.error(
+            response.data.error ||
+              t('pages.resultComparison.compareResultFailed')
+          );
+        }
       }
     } catch (error) {
       messageApi.error(t('pages.resultComparison.compareResultError'));
     } finally {
       setComparing(false);
     }
-  }, [tempSelectedTasks, availableTasks, messageApi]);
+  }, [
+    tempSelectedTasks,
+    availableTasks,
+    availableCommonTasks,
+    comparisonMode,
+    messageApi,
+    t,
+  ]);
 
   // Handle task selection in modal
   const handleTaskSelection = (taskId: string, checked: boolean) => {
@@ -254,16 +390,17 @@ const ResultComparison: React.FC = () => {
   const handleSearch = (value: string) => {
     if (!value.trim()) {
       // When search is cleared, refresh the available tasks
-      fetchAvailableTasks();
+      fetchAvailableTasks(comparisonMode);
     }
   };
 
   // Handle model filter change
   const handleModelFilterChange = (value: string) => {
+    if (comparisonMode !== 'model') return;
     setSelectedModel(value || undefined);
     if (!value) {
       // When model filter is cleared, refresh the available tasks
-      fetchAvailableTasks();
+      fetchAvailableTasks('model');
     }
   };
 
@@ -274,8 +411,13 @@ const ResultComparison: React.FC = () => {
       icon: <ExclamationCircleOutlined />,
       content: t('pages.resultComparison.clearAllTasksConfirm'),
       onOk: () => {
-        setSelectedTasks([]);
-        setComparisonResults([]);
+        if (comparisonMode === 'model') {
+          setSelectedTasks([]);
+          setComparisonResults([]);
+        } else {
+          setSelectedCommonTasks([]);
+          setCommonComparisonResults([]);
+        }
         messageApi.success(t('pages.resultComparison.allTasksCleared'));
       },
     });
@@ -283,48 +425,80 @@ const ResultComparison: React.FC = () => {
 
   // Reset modal state when opening
   const handleModalOpen = () => {
-    setTempSelectedTasks([]);
+    const activeIds =
+      comparisonMode === 'model'
+        ? selectedTasks.map(task => task.task_id)
+        : selectedCommonTasks.map(task => task.task_id);
+    setTempSelectedTasks(activeIds);
     setIsModalVisible(true);
   };
 
   // Filter available tasks
   const filteredAvailableTasks = useMemo(() => {
-    return availableTasks.filter(task => {
+    if (comparisonMode === 'model') {
+      return availableTasks.filter(task => {
+        const matchesSearch =
+          searchText === '' ||
+          task.model_name.toLowerCase().includes(searchText.toLowerCase()) ||
+          task.task_name.toLowerCase().includes(searchText.toLowerCase());
+
+        const matchesModel =
+          !selectedModel || task.model_name === selectedModel;
+
+        return matchesSearch && matchesModel;
+      });
+    }
+
+    return availableCommonTasks.filter(task => {
       const matchesSearch =
         searchText === '' ||
-        task.model_name.toLowerCase().includes(searchText.toLowerCase()) ||
-        task.task_name.toLowerCase().includes(searchText.toLowerCase());
+        task.task_name.toLowerCase().includes(searchText.toLowerCase()) ||
+        task.target_url.toLowerCase().includes(searchText.toLowerCase()) ||
+        task.method.toLowerCase().includes(searchText.toLowerCase());
 
-      const matchesModel = !selectedModel || task.model_name === selectedModel;
-
-      return matchesSearch && matchesModel;
+      return matchesSearch;
     });
-  }, [availableTasks, searchText, selectedModel]);
+  }, [
+    availableCommonTasks,
+    availableTasks,
+    comparisonMode,
+    searchText,
+    selectedModel,
+  ]);
 
   // Get unique model names for filtering
   const uniqueModels = useMemo(() => {
+    if (comparisonMode !== 'model') return [];
     const models = [...new Set(availableTasks.map(task => task.model_name))];
     return models.sort();
-  }, [availableTasks]);
+  }, [availableTasks, comparisonMode]);
+
+  const activeSelectedTasks =
+    comparisonMode === 'model' ? selectedTasks : selectedCommonTasks;
+  const activeComparisonResults =
+    comparisonMode === 'model' ? comparisonResults : commonComparisonResults;
 
   const taskColorMap = useMemo(() => {
     const map: Record<string, string> = {};
-    comparisonResults.forEach((result, index) => {
+    activeComparisonResults.forEach((result, index) => {
       map[result.task_id] = TASK_COLORS[index % TASK_COLORS.length];
     });
     return map;
-  }, [comparisonResults]);
+  }, [activeComparisonResults]);
 
   const getModelColor = (modelName: string) => {
     // Assign colors based on the actual order of data appearance to maintain consistency with data display order
-    const allTasks = [
-      ...availableTasks,
-      ...selectedTasks,
-      ...comparisonResults.map(result => ({
-        model_name: result.model_name,
-        created_at: '', // No need for specific time, only model name is needed
-      })),
-    ];
+    const allTasks =
+      comparisonMode === 'model'
+        ? [
+            ...availableTasks,
+            ...selectedTasks,
+            ...comparisonResults.map(result => ({
+              model_name: result.model_name,
+              created_at: '', // No need for specific time, only model name is needed
+            })),
+          ]
+        : [];
 
     // Get unique model names in order of appearance, without alphabetical sorting
     const uniqueModelsList: string[] = [];
@@ -334,7 +508,8 @@ const ResultComparison: React.FC = () => {
       }
     });
 
-    const index = uniqueModelsList.indexOf(modelName);
+    const index =
+      uniqueModelsList.length > 0 ? uniqueModelsList.indexOf(modelName) : 0;
     return TASK_COLORS[index % TASK_COLORS.length];
   };
 
@@ -344,131 +519,246 @@ const ResultComparison: React.FC = () => {
   };
 
   // Table columns for available tasks in modal
-  const availableTasksColumns: ColumnsType<ModelTaskInfo> = [
-    {
-      title: t('pages.resultComparison.select'),
-      key: 'select',
-      width: 60,
-      align: 'center',
-      render: (_, record) => (
-        <Checkbox
-          checked={tempSelectedTasks.includes(record.task_id)}
-          onChange={e => handleTaskSelection(record.task_id, e.target.checked)}
-        />
-      ),
-    },
-    {
-      title: t('pages.resultComparison.taskId'),
-      dataIndex: 'task_id',
-      key: 'task_id',
-      ellipsis: true,
-    },
-    {
-      title: t('pages.resultComparison.taskName'),
-      dataIndex: 'task_name',
-      key: 'task_name',
-      ellipsis: true,
-    },
-    {
-      title: t('pages.resultComparison.modelName'),
-      dataIndex: 'model_name',
-      key: 'model_name',
-      width: 200,
-      ellipsis: true,
-      render: (model: string) => (
-        <Tooltip title={model} placement='topLeft'>
-          <Tag
-            color={getModelColor(model)}
-            style={{
-              maxWidth: '100%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {model}
-          </Tag>
-        </Tooltip>
-      ),
-    },
-    {
-      title: t('pages.resultComparison.concurrentUsers'),
-      dataIndex: 'concurrent_users',
-      key: 'concurrent_users',
-      align: 'center',
-    },
-    {
-      title: t('pages.resultComparison.testDuration'),
-      dataIndex: 'duration',
-      key: 'duration',
-      align: 'center',
-      render: (duration: number) => `${duration || 0}s`,
-    },
-    {
-      title: t('pages.resultComparison.createdTime'),
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (date: string) => formatDate(date),
-    },
-  ];
+  const availableTasksColumns: ColumnsType<ModelTaskInfo | CommonTaskInfo> =
+    useMemo(() => {
+      if (comparisonMode === 'model') {
+        return [
+          {
+            title: t('pages.resultComparison.select'),
+            key: 'select',
+            width: 60,
+            align: 'center',
+            render: (_, record: ModelTaskInfo) => (
+              <Checkbox
+                checked={tempSelectedTasks.includes(record.task_id)}
+                onChange={e =>
+                  handleTaskSelection(record.task_id, e.target.checked)
+                }
+              />
+            ),
+          },
+          {
+            title: t('pages.resultComparison.taskId'),
+            dataIndex: 'task_id',
+            key: 'task_id',
+            ellipsis: true,
+          },
+          {
+            title: t('pages.resultComparison.taskName'),
+            dataIndex: 'task_name',
+            key: 'task_name',
+            ellipsis: true,
+          },
+          {
+            title: t('pages.resultComparison.modelName'),
+            dataIndex: 'model_name',
+            key: 'model_name',
+            width: 200,
+            ellipsis: true,
+            render: (model: string) => (
+              <Tooltip title={model} placement='topLeft'>
+                <Tag
+                  color={getModelColor(model)}
+                  style={{
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {model}
+                </Tag>
+              </Tooltip>
+            ),
+          },
+          {
+            title: t('pages.resultComparison.concurrentUsers'),
+            dataIndex: 'concurrent_users',
+            key: 'concurrent_users',
+            align: 'center',
+          },
+          {
+            title: t('pages.resultComparison.testDuration'),
+            dataIndex: 'duration',
+            key: 'duration',
+            align: 'center',
+            render: (duration: number) => `${duration || 0}s`,
+          },
+          {
+            title: t('pages.resultComparison.createdTime'),
+            dataIndex: 'created_at',
+            key: 'created_at',
+            render: (date: string) => formatDate(date),
+          },
+        ];
+      }
+
+      return [
+        {
+          title: t('pages.resultComparison.select'),
+          key: 'select',
+          width: 60,
+          align: 'center',
+          render: (_, record: CommonTaskInfo) => (
+            <Checkbox
+              checked={tempSelectedTasks.includes(record.task_id)}
+              onChange={e =>
+                handleTaskSelection(record.task_id, e.target.checked)
+              }
+            />
+          ),
+        },
+        {
+          title: t('pages.resultComparison.taskId'),
+          dataIndex: 'task_id',
+          key: 'task_id',
+          ellipsis: true,
+        },
+        {
+          title: t('pages.resultComparison.taskName'),
+          dataIndex: 'task_name',
+          key: 'task_name',
+          ellipsis: true,
+        },
+        {
+          title: t('pages.resultComparison.targetUrl', 'Target URL'),
+          dataIndex: 'target_url',
+          key: 'target_url',
+          ellipsis: true,
+          render: (url: string) => (
+            <Tooltip title={url} placement='topLeft'>
+              <span>{url}</span>
+            </Tooltip>
+          ),
+        },
+        {
+          title: t('pages.resultComparison.concurrentUsers'),
+          dataIndex: 'concurrent_users',
+          key: 'concurrent_users',
+          align: 'center',
+        },
+        {
+          title: t('pages.resultComparison.testDuration'),
+          dataIndex: 'duration',
+          key: 'duration',
+          align: 'center',
+          render: (duration: number) => `${duration || 0}s`,
+        },
+        {
+          title: t('pages.resultComparison.createdTime'),
+          dataIndex: 'created_at',
+          key: 'created_at',
+          render: (date: string) => formatDate(date),
+        },
+      ];
+    }, [comparisonMode, t, tempSelectedTasks]);
 
   // Table columns for selected tasks
-  const selectedTasksColumns: ColumnsType<SelectedTask> = [
-    {
-      title: t('pages.resultComparison.taskId'),
-      dataIndex: 'task_id',
-      key: 'task_id',
-      ellipsis: true,
-    },
-    {
-      title: t('pages.resultComparison.taskName'),
-      dataIndex: 'task_name',
-      key: 'task_name',
-      ellipsis: true,
-    },
-    {
-      title: t('pages.resultComparison.modelName'),
-      dataIndex: 'model_name',
-      key: 'model_name',
-      width: 200,
-      ellipsis: true,
-      render: (model: string) => (
-        <Tooltip title={model} placement='topLeft'>
-          <span
-            // color={getModelColor(model)}
-            style={{
-              maxWidth: '100%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              display: 'inline-block',
-            }}
-          >
-            {model}
-          </span>
-        </Tooltip>
-      ),
-    },
-    {
-      title: t('pages.resultComparison.concurrentUsers'),
-      dataIndex: 'concurrent_users',
-      key: 'concurrent_users',
-      align: 'center',
-    },
-    {
-      title: t('pages.resultComparison.testDuration'),
-      dataIndex: 'duration',
-      key: 'duration',
-      align: 'center',
-      render: (duration: number) => `${duration || 0}s`,
-    },
-    {
-      title: t('pages.resultComparison.createdTime'),
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (date: string) => formatDate(date),
-    },
-  ];
+  const selectedTasksColumns: ColumnsType<SelectedTask | SelectedCommonTask> =
+    useMemo(() => {
+      if (comparisonMode === 'model') {
+        return [
+          {
+            title: t('pages.resultComparison.taskId'),
+            dataIndex: 'task_id',
+            key: 'task_id',
+            ellipsis: true,
+          },
+          {
+            title: t('pages.resultComparison.taskName'),
+            dataIndex: 'task_name',
+            key: 'task_name',
+            ellipsis: true,
+          },
+          {
+            title: t('pages.resultComparison.modelName'),
+            dataIndex: 'model_name',
+            key: 'model_name',
+            width: 200,
+            ellipsis: true,
+            render: (model: string) => (
+              <Tooltip title={model} placement='topLeft'>
+                <span
+                  style={{
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'inline-block',
+                  }}
+                >
+                  {model}
+                </span>
+              </Tooltip>
+            ),
+          },
+          {
+            title: t('pages.resultComparison.concurrentUsers'),
+            dataIndex: 'concurrent_users',
+            key: 'concurrent_users',
+            align: 'center',
+          },
+          {
+            title: t('pages.resultComparison.testDuration'),
+            dataIndex: 'duration',
+            key: 'duration',
+            align: 'center',
+            render: (duration: number) => `${duration || 0}s`,
+          },
+          {
+            title: t('pages.resultComparison.createdTime'),
+            dataIndex: 'created_at',
+            key: 'created_at',
+            render: (date: string) => formatDate(date),
+          },
+        ];
+      }
+
+      return [
+        {
+          title: t('pages.resultComparison.taskId'),
+          dataIndex: 'task_id',
+          key: 'task_id',
+          ellipsis: true,
+        },
+        {
+          title: t('pages.resultComparison.taskName'),
+          dataIndex: 'task_name',
+          key: 'task_name',
+          ellipsis: true,
+        },
+        {
+          title: t('pages.resultComparison.targetUrl', 'Target URL'),
+          dataIndex: 'target_url',
+          key: 'target_url',
+          ellipsis: true,
+          render: (url: string) => (
+            <Tooltip title={url} placement='topLeft'>
+              <span>{url}</span>
+            </Tooltip>
+          ),
+        },
+        {
+          title: t('pages.resultComparison.concurrentUsers'),
+          dataIndex: 'concurrent_users',
+          key: 'concurrent_users',
+          align: 'center',
+        },
+        {
+          title: t('pages.resultComparison.testDuration'),
+          dataIndex: 'duration',
+          key: 'duration',
+          align: 'center',
+          render: (duration: number) => `${duration || 0}s`,
+        },
+        {
+          title: t('pages.resultComparison.createdTime'),
+          dataIndex: 'created_at',
+          key: 'created_at',
+          render: (date: string) => formatDate(date),
+        },
+      ];
+    }, [comparisonMode, t]);
 
   // Helper function to wrap text for x-axis labels
   const wrapTaskName = (text: string, maxCharsPerLine: number = 20) => {
@@ -539,11 +829,11 @@ const ResultComparison: React.FC = () => {
     chartTitle,
     decimals = 2,
     unit,
-  }: MetricCardConfig) => {
-    const data = comparisonResults.map((result, index) => ({
+  }: MetricCardConfig | CommonMetricCardConfig) => {
+    const data = activeComparisonResults.map((result, index) => ({
       task: wrapTaskName(result.task_name),
       rawTaskName: result.task_name,
-      value: Number(result[metricKey]) || 0,
+      value: Number((result as any)[metricKey]) || 0,
       taskId: result.task_id,
       index,
     }));
@@ -719,23 +1009,101 @@ const ResultComparison: React.FC = () => {
     [t]
   );
 
+  const commonMetricCardConfigs = useMemo<CommonMetricCardConfig[]>(
+    () => [
+      {
+        metricKey: 'avg_response_time',
+        title: t('pages.results.avgResponseTime', 'Avg Response Time'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.avgResponseTime',
+          'Average response time (seconds)'
+        ),
+        chartTitle: t('pages.results.avgResponseTime', 'Avg Response Time'),
+        unit: 's',
+        decimals: 3,
+      },
+      {
+        metricKey: 'p90_response_time',
+        title: t('pages.results.p90ResponseTime', 'P90 Response Time'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.p90ResponseTime',
+          '90th percentile response time (seconds)'
+        ),
+        chartTitle: t('pages.results.p90ResponseTime', 'P90 Response Time'),
+        unit: 's',
+        decimals: 3,
+      },
+      {
+        metricKey: 'min_response_time',
+        title: t('pages.results.minResponseTime', 'Min Response Time'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.minResponseTime',
+          'Minimum response time (seconds)'
+        ),
+        chartTitle: t('pages.results.minResponseTime', 'Min Response Time'),
+        unit: 's',
+        decimals: 3,
+      },
+      {
+        metricKey: 'max_response_time',
+        title: t('pages.results.maxResponseTime', 'Max Response Time'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.maxResponseTime',
+          'Maximum response time (seconds)'
+        ),
+        chartTitle: t('pages.results.maxResponseTime', 'Max Response Time'),
+        unit: 's',
+        decimals: 3,
+      },
+      {
+        metricKey: 'rps',
+        title: t('pages.results.rps', 'Requests Per Second'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.rpsCommon',
+          'Requests per second'
+        ),
+        chartTitle: t('pages.results.rps', 'Requests Per Second'),
+        unit: ' req/s',
+        decimals: 2,
+      },
+      {
+        metricKey: 'success_rate',
+        title: t('pages.results.successRate', 'Success Rate'),
+        description: t(
+          'pages.resultComparison.metricDescriptions.successRate',
+          'Percentage of successful requests'
+        ),
+        chartTitle: t('pages.results.successRate', 'Success Rate'),
+        unit: '%',
+        decimals: 2,
+      },
+    ],
+    [t]
+  );
+
   const metricHasData = useCallback(
-    (metricKey: NumericMetricKey) =>
-      comparisonResults.some(result => {
-        const value = result[metricKey];
+    (metricKey: NumericMetricKey | CommonNumericMetricKey) =>
+      activeComparisonResults.some(result => {
+        const value = (result as any)[metricKey];
         if (value === null || value === undefined) {
           return false;
         }
         const numericValue = Number(value);
         return Number.isFinite(numericValue) && numericValue !== 0;
       }),
-    [comparisonResults]
+    [activeComparisonResults]
   );
 
-  const visibleMetricCardConfigs = useMemo(
-    () => metricCardConfigs.filter(config => metricHasData(config.metricKey)),
-    [metricCardConfigs, metricHasData]
-  );
+  const visibleMetricCardConfigs = useMemo(() => {
+    const configs =
+      comparisonMode === 'model' ? metricCardConfigs : commonMetricCardConfigs;
+    return configs.filter(config => metricHasData(config.metricKey));
+  }, [
+    commonMetricCardConfigs,
+    comparisonMode,
+    metricCardConfigs,
+    metricHasData,
+  ]);
 
   // Helper function to create card title with tooltip
   const createCardTitle = (title: string, description: string) => (
@@ -746,6 +1114,9 @@ const ResultComparison: React.FC = () => {
       </Tooltip>
     </Space>
   );
+
+  const hasSelectedTasks = activeSelectedTasks.length > 0;
+  const hasComparisonResults = activeComparisonResults.length > 0;
 
   // Function to download analysis result as image
   const handleDownloadAnalysis = async () => {
@@ -804,6 +1175,16 @@ const ResultComparison: React.FC = () => {
   // Function to handle comparison results download
   // Handle AI analysis for comparison results
   const handleAnalyzeComparison = async () => {
+    if (comparisonMode !== 'model') {
+      messageApi.warning(
+        t(
+          'pages.resultComparison.analysisOnlyModel',
+          'AI analysis is available for model tasks only'
+        )
+      );
+      return;
+    }
+
     if (selectedTasks.length < 1) {
       messageApi.warning(
         t('pages.resultComparison.selectAtLeast1TaskForAnalysis')
@@ -879,7 +1260,7 @@ const ResultComparison: React.FC = () => {
 
     try {
       const elementsToCapture = [
-        { ref: modelInfoRef, title: t('pages.resultComparison.modelInfo') },
+        { ref: modelInfoRef, title: t('pages.resultComparison.taskInfo') },
         {
           ref: comparisonResultsRef,
           title: t('pages.resultComparison.comparisonResults'),
@@ -979,7 +1360,8 @@ const ResultComparison: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchAvailableTasks();
+    fetchAvailableTasks('model');
+    fetchAvailableTasks('common');
   }, [fetchAvailableTasks]);
 
   return (
@@ -993,19 +1375,54 @@ const ResultComparison: React.FC = () => {
         className='mb-24'
       />
 
+      {/* Mode Switch */}
+      <Tabs
+        activeKey={comparisonMode}
+        onChange={key => {
+          setComparisonMode(key as ComparisonMode);
+          setTempSelectedTasks([]);
+          localStorage.setItem(MODE_STORAGE_KEY, key as ComparisonMode);
+        }}
+        items={[
+          {
+            key: 'model',
+            label: (
+              <span style={{ fontSize: 18, fontWeight: 600 }}>
+                {t('pages.resultComparison.modelTasks') ||
+                  t('pages.jobs.llmTab') ||
+                  'LLM Tasks Comparison'}
+              </span>
+            ),
+          },
+          {
+            key: 'common',
+            label: (
+              <span style={{ fontSize: 18, fontWeight: 600 }}>
+                {t('pages.resultComparison.commonTasks') ||
+                  t('pages.jobs.commonApiTab') ||
+                  'Common Tasks Comparison'}
+              </span>
+            ),
+          },
+        ]}
+        style={{ marginBottom: 16 }}
+      />
+
       {/* Model Info Section */}
       <div ref={modelInfoRef} className='mb-24'>
         <div className='flex justify-between align-center mb-16'>
-          <Title level={5} style={{ margin: 0 }}>
-            {t('pages.resultComparison.modelInfo')}
-          </Title>
+          <Space size={16}>
+            <Title level={5} style={{ margin: 0 }}>
+              {t('pages.resultComparison.taskInfo', 'Task Info')}
+            </Title>
+          </Space>
           <Space>
             <Button
               type='primary'
               icon={<RobotOutlined />}
               onClick={handleAnalyzeComparison}
               loading={isAnalyzing}
-              disabled={selectedTasks.length === 0}
+              disabled={comparisonMode !== 'model' || !hasSelectedTasks}
               style={{
                 backgroundColor: '#52c41a',
                 borderColor: '#52c41a',
@@ -1026,7 +1443,7 @@ const ResultComparison: React.FC = () => {
               icon={<DownloadOutlined />}
               onClick={handleDownloadComparison}
               loading={isDownloading}
-              disabled={comparisonResults.length === 0}
+              disabled={!hasComparisonResults}
             >
               {t('pages.resultComparison.download')}
             </Button>
@@ -1049,7 +1466,7 @@ const ResultComparison: React.FC = () => {
             >
               {t('pages.resultComparison.selectTask')}
             </Button>
-            {selectedTasks.length > 0 && (
+            {hasSelectedTasks && (
               <Button
                 type='primary'
                 danger
@@ -1068,7 +1485,7 @@ const ResultComparison: React.FC = () => {
         </div>
 
         <Card>
-          {selectedTasks.length === 0 ? (
+          {activeSelectedTasks.length === 0 ? (
             <Empty
               description={t('pages.resultComparison.pleaseSelectTask')}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1076,7 +1493,7 @@ const ResultComparison: React.FC = () => {
           ) : (
             <Table
               columns={selectedTasksColumns}
-              dataSource={selectedTasks}
+              dataSource={activeSelectedTasks}
               rowKey='task_id'
               pagination={false}
               size='small'
@@ -1086,7 +1503,7 @@ const ResultComparison: React.FC = () => {
       </div>
 
       {/* Comparison Results */}
-      {comparisonResults.length > 0 && (
+      {hasComparisonResults && (
         <div ref={comparisonResultsRef}>
           <Title level={5} className='mb-24'>
             {t('pages.resultComparison.comparisonResults')}
@@ -1116,9 +1533,9 @@ const ResultComparison: React.FC = () => {
         </div>
       )}
 
-      {/* Select Model Modal */}
+      {/* Select Model/Common Modal */}
       <Modal
-        title={t('pages.resultComparison.selectModelForTask')}
+        title={t('pages.resultComparison.selectTasks', 'Select Tasks')}
         open={isModalVisible}
         onCancel={() => {
           setIsModalVisible(false);
@@ -1164,22 +1581,24 @@ const ResultComparison: React.FC = () => {
               allowClear
               className='w-300'
             />
-            <Select
-              placeholder={t('pages.resultComparison.filterModel')}
-              value={selectedModel}
-              onChange={handleModelFilterChange}
-              className='w-200'
-              allowClear
-            >
-              {uniqueModels.map(model => (
-                <Option key={model} value={model}>
-                  {model}
-                </Option>
-              ))}
-            </Select>
+            {comparisonMode === 'model' && (
+              <Select
+                placeholder={t('pages.resultComparison.filterModel')}
+                value={selectedModel}
+                onChange={handleModelFilterChange}
+                className='w-200'
+                allowClear
+              >
+                {uniqueModels.map(model => (
+                  <Option key={model} value={model}>
+                    {model}
+                  </Option>
+                ))}
+              </Select>
+            )}
             <Button
               icon={<ReloadOutlined />}
-              onClick={fetchAvailableTasks}
+              onClick={() => fetchAvailableTasks(comparisonMode)}
               loading={loading}
             >
               {t('common.refresh')}

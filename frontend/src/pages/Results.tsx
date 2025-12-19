@@ -30,13 +30,14 @@ import html2canvas from 'html2canvas';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { analysisApi, benchmarkJobApi, resultApi } from '../api/services';
+import { analysisApi, jobApi, resultApi } from '../api/services';
 import { CopyButton } from '../components/ui/CopyButton';
 import { IconTooltip } from '../components/ui/IconTooltip';
 import { LoadingSpinner } from '../components/ui/LoadingState';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useLanguage } from '../contexts/LanguageContext';
+import { formatDate } from '../utils/date';
 
 const SUMMARY_METRIC_TYPES = new Set([
   'token_metrics',
@@ -77,7 +78,7 @@ const TaskResults: React.FC = () => {
   const configCardRef = useRef<HTMLDivElement | null>(null);
   const overviewCardRef = useRef<HTMLDivElement | null>(null);
   const detailsCardRef = useRef<HTMLDivElement | null>(null);
-  const responseTimeCardRef = useRef<HTMLDivElement | null>(null);
+  const metricsDetailCardRef = useRef<HTMLDivElement | null>(null);
 
   const getNumericValue = (item: any, fields: string[]): number | undefined => {
     if (!item) {
@@ -148,7 +149,7 @@ const TaskResults: React.FC = () => {
 
         // Handle task information acquisition separately
         try {
-          const taskResponse = await benchmarkJobApi.getJob(id);
+          const taskResponse = await jobApi.getJob(id);
           setTaskInfo(taskResponse.data);
         } catch (err: any) {
           // Failed to get task info - continue with results
@@ -285,7 +286,7 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.totalRequestsCol'),
+      title: t('pages.results.totalRequests'),
       dataIndex: 'request_count',
       key: 'request_count',
       render: (_: number, record: any) => {
@@ -295,7 +296,7 @@ const TaskResults: React.FC = () => {
     },
 
     {
-      title: t('pages.results.avgResponseTimeCol'),
+      title: t('pages.results.avgResponseTime'),
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
       render: (text: number, record: any) => {
@@ -307,7 +308,7 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.maxResponseTimeCol'),
+      title: t('pages.results.maxResponseTime'),
       dataIndex: 'max_response_time',
       key: 'max_response_time',
       render: (text: number, record: any) => {
@@ -320,7 +321,7 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.minResponseTimeCol'),
+      title: t('pages.results.minResponseTime'),
       dataIndex: 'min_response_time',
       key: 'min_response_time',
       render: (text: number, record: any) => {
@@ -333,7 +334,7 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.p90ResponseTimeCol'),
+      title: t('pages.results.p90ResponseTime'),
       dataIndex: 'percentile_90_response_time',
       key: 'percentile_90_response_time',
       render: (text: number, record: any) => {
@@ -345,7 +346,7 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.medianResponseTimeCol'),
+      title: t('pages.results.medianResponseTime'),
       dataIndex: 'median_response_time',
       key: 'median_response_time',
       render: (text: number, record: any) => {
@@ -358,10 +359,10 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.rpsCol'),
+      title: t('pages.results.rps'),
       dataIndex: 'rps',
       key: 'rps',
-      render: (text: number) => (text ? text.toFixed(3) : '0.000'),
+      render: (text: number) => (text ? text.toFixed(2) : '0.000'),
     },
   ];
 
@@ -503,7 +504,7 @@ const TaskResults: React.FC = () => {
         title: createTitleWithTooltip(t('pages.results.rps'), 'RPS'),
         value: formatMetricValue(
           CompletionResult?.rps ?? firstTokenResult?.rps,
-          3
+          2
         ),
       },
     ];
@@ -696,7 +697,7 @@ const TaskResults: React.FC = () => {
     if (
       !configCardRef.current ||
       !overviewCardRef.current ||
-      !responseTimeCardRef.current
+      !metricsDetailCardRef.current
     ) {
       message.error(t('pages.results.reportComponentsNotLoaded'));
       return;
@@ -711,9 +712,9 @@ const TaskResults: React.FC = () => {
 
     try {
       const elementsToCapture = [
-        { ref: configCardRef, title: t('pages.results.testConfiguration') },
+        { ref: configCardRef, title: t('pages.results.taskInfo') },
         { ref: overviewCardRef, title: t('pages.results.resultsOverview') },
-        { ref: responseTimeCardRef, title: t('pages.results.responseTime') },
+        { ref: metricsDetailCardRef, title: t('pages.results.metricsDetail') },
       ];
 
       const canvases = await Promise.all(
@@ -814,7 +815,7 @@ const TaskResults: React.FC = () => {
     <div className='page-container'>
       <div className='flex justify-between align-center mb-24'>
         <PageHeader
-          title={t('pages.results.title')}
+          title={t('pages.results.title', 'Test Results')}
           icon={<FileTextOutlined />}
           level={3}
           className='text-center w-full'
@@ -945,20 +946,20 @@ const TaskResults: React.FC = () => {
             </Card>
           )}
 
-          {/* Test Configuration */}
+          {/* Task Info */}
           <Card
             ref={configCardRef}
             title={
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
               >
-                {t('pages.results.testConfiguration')}
+                {t('pages.results.taskInfo')}
               </div>
             }
             variant='borderless'
             className='mb-24 form-card'
           >
-            <Descriptions bordered>
+            <Descriptions column={2} size='small'>
               <Descriptions.Item label={t('pages.results.taskId')}>
                 {taskInfo?.id || id}
               </Descriptions.Item>
@@ -966,76 +967,30 @@ const TaskResults: React.FC = () => {
                 {taskInfo?.name || t('pages.results.taskName')}
               </Descriptions.Item>
               <Descriptions.Item label={t('pages.results.targetUrl')}>
-                {taskInfo?.target_host && taskInfo?.api_path
-                  ? `${taskInfo.target_host}${taskInfo.api_path}`
-                  : taskInfo?.target_host || 'N/A'}
+                <Tooltip
+                  title={
+                    taskInfo?.target_host && taskInfo?.api_path
+                      ? `${taskInfo.target_host}${taskInfo.api_path}`
+                      : taskInfo?.target_host || 'N/A'
+                  }
+                >
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      maxWidth: '100%',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {taskInfo?.target_host && taskInfo?.api_path
+                      ? `${taskInfo.target_host}${taskInfo.api_path}`
+                      : taskInfo?.target_host || 'N/A'}
+                  </span>
+                </Tooltip>
               </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.requestPayload')}>
-                {taskInfo?.request_payload ? (
-                  <div style={{ maxWidth: '400px', wordBreak: 'break-all' }}>
-                    {taskInfo.request_payload.length > 200 ? (
-                      <Tooltip
-                        title={
-                          <div style={{ position: 'relative' }}>
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: '8px',
-                                right: '8px',
-                                zIndex: 1,
-                              }}
-                            >
-                              <CopyButton
-                                text={taskInfo.request_payload}
-                                successMessage={t(
-                                  'pages.results.requestPayloadCopied'
-                                )}
-                                tooltip={t('common.copy')}
-                                size='small'
-                              />
-                            </div>
-                            <pre
-                              style={{
-                                maxWidth: '600px',
-                                maxHeight: '300px',
-                                overflow: 'auto',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-all',
-                                fontSize: '12px',
-                                backgroundColor: '#ffffff',
-                                color: '#333333',
-                                padding: '12px',
-                                borderRadius: '6px',
-                                margin: 0,
-                                fontFamily:
-                                  'Monaco, Menlo, "Ubuntu Mono", monospace',
-                                lineHeight: '1.4',
-                              }}
-                            >
-                              {taskInfo.request_payload}
-                            </pre>
-                          </div>
-                        }
-                        placement='top'
-                        styles={{
-                          body: {
-                            maxWidth: '600px',
-                            backgroundColor: '#ffffff',
-                            color: '#ffffff',
-                          },
-                        }}
-                      >
-                        <div style={{ cursor: 'pointer' }}>
-                          {`${taskInfo.request_payload.substring(0, 200)}...`}
-                        </div>
-                      </Tooltip>
-                    ) : (
-                      <div>{taskInfo.request_payload}</div>
-                    )}
-                  </div>
-                ) : (
-                  'N/A'
-                )}
+              <Descriptions.Item label={t('pages.results.createdTime')}>
+                {taskInfo?.created_at ? formatDate(taskInfo.created_at) : 'N/A'}
               </Descriptions.Item>
               <Descriptions.Item label={t('pages.results.datasetSource')}>
                 {(() => {
@@ -1092,12 +1047,12 @@ const TaskResults: React.FC = () => {
 
           {/* Response Time */}
           <Card
-            ref={responseTimeCardRef}
+            ref={metricsDetailCardRef}
             title={
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
               >
-                {t('pages.results.responseTime')}
+                {t('pages.results.metricsDetail')}
               </div>
             }
             variant='borderless'

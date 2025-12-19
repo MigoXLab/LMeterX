@@ -9,9 +9,15 @@ import tempfile
 import time
 from typing import Any, Dict, Optional, Tuple
 
+import urllib3
 from locust import HttpUser, events, task
+from urllib3.exceptions import InsecureRequestWarning
 
 from utils.logger import logger
+
+# Disable the specific InsecureRequestWarning from urllib3
+# This warning appears when verify=False is used for SSL certificate verification
+urllib3.disable_warnings(InsecureRequestWarning)
 
 
 def _parse_kv(json_str: str) -> Dict[str, str]:
@@ -182,6 +188,9 @@ class CommonApiUser(HttpUser):
         self.request_body = getattr(options, "request_body", "") or ""
         self.dataset_file = getattr(options, "dataset_file", "") or ""
         self.dataset_queue = None
+
+        # Disable SSL certificate verification for self-signed certificates
+        self.client.verify = False
 
         # Shared dataset queue across users to achieve round-robin usage
         if self.dataset_file:

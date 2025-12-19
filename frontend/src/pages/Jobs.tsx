@@ -195,14 +195,9 @@ const JobsPage: React.FC = () => {
           ? `${fullJob.name} (Copy)`
           : `Copy Task ${fullJob.id.substring(0, 8)}`;
 
-        const headers =
-          typeof fullJob.headers === 'string'
-            ? safeJsonParse(fullJob.headers, [])
-            : fullJob.headers || [];
-
-        const headersText = (headers || [])
-          .map((h: any) => `${h.key}: ${h.value}`)
-          .join('\n');
+        // Don't copy headers to avoid exposing sensitive information
+        // Use default header value instead
+        const defaultHeaders = 'Content-Type: application/json';
 
         const jobToCopyData: Partial<CommonJob> = {
           ...fullJob,
@@ -211,7 +206,7 @@ const JobsPage: React.FC = () => {
           status: undefined,
           created_at: undefined,
           updated_at: undefined,
-          headers: headersText as any,
+          headers: defaultHeaders as any,
           // Ensure request_body is included
           request_body: fullJob.request_body || '',
         };

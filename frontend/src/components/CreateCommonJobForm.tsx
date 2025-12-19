@@ -143,20 +143,21 @@ const CreateCommonJobForm: React.FC<Props> = ({
 
   const initialValues = useMemo(() => {
     if (initialData) {
-      // When copying template, ensure headers has default value if not provided or empty
-      let headersValue = 'Content-Type: application/json';
-      const { headers } = initialData;
-      if (headers) {
-        if (typeof headers === 'string') {
-          const trimmed = (headers as string).trim();
-          headersValue = trimmed ? headers : 'Content-Type: application/json';
-        } else if (Array.isArray(headers) && headers.length > 0) {
-          // Convert array format to string format
-          headersValue = (headers as Array<{ key: string; value: string }>)
-            .map(h => `${h.key}: ${h.value}`)
-            .join('\n');
-        }
-      }
+      // When copying template, copy the headers value from the template
+      // let headersValue = 'Content-Type: application/json';
+      // const { headers } = initialData;
+      // if (headers) {
+      //   if (typeof headers === 'string') {
+      //     const trimmed = (headers as string).trim();
+      //     headersValue = trimmed ? headers : 'Content-Type: application/json';
+      //   } else if (Array.isArray(headers) && headers.length > 0) {
+      //     // Convert array format to string format
+      //     headersValue = (headers as Array<{ key: string; value: string }>)
+      //       .map(h => `${h.key}: ${h.value}`)
+      //       .join('\n');
+      //   }
+      // }
+      const headersValue = 'Content-Type: application/json';
 
       // When copying template, ensure request_body is properly handled
       let requestBodyValue = '';

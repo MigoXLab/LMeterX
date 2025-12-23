@@ -4,10 +4,12 @@
  * @author Charm
  * @copyright 2025
  * */
+import { MonitorOutlined } from '@ant-design/icons';
 import { Tabs } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SystemLogs from '../components/SystemLogs';
+import { PageHeader } from '../components/ui/PageHeader';
 
 const SystemMonitor: React.FC = () => {
   const [activeTab, setActiveTab] = useState('engine-logs');
@@ -16,10 +18,14 @@ const SystemMonitor: React.FC = () => {
   // Define tabs using the items attribute
   const tabItems = [
     {
-      label: t('components.systemLogs.engineLogs', {
-        defaultValue: 'Engine Logs',
-      }),
       key: 'engine-logs',
+      label: (
+        <span style={{ fontSize: 18, fontWeight: 600 }}>
+          {t('components.systemLogs.engineLogs', {
+            defaultValue: 'Engine Logs',
+          })}
+        </span>
+      ),
       children: (
         <SystemLogs
           serviceName='engine'
@@ -31,10 +37,14 @@ const SystemMonitor: React.FC = () => {
       ),
     },
     {
-      label: t('components.systemLogs.backendLogs', {
-        defaultValue: 'Backend Service Logs',
-      }),
       key: 'backend-logs',
+      label: (
+        <span style={{ fontSize: 18, fontWeight: 600 }}>
+          {t('components.systemLogs.backendLogs', {
+            defaultValue: 'Backend Service Logs',
+          })}
+        </span>
+      ),
       children: (
         <SystemLogs
           serviceName='backend'
@@ -50,14 +60,23 @@ const SystemMonitor: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        type='card'
-        items={tabItems}
-        style={{ marginTop: '5px' }}
-      />
+    <div className='page-container'>
+      <div className='page-header-wrapper'>
+        <PageHeader
+          title={t('sidebar.monitorHub')}
+          description={t('pages.systemMonitor.description')}
+          icon={<MonitorOutlined />}
+          level={3}
+        />
+      </div>
+      <div className='jobs-content-wrapper'>
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={tabItems}
+          className='modern-tabs'
+        />
+      </div>
     </div>
   );
 };

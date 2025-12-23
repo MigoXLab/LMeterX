@@ -10,6 +10,7 @@ import {
   DownOutlined,
   FullscreenExitOutlined,
   FullscreenOutlined,
+  MonitorOutlined,
   SearchOutlined,
   SyncOutlined,
   WarningOutlined,
@@ -17,7 +18,6 @@ import {
 import {
   Alert,
   Button,
-  Card,
   Input,
   message,
   Select,
@@ -25,6 +25,7 @@ import {
   Switch,
   theme,
   Tooltip,
+  Typography,
 } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +36,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Job } from '../types/job';
 
 const { Search } = Input;
+const { Text } = Typography;
 
 const FINAL_TASK_STATUSES = [
   'COMPLETED',
@@ -74,11 +76,9 @@ const TaskLogs: React.FC = () => {
 
   const getLogContainerHeight = () => {
     if (fullscreen) {
-      // fullscreen mode: window height - card title bar height - card padding - bottom padding
-      return 'calc(100vh - 70px - 16px - 24px)';
+      return 'calc(100vh - 170px)';
     }
-    // normal mode: window height - page top padding - card title bar height - card padding - bottom padding
-    return 'calc(100vh - 24px - 70px - 48px - 24px)';
+    return 'calc(100vh - 250px)';
   };
 
   const scrollToBottom = () => {
@@ -346,8 +346,9 @@ const TaskLogs: React.FC = () => {
         <div
           className='log-line'
           style={{
-            minHeight: '1.6em',
-            lineHeight: '1.6',
+            minHeight: '1.8em',
+            lineHeight: '1.8',
+            padding: '2px 0',
           }}
         >
           &nbsp;
@@ -364,10 +365,11 @@ const TaskLogs: React.FC = () => {
         <div
           className='log-line'
           style={{
-            minHeight: '1.6em',
-            lineHeight: '1.6',
+            minHeight: '1.8em',
+            lineHeight: '1.8',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
+            padding: '2px 0',
           }}
         >
           {line}
@@ -410,10 +412,11 @@ const TaskLogs: React.FC = () => {
       <div
         className='log-line'
         style={{
-          minHeight: '1.6em',
-          lineHeight: '1.6',
+          minHeight: '1.8em',
+          lineHeight: '1.8',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
+          padding: '2px 0',
         }}
       >
         <span>{beforeLevel}</span>
@@ -476,9 +479,9 @@ const TaskLogs: React.FC = () => {
   if (error) {
     return (
       <div
-        className='page-container'
+        className={fullscreen ? '' : 'page-container'}
         style={{
-          padding: fullscreen ? '0' : '24px',
+          padding: fullscreen ? '0' : undefined,
           height: fullscreen ? '100vh' : 'auto',
           width: fullscreen ? '100vw' : 'auto',
           position: fullscreen ? 'fixed' : 'relative',
@@ -488,8 +491,16 @@ const TaskLogs: React.FC = () => {
           backgroundColor: fullscreen ? token.colorBgContainer : 'transparent',
         }}
       >
-        <Card>
-          <PageHeader title={`Task Logs - ${id}`} level={4} />
+        {!fullscreen && (
+          <div className='page-header-wrapper'>
+            <PageHeader
+              title={t('pages.taskLog.title', '任务日志')}
+              icon={<MonitorOutlined />}
+              level={3}
+            />
+          </div>
+        )}
+        <div className={fullscreen ? '' : 'jobs-content-wrapper'}>
           <div
             className='flex justify-center align-center'
             style={{ height: '60vh' }}
@@ -501,7 +512,7 @@ const TaskLogs: React.FC = () => {
               style={{ background: 'transparent', border: 'none' }}
             />
           </div>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -509,9 +520,9 @@ const TaskLogs: React.FC = () => {
   if (task && !logs && !loading && !error && !fetchError) {
     return (
       <div
-        className='page-container'
+        className={fullscreen ? '' : 'page-container'}
         style={{
-          padding: fullscreen ? '0' : '24px',
+          padding: fullscreen ? '0' : undefined,
           height: fullscreen ? '100vh' : 'auto',
           width: fullscreen ? '100vw' : 'auto',
           position: fullscreen ? 'fixed' : 'relative',
@@ -521,8 +532,16 @@ const TaskLogs: React.FC = () => {
           backgroundColor: fullscreen ? token.colorBgContainer : 'transparent',
         }}
       >
-        <Card>
-          <PageHeader title={`Task Logs - ${id}`} level={4} />
+        {!fullscreen && (
+          <div className='page-header-wrapper mb-24'>
+            <PageHeader
+              title={t('pages.taskLog.title', '任务日志')}
+              icon={<MonitorOutlined />}
+              level={3}
+            />
+          </div>
+        )}
+        <div className={fullscreen ? '' : 'jobs-content-wrapper'}>
           <div
             className='flex justify-center align-center flex-column'
             style={{ minHeight: '200px' }}
@@ -555,197 +574,381 @@ const TaskLogs: React.FC = () => {
               />
             </Space>
           </div>
-        </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (fullscreen) {
+    return (
+      <div
+        style={{
+          padding: '0',
+          height: '100vh',
+          width: '100vw',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          zIndex: 1000,
+          backgroundColor: token.colorBgContainer,
+        }}
+      >
+        {/* Toolbar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px 0',
+            marginBottom: '16px',
+            borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Text type='secondary' style={{ fontSize: '14px' }}>
+              {t('pages.taskLog.taskId', '任务ID')}:{' '}
+            </Text>
+            <Text style={{ fontSize: '14px' }}>{id}</Text>
+          </div>
+          <Space wrap size='middle'>
+            <Select
+              value={tailLines}
+              onChange={value => setTailLines(value)}
+              className='w-140'
+              style={{ minWidth: '140px' }}
+            >
+              <Select.Option value={100}>
+                {t('pages.taskLog.last100Lines')}
+              </Select.Option>
+              <Select.Option value={500}>
+                {t('pages.taskLog.last500Lines')}
+              </Select.Option>
+              <Select.Option value={1000}>
+                {t('pages.taskLog.last1000Lines')}
+              </Select.Option>
+              <Select.Option value={0}>
+                {t('pages.taskLog.allLogs')}
+              </Select.Option>
+            </Select>
+            <Switch
+              checkedChildren={t('pages.taskLog.autoRefresh')}
+              unCheckedChildren={t('pages.taskLog.stopRefresh')}
+              checked={autoRefresh}
+              onChange={checked => {
+                setAutoRefresh(checked);
+                if (checked) {
+                  setFetchError(null);
+                }
+              }}
+              disabled={isTaskInFinalState(task?.status)}
+            />
+            <Button icon={<SyncOutlined />} onClick={handleManualRefresh}>
+              {t('pages.taskLog.refreshLogs')}
+            </Button>
+            <Search
+              placeholder={t('pages.taskLog.searchLogContent')}
+              allowClear
+              enterButton={<SearchOutlined />}
+              onSearch={handleSearch}
+              className='w-250'
+              style={{ minWidth: '250px' }}
+            />
+            <Button
+              type='primary'
+              icon={<DownloadOutlined />}
+              onClick={handleDownload}
+            >
+              {t('pages.taskLog.downloadLogs')}
+            </Button>
+            <Button
+              icon={
+                fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />
+              }
+              onClick={toggleFullscreen}
+            >
+              {fullscreen
+                ? t('pages.taskLog.exitFullscreen')
+                : t('pages.taskLog.fullscreen')}
+            </Button>
+          </Space>
+        </div>
+
+        {/* Log Container */}
+        <div style={{ position: 'relative' }}>
+          <div
+            ref={logContainerRef}
+            className='custom-scrollbar'
+            style={{
+              backgroundColor: 'transparent',
+              padding: '20px',
+              borderRadius: '0',
+              height: getLogContainerHeight(),
+              overflowY: 'auto',
+              fontFamily:
+                '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+              fontSize: '14px',
+              lineHeight: '1.8',
+              border: 'none',
+              boxShadow: 'none',
+            }}
+          >
+            {searchTerm && (
+              <Alert
+                message={t('pages.taskLog.searchResults', { searchTerm })}
+                type='info'
+                showIcon
+                closable
+                onClose={() => {
+                  setSearchTerm('');
+                  setFilteredLogs(logs);
+                }}
+                className='mb-16'
+              />
+            )}
+
+            {fetchError && (
+              <Alert
+                message={t('pages.taskLog.autoRefreshError')}
+                description={
+                  <div>
+                    <p>{fetchError}</p>
+                    <p>{t('pages.taskLog.autoRefreshPaused')}</p>
+                  </div>
+                }
+                type='warning'
+                showIcon
+                icon={<WarningOutlined />}
+                closable
+                action={
+                  <Button
+                    size='small'
+                    type='primary'
+                    onClick={handleManualRefresh}
+                  >
+                    {t('pages.taskLog.refreshNow')}
+                  </Button>
+                }
+                onClose={() => setFetchError(null)}
+                className='mb-16'
+              />
+            )}
+
+            {filteredLogs.split('\n').map((line, index) => (
+              <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
+            ))}
+          </div>
+          {showScrollToBottom && (
+            <Button
+              type='text'
+              onClick={handleScrollToBottomClick}
+              style={{
+                position: 'absolute',
+                bottom: '24px',
+                right: '24px',
+                zIndex: 10,
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+              }}
+              icon={
+                <DownOutlined
+                  style={{ fontSize: '20px', color: token.colorPrimary }}
+                />
+              }
+            />
+          )}
+        </div>
       </div>
     );
   }
 
   return (
-    <div
-      className='page-container'
-      style={{
-        padding: fullscreen ? '0' : '24px',
-        height: fullscreen ? '100vh' : 'auto',
-        width: fullscreen ? '100vw' : 'auto',
-        position: fullscreen ? 'fixed' : 'relative',
-        top: fullscreen ? 0 : 'auto',
-        left: fullscreen ? 0 : 'auto',
-        zIndex: fullscreen ? 1000 : 'auto',
-        backgroundColor: fullscreen ? token.colorBgContainer : 'transparent',
-      }}
-    >
-      <Card
-        variant={!fullscreen ? 'outlined' : 'borderless'}
-        style={{
-          height: fullscreen ? '100vh' : 'auto',
-          boxShadow: fullscreen ? 'none' : undefined,
-        }}
-        title={
-          <div className='flex justify-between align-center w-full'>
-            <PageHeader
-              title={`Task Logs - ${id}`}
-              level={4}
-              extra={
-                isStatusRefreshing && (
-                  <Tooltip title='refreshing...'>
-                    <span className='ml-8'>
-                      <LoadingSpinner size='small' showText={false} />
-                    </span>
-                  </Tooltip>
-                )
-              }
-            />
-            <Space>
-              <Select
-                value={tailLines}
-                onChange={value => setTailLines(value)}
-                className='w-140'
-              >
-                <Select.Option value={100}>
-                  {t('pages.taskLog.last100Lines')}
-                </Select.Option>
-                <Select.Option value={500}>
-                  {t('pages.taskLog.last500Lines')}
-                </Select.Option>
-                <Select.Option value={1000}>
-                  {t('pages.taskLog.last1000Lines')}
-                </Select.Option>
-                <Select.Option value={0}>
-                  {t('pages.taskLog.allLogs')}
-                </Select.Option>
-              </Select>
-              <Switch
-                checkedChildren={t('pages.taskLog.autoRefresh')}
-                unCheckedChildren={t('pages.taskLog.stopRefresh')}
-                checked={autoRefresh}
-                onChange={checked => {
-                  setAutoRefresh(checked);
-                  if (checked) {
-                    setFetchError(null);
-                  }
-                }}
-                disabled={isTaskInFinalState(task?.status)}
-              />
-              <Button icon={<SyncOutlined />} onClick={handleManualRefresh}>
-                {t('pages.taskLog.refreshLogs')}
-              </Button>
-              <Search
-                placeholder={t('pages.taskLog.searchLogContent')}
-                allowClear
-                enterButton={<SearchOutlined />}
-                onSearch={handleSearch}
-                className='w-250'
-              />
-              <Button
-                type='primary'
-                icon={<DownloadOutlined />}
-                onClick={handleDownload}
-              >
-                {t('pages.taskLog.downloadLogs')}
-              </Button>
-              <Button
-                icon={
-                  fullscreen ? (
-                    <FullscreenExitOutlined />
-                  ) : (
-                    <FullscreenOutlined />
-                  )
-                }
-                onClick={toggleFullscreen}
-              >
-                {fullscreen
-                  ? t('pages.taskLog.exitFullscreen')
-                  : t('pages.taskLog.fullscreen')}
-              </Button>
-            </Space>
-          </div>
-        }
-        styles={{
-          body: {
-            padding: fullscreen ? '8px' : '24px',
-            height: fullscreen ? 'calc(100vh - 70px)' : 'auto',
-          },
-        }}
-      >
+    <div className='page-container'>
+      <div className='page-header-wrapper mb-24'>
+        <PageHeader
+          title={t('pages.taskLog.title', '任务日志')}
+          icon={<MonitorOutlined />}
+          level={3}
+          extra={
+            isStatusRefreshing && (
+              <Tooltip title='refreshing...'>
+                <span className='ml-8'>
+                  <LoadingSpinner size='small' showText={false} />
+                </span>
+              </Tooltip>
+            )
+          }
+        />
+      </div>
+      <div className='jobs-content-wrapper'>
+        {/* Toolbar */}
         <div
-          ref={logContainerRef}
-          className='custom-scrollbar'
           style={{
-            backgroundColor: token.colorBgElevated,
-            padding: '16px',
-            borderRadius: '4px',
-            height: getLogContainerHeight(),
-            overflowY: 'auto',
-            fontFamily:
-              '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
-            fontSize: '14px',
-            lineHeight: '1.6',
-            border: `1px solid ${token.colorBorderSecondary}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px 0',
+            marginBottom: '16px',
+            borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
           }}
         >
-          {searchTerm && (
-            <Alert
-              message={t('pages.taskLog.searchResults', { searchTerm })}
-              type='info'
-              showIcon
-              closable
-              onClose={() => {
-                setSearchTerm('');
-                setFilteredLogs(logs);
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Text type='secondary' style={{ fontSize: '14px' }}>
+              {t('pages.taskLog.taskId', '任务ID')}:{' '}
+            </Text>
+            <Text style={{ fontSize: '14px' }}>{id}</Text>
+          </div>
+          <Space wrap size='middle'>
+            <Select
+              value={tailLines}
+              onChange={value => setTailLines(value)}
+              className='w-140'
+              style={{ minWidth: '140px' }}
+            >
+              <Select.Option value={100}>
+                {t('pages.taskLog.last100Lines')}
+              </Select.Option>
+              <Select.Option value={500}>
+                {t('pages.taskLog.last500Lines')}
+              </Select.Option>
+              <Select.Option value={1000}>
+                {t('pages.taskLog.last1000Lines')}
+              </Select.Option>
+              <Select.Option value={0}>
+                {t('pages.taskLog.allLogs')}
+              </Select.Option>
+            </Select>
+            <Switch
+              checkedChildren={t('pages.taskLog.autoRefresh')}
+              unCheckedChildren={t('pages.taskLog.stopRefresh')}
+              checked={autoRefresh}
+              onChange={checked => {
+                setAutoRefresh(checked);
+                if (checked) {
+                  setFetchError(null);
+                }
               }}
-              className='mb-16'
+              disabled={isTaskInFinalState(task?.status)}
             />
-          )}
-
-          {fetchError && (
-            <Alert
-              message={t('pages.taskLog.autoRefreshError')}
-              description={
-                <div>
-                  <p>{fetchError}</p>
-                  <p>{t('pages.taskLog.autoRefreshPaused')}</p>
-                </div>
-              }
-              type='warning'
-              showIcon
-              icon={<WarningOutlined />}
-              closable
-              action={
-                <Button
-                  size='small'
-                  type='primary'
-                  onClick={handleManualRefresh}
-                >
-                  {t('pages.taskLog.refreshNow')}
-                </Button>
-              }
-              onClose={() => setFetchError(null)}
-              className='mb-16'
+            <Button icon={<SyncOutlined />} onClick={handleManualRefresh}>
+              {t('pages.taskLog.refreshLogs')}
+            </Button>
+            <Search
+              placeholder={t('pages.taskLog.searchLogContent')}
+              allowClear
+              enterButton={<SearchOutlined />}
+              onSearch={handleSearch}
+              className='w-250'
+              style={{ minWidth: '250px' }}
             />
-          )}
-
-          {filteredLogs.split('\n').map((line, index) => (
-            <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
-          ))}
+            <Button
+              type='primary'
+              icon={<DownloadOutlined />}
+              onClick={handleDownload}
+            >
+              {t('pages.taskLog.downloadLogs')}
+            </Button>
+            <Button
+              icon={
+                fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />
+              }
+              onClick={toggleFullscreen}
+            >
+              {fullscreen
+                ? t('pages.taskLog.exitFullscreen')
+                : t('pages.taskLog.fullscreen')}
+            </Button>
+          </Space>
         </div>
-        {showScrollToBottom && (
-          <Button
-            type='text'
-            onClick={handleScrollToBottomClick}
+
+        {/* Log Container */}
+        <div style={{ position: 'relative' }}>
+          <div
+            ref={logContainerRef}
+            className='custom-scrollbar'
             style={{
-              position: 'absolute',
-              bottom: fullscreen ? '24px' : '40px',
-              right: '40px',
-              zIndex: 10,
+              backgroundColor: 'transparent',
+              padding: '20px',
+              borderRadius: '0',
+              height: getLogContainerHeight(),
+              overflowY: 'auto',
+              fontFamily:
+                '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+              fontSize: '14px',
+              lineHeight: '1.8',
+              border: 'none',
+              boxShadow: 'none',
             }}
-            icon={
-              <DownOutlined
-                style={{ fontSize: '24px', color: token.colorPrimary }}
+          >
+            {searchTerm && (
+              <Alert
+                message={t('pages.taskLog.searchResults', { searchTerm })}
+                type='info'
+                showIcon
+                closable
+                onClose={() => {
+                  setSearchTerm('');
+                  setFilteredLogs(logs);
+                }}
+                className='mb-16'
               />
-            }
-          />
-        )}
-      </Card>
+            )}
+
+            {fetchError && (
+              <Alert
+                message={t('pages.taskLog.autoRefreshError')}
+                description={
+                  <div>
+                    <p>{fetchError}</p>
+                    <p>{t('pages.taskLog.autoRefreshPaused')}</p>
+                  </div>
+                }
+                type='warning'
+                showIcon
+                icon={<WarningOutlined />}
+                closable
+                action={
+                  <Button
+                    size='small'
+                    type='primary'
+                    onClick={handleManualRefresh}
+                  >
+                    {t('pages.taskLog.refreshNow')}
+                  </Button>
+                }
+                onClose={() => setFetchError(null)}
+                className='mb-16'
+              />
+            )}
+
+            {filteredLogs.split('\n').map((line, index) => (
+              <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
+            ))}
+          </div>
+          {showScrollToBottom && (
+            <Button
+              type='text'
+              onClick={handleScrollToBottomClick}
+              style={{
+                position: 'absolute',
+                bottom: fullscreen ? '24px' : '24px',
+                right: '24px',
+                zIndex: 10,
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+              }}
+              icon={
+                <DownOutlined
+                  style={{ fontSize: '20px', color: token.colorPrimary }}
+                />
+              }
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 };

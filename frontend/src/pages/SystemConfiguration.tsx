@@ -9,7 +9,6 @@ import { InfoCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   App,
   Button,
-  Card,
   Form,
   Input,
   Modal,
@@ -154,24 +153,28 @@ const SystemConfiguration: React.FC = () => {
 
   return (
     <div className='page-container'>
-      <PageHeader
-        title={t('pages.systemConfig.title')}
-        icon={<SettingOutlined />}
-        level={3}
-        className='text-center w-full'
-      />
+      <div className='page-header-wrapper'>
+        <PageHeader
+          title={t('pages.systemConfig.title')}
+          description={t('pages.systemConfig.description')}
+          icon={<SettingOutlined />}
+          level={3}
+        />
+      </div>
 
-      <Card className='mb-24'>
-        <div className='mb-16'>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 16,
-            }}
-          >
-            <h3>{t('pages.systemConfig.aiConfig')}</h3>
+      <div className='jobs-content-wrapper'>
+        <div
+          style={{
+            padding: '24px',
+            paddingLeft: 0,
+            backgroundColor: '#ffffff',
+            borderRadius: '8px',
+          }}
+        >
+          <div className='section-header'>
+            <span className='section-title'>
+              {t('pages.systemConfig.aiConfig')}
+            </span>
             <Button
               type='primary'
               icon={<SettingOutlined />}
@@ -180,58 +183,68 @@ const SystemConfiguration: React.FC = () => {
               {t('pages.systemConfig.configure')}
             </Button>
           </div>
-          <p style={{ color: '#666', marginBottom: 16 }}>
-            {t('pages.systemConfig.aiConfigDescription')}
-          </p>
-        </div>
+          <div className='section-content'>
+            <p style={{ color: '#666', marginBottom: 16, marginTop: 0 }}>
+              {t('pages.systemConfig.aiConfigDescription')}
+            </p>
 
-        <Form layout='vertical' style={{ maxWidth: 600 }}>
-          {aiServiceConfigs.map(config => {
-            const existingConfig = configs.find(
-              c => c.config_key === config.key
-            );
-            return (
-              <Form.Item
-                key={config.key}
-                label={
-                  <div
-                    style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+            <Form layout='vertical' style={{ maxWidth: 600 }}>
+              {aiServiceConfigs.map(config => {
+                const existingConfig = configs.find(
+                  c => c.config_key === config.key
+                );
+                return (
+                  <Form.Item
+                    key={config.key}
+                    label={
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <span>{config.label}</span>
+                        <Tooltip title={config.description}>
+                          <InfoCircleOutlined
+                            style={{ color: '#999', fontSize: '14px' }}
+                          />
+                        </Tooltip>
+                      </div>
+                    }
                   >
-                    <span>{config.label}</span>
-                    <Tooltip title={config.description}>
-                      <InfoCircleOutlined
-                        style={{ color: '#999', fontSize: '14px' }}
-                      />
-                    </Tooltip>
-                  </div>
-                }
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    {existingConfig ? (
-                      config.isPassword ? (
-                        <Text style={{ color: '#999' }}>••••••••••••••••</Text>
-                      ) : config.key === 'ai_service_host' ? (
-                        <Text>
-                          {existingConfig.config_value}/chat/completions
-                        </Text>
-                      ) : (
-                        <Text>{existingConfig.config_value}</Text>
-                      )
-                    ) : (
-                      <Text style={{ color: '#999' }}>
-                        {t('common.notConfigured', {
-                          defaultValue: 'Not configured',
-                        })}
-                      </Text>
-                    )}
-                  </div>
-                </div>
-              </Form.Item>
-            );
-          })}
-        </Form>
-      </Card>
+                    <div
+                      style={{ display: 'flex', alignItems: 'center', gap: 12 }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        {existingConfig ? (
+                          config.isPassword ? (
+                            <Text style={{ color: '#999' }}>
+                              ••••••••••••••••
+                            </Text>
+                          ) : config.key === 'ai_service_host' ? (
+                            <Text>
+                              {existingConfig.config_value}/chat/completions
+                            </Text>
+                          ) : (
+                            <Text>{existingConfig.config_value}</Text>
+                          )
+                        ) : (
+                          <Text style={{ color: '#999' }}>
+                            {t('common.notConfigured', {
+                              defaultValue: 'Not configured',
+                            })}
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+                  </Form.Item>
+                );
+              })}
+            </Form>
+          </div>
+        </div>
+      </div>
 
       {/* AI Service Configuration Modal */}
       <Modal

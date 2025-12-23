@@ -32,7 +32,7 @@ const LanguageSwitcher: React.FC = () => {
           {/* <span style={{ marginRight: '8px' }}>🇺🇸</span> */}
           {t('header.english')}
           {currentLanguage === 'en' && (
-            <span style={{ marginLeft: '8px', color: '#1890ff' }}>✓</span>
+            <span style={{ marginLeft: '8px', color: '#667eea' }}>✓</span>
           )}
         </div>
       ),
@@ -51,7 +51,7 @@ const LanguageSwitcher: React.FC = () => {
           {/* <span style={{ marginRight: '8px' }}>🇨🇳</span> */}
           {t('header.chinese')}
           {currentLanguage === 'zh' && (
-            <span style={{ marginLeft: '8px', color: '#1890ff' }}>✓</span>
+            <span style={{ marginLeft: '8px', color: '#667eea' }}>✓</span>
           )}
         </div>
       ),
@@ -76,15 +76,28 @@ const LanguageSwitcher: React.FC = () => {
     >
       <Button
         type='text'
+        className='language-switcher-button'
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          border: 'none',
-          boxShadow: 'none',
-          padding: '4px 8px',
-          height: 'auto',
+          border: '1px solid rgba(0, 0, 0, 0.12)',
+          background: '#ffffff',
+          color: '#333',
+          borderRadius: '8px',
+          padding: '4px 12px',
+          height: '36px',
           lineHeight: '1',
+          transition: 'all 0.2s ease',
+          fontWeight: 500,
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = '#f5f5f5';
+          e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.2)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = '#ffffff';
+          e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.12)';
         }}
       >
         <GlobalOutlined

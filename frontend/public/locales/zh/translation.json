@@ -41,7 +41,7 @@
       "refreshedAgo": "几秒前刷新",
       "lastRefresh": "最后刷新",
       "llmTab": "LLM API",
-      "commonApiTab": "通用API",
+      "commonApiTab": "业务API",
       "searchPlaceholderCommon": "搜索任务名称或ID",
       "createSuccess": "任务创建成功",
       "createFailed": "任务创建失败",
@@ -195,7 +195,7 @@
     "resultComparison": {
       "title": "性能对比",
       "modelTasks": "LLM API",
-      "commonTasks": "通用 API",
+      "commonTasks": "业务API",
       "selectModels": "选择模型",
       "compare": "对比",
       "addModel": "添加模型",

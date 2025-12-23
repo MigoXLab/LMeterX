@@ -1094,20 +1094,24 @@ body {
 
 .info-grid-item {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
 }
 
 .info-label {
   font-size: 13px;
   color: #666;
   font-weight: 500;
+  min-width: 100px;
+  flex-shrink: 0;
 }
 
 .info-value {
   font-size: 14px;
   color: #333;
   word-break: break-word;
+  flex: 1;
 }
 
 /* Unified Table Styles */

@@ -14,12 +14,11 @@ import {
   SyncOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Card, Input, Select, Space, Switch, theme } from 'antd';
+import { Alert, Button, Input, Select, Space, Switch, theme } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { logApi } from '../api/services';
 import { LoadingSpinner } from './ui/LoadingState';
-import { PageHeader } from './ui/PageHeader';
 
 const { Search } = Input;
 
@@ -301,7 +300,20 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
 
     if (!levelMatch) {
       // Lines without log level use normal style
-      return <div className='log-line'>{line}</div>;
+      return (
+        <div
+          className='log-line'
+          style={{
+            minHeight: '1.8em',
+            lineHeight: '1.8',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            padding: '2px 0',
+          }}
+        >
+          {line}
+        </div>
+      );
     }
 
     // Determine color based on log level
@@ -339,7 +351,16 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
     const afterLevel = line.substring(levelEnd);
 
     return (
-      <div className='log-line'>
+      <div
+        className='log-line'
+        style={{
+          minHeight: '1.8em',
+          lineHeight: '1.8',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-all',
+          padding: '2px 0',
+        }}
+      >
         <span>{beforeLevel}</span>
         <span className='log-level-text' style={{ color: levelColor }}>
           {levelPart}
@@ -409,9 +430,8 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
 
   return (
     <div
-      className='page-container'
       style={{
-        padding: fullscreen ? '0' : '0px',
+        padding: fullscreen ? '0' : '0',
         height: fullscreen ? '100vh' : 'auto',
         width: fullscreen ? '100vw' : 'auto',
         position: fullscreen ? 'fixed' : 'relative',
@@ -421,96 +441,91 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         backgroundColor: fullscreen ? token.colorBgContainer : 'transparent',
       }}
     >
-      <Card
-        variant={!fullscreen ? 'outlined' : 'borderless'}
+      {/* Toolbar */}
+      <div
         style={{
-          height: fullscreen ? '100vh' : 'auto',
-          boxShadow: fullscreen ? 'none' : undefined,
-        }}
-        title={
-          <div className='flex justify-between align-center w-full'>
-            <PageHeader title={displayName} level={4} />
-            <Space>
-              <Select
-                value={tailLines}
-                onChange={value => setTailLines(value)}
-                className='w-140'
-              >
-                <Select.Option value={100}>
-                  {t('components.systemLogs.last100Lines')}
-                </Select.Option>
-                <Select.Option value={500}>
-                  {t('components.systemLogs.last500Lines')}
-                </Select.Option>
-                <Select.Option value={1000}>
-                  {t('components.systemLogs.last1000Lines')}
-                </Select.Option>
-                <Select.Option value={0}>
-                  {t('components.systemLogs.allLogs')}
-                </Select.Option>
-              </Select>
-              <Switch
-                checkedChildren={t('components.systemLogs.autoRefresh')}
-                unCheckedChildren={t('components.systemLogs.stopRefresh')}
-                checked={autoRefresh}
-                onChange={setAutoRefresh}
-              />
-              <Button icon={<SyncOutlined />} onClick={handleManualRefresh}>
-                {t('components.systemLogs.refreshLogs')}
-              </Button>
-              <Search
-                placeholder={t('components.systemLogs.searchLogContent')}
-                allowClear
-                enterButton={<SearchOutlined />}
-                onSearch={handleSearch}
-                className='w-250'
-              />
-              <Button
-                type='primary'
-                icon={<DownloadOutlined />}
-                onClick={handleDownload}
-              >
-                {t('components.systemLogs.downloadLogs')}
-              </Button>
-              <Button
-                icon={
-                  fullscreen ? (
-                    <FullscreenExitOutlined />
-                  ) : (
-                    <FullscreenOutlined />
-                  )
-                }
-                onClick={toggleFullscreen}
-              >
-                {fullscreen
-                  ? t('components.systemLogs.exitFullscreen')
-                  : t('components.systemLogs.fullscreen')}
-              </Button>
-            </Space>
-          </div>
-        }
-        styles={{
-          body: {
-            padding: fullscreen ? '8px' : '24px',
-            height: fullscreen ? 'calc(100vh - 70px)' : 'auto',
-            position: 'relative',
-          },
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '16px 0',
+          marginBottom: '16px',
+          borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
         }}
       >
+        <Space wrap size='middle'>
+          <Select
+            value={tailLines}
+            onChange={value => setTailLines(value)}
+            className='w-140'
+            style={{ minWidth: '140px' }}
+          >
+            <Select.Option value={100}>
+              {t('components.systemLogs.last100Lines')}
+            </Select.Option>
+            <Select.Option value={500}>
+              {t('components.systemLogs.last500Lines')}
+            </Select.Option>
+            <Select.Option value={1000}>
+              {t('components.systemLogs.last1000Lines')}
+            </Select.Option>
+            <Select.Option value={0}>
+              {t('components.systemLogs.allLogs')}
+            </Select.Option>
+          </Select>
+          <Switch
+            checkedChildren={t('components.systemLogs.autoRefresh')}
+            unCheckedChildren={t('components.systemLogs.stopRefresh')}
+            checked={autoRefresh}
+            onChange={setAutoRefresh}
+          />
+          <Button icon={<SyncOutlined />} onClick={handleManualRefresh}>
+            {t('components.systemLogs.refreshLogs')}
+          </Button>
+          <Search
+            placeholder={t('components.systemLogs.searchLogContent')}
+            allowClear
+            enterButton={<SearchOutlined />}
+            onSearch={handleSearch}
+            className='w-250'
+            style={{ minWidth: '250px' }}
+          />
+          <Button
+            type='primary'
+            icon={<DownloadOutlined />}
+            onClick={handleDownload}
+          >
+            {t('components.systemLogs.downloadLogs')}
+          </Button>
+          <Button
+            icon={
+              fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />
+            }
+            onClick={toggleFullscreen}
+          >
+            {fullscreen
+              ? t('components.systemLogs.exitFullscreen')
+              : t('components.systemLogs.fullscreen')}
+          </Button>
+        </Space>
+      </div>
+
+      {/* Log Container */}
+      <div style={{ position: 'relative' }}>
         <div
           ref={logContainerRef}
           className='custom-scrollbar'
           style={{
-            backgroundColor: token.colorBgElevated,
-            padding: '16px',
-            borderRadius: '4px',
+            backgroundColor: 'transparent',
+            padding: '20px',
+            borderRadius: '0',
             height: getLogContainerHeight(),
             overflowY: 'auto',
             fontFamily:
               '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
             fontSize: '14px',
-            lineHeight: '1.6',
-            border: `1px solid ${token.colorBorderSecondary}`,
+            lineHeight: '1.8',
+            border: 'none',
+            boxShadow: 'none',
           }}
         >
           {searchTerm && (
@@ -565,18 +580,22 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
             onClick={handleScrollToBottomClick}
             style={{
               position: 'absolute',
-              bottom: fullscreen ? '24px' : '40px',
-              right: '40px',
+              bottom: fullscreen ? '24px' : '24px',
+              right: '24px',
               zIndex: 10,
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
             }}
             icon={
               <DownOutlined
-                style={{ fontSize: '24px', color: token.colorPrimary }}
+                style={{ fontSize: '20px', color: token.colorPrimary }}
               />
             }
           />
         )}
-      </Card>
+      </div>
     </div>
   );
 };

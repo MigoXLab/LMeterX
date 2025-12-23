@@ -19,7 +19,6 @@ import { Column } from '@ant-design/plots';
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
   Col,
   Empty,
@@ -54,7 +53,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { useLanguage } from '../contexts/LanguageContext';
 import { createFileTimestamp, formatDate } from '../utils/date';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { Option } = Select;
 
 const TASK_COLORS = [
@@ -1110,7 +1109,7 @@ const ResultComparison: React.FC = () => {
     <Space>
       <span>{title}</span>
       <Tooltip title={description} placement='topRight'>
-        <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help' }} />
+        <InfoCircleOutlined style={{ color: '#666', cursor: 'help' }} />
       </Tooltip>
     </Space>
   );
@@ -1368,12 +1367,13 @@ const ResultComparison: React.FC = () => {
     <div className='page-container'>
       {contextHolder}
 
-      <PageHeader
-        title={t('pages.resultComparison.title')}
-        description={t('pages.resultComparison.description')}
-        icon={<BarChartOutlined />}
-        className='mb-24'
-      />
+      <div className='page-header-wrapper'>
+        <PageHeader
+          title={t('pages.resultComparison.title')}
+          description={t('pages.resultComparison.description')}
+          icon={<BarChartOutlined />}
+        />
+      </div>
 
       {/* Mode Switch */}
       <Tabs
@@ -1405,36 +1405,23 @@ const ResultComparison: React.FC = () => {
             ),
           },
         ]}
-        style={{ marginBottom: 16 }}
+        className='modern-tabs'
       />
 
       {/* Model Info Section */}
       <div ref={modelInfoRef} className='mb-24'>
-        <div className='flex justify-between align-center mb-16'>
-          <Space size={16}>
-            <Title level={5} style={{ margin: 0 }}>
-              {t('pages.resultComparison.taskInfo', 'Task Info')}
-            </Title>
-          </Space>
+        <div className='section-header' style={{ borderBottom: 'none' }}>
+          <span className='section-title'>
+            {t('pages.resultComparison.taskInfo', 'Task Info')}
+          </span>
           <Space>
             <Button
               type='primary'
+              className='btn-success'
               icon={<RobotOutlined />}
               onClick={handleAnalyzeComparison}
               loading={isAnalyzing}
               disabled={comparisonMode !== 'model' || !hasSelectedTasks}
-              style={{
-                backgroundColor: '#52c41a',
-                borderColor: '#52c41a',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.backgroundColor = '#73d13d';
-                e.currentTarget.style.borderColor = '#73d13d';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.backgroundColor = '#52c41a';
-                e.currentTarget.style.borderColor = '#52c41a';
-              }}
             >
               {t('pages.resultComparison.aiAnalysis')}
             </Button>
@@ -1449,20 +1436,9 @@ const ResultComparison: React.FC = () => {
             </Button>
             <Button
               type='primary'
+              className='btn-warning'
               icon={<PlusOutlined />}
               onClick={handleModalOpen}
-              style={{
-                backgroundColor: '#faad14',
-                borderColor: '#faad14',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.backgroundColor = '#ffc53d';
-                e.currentTarget.style.borderColor = '#ffc53d';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.backgroundColor = '#faad14';
-                e.currentTarget.style.borderColor = '#faad14';
-              }}
             >
               {t('pages.resultComparison.selectTask')}
             </Button>
@@ -1472,11 +1448,6 @@ const ResultComparison: React.FC = () => {
                 danger
                 icon={<ClearOutlined />}
                 onClick={clearAllTasks}
-                style={{
-                  backgroundColor: '#ff4d4f',
-                  borderColor: '#ff4d4f',
-                  color: 'white',
-                }}
               >
                 {t('pages.resultComparison.clearAll')}
               </Button>
@@ -1484,7 +1455,7 @@ const ResultComparison: React.FC = () => {
           </Space>
         </div>
 
-        <Card>
+        <div className='section-content'>
           {activeSelectedTasks.length === 0 ? (
             <Empty
               description={t('pages.resultComparison.pleaseSelectTask')}
@@ -1499,37 +1470,39 @@ const ResultComparison: React.FC = () => {
               size='small'
             />
           )}
-        </Card>
+        </div>
       </div>
 
       {/* Comparison Results */}
       {hasComparisonResults && (
         <div ref={comparisonResultsRef}>
-          <Title level={5} className='mb-24'>
-            {t('pages.resultComparison.comparisonResults')}
-          </Title>
+          <div className='section-header'>
+            <span className='section-title'>
+              {t('pages.resultComparison.comparisonResults')}
+            </span>
+          </div>
 
-          {visibleMetricCardConfigs.length > 0 ? (
-            <Row gutter={[16, 16]}>
-              {visibleMetricCardConfigs.map(config => (
-                <Col span={12} key={config.metricKey}>
-                  <Card
-                    title={createCardTitle(config.title, config.description)}
-                    size='small'
-                  >
-                    <Column {...createChartConfig(config)} />
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          ) : (
-            <Card>
+          <div className='section-content'>
+            {visibleMetricCardConfigs.length > 0 ? (
+              <Row gutter={[16, 16]}>
+                {visibleMetricCardConfigs.map(config => (
+                  <Col span={12} key={config.metricKey}>
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ marginBottom: 16 }}>
+                        {createCardTitle(config.title, config.description)}
+                      </div>
+                      <Column {...createChartConfig(config)} />
+                    </div>
+                  </Col>
+                ))}
+              </Row>
+            ) : (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={t('pages.resultComparison.noMetricData')}
               />
-            </Card>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -1643,7 +1616,7 @@ const ResultComparison: React.FC = () => {
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <RobotOutlined style={{ color: '#52c41a' }} />
+            <RobotOutlined style={{ color: '#10b981' }} />
             {t('pages.resultComparison.aiAnalysisResults')}
           </div>
         }

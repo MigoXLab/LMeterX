@@ -245,7 +245,13 @@ export const useJobs = (messageApi: MessageInstance) => {
       return;
     }
     fetchJobs();
-  }, [pagination.current, pagination.pageSize, statusFilter, searchText, fetchJobs]);
+  }, [
+    pagination.current,
+    pagination.pageSize,
+    statusFilter,
+    searchText,
+    fetchJobs,
+  ]);
 
   useEffect(() => {
     const hasRunningTasks = jobs.some(job =>
@@ -284,7 +290,9 @@ export const useJobs = (messageApi: MessageInstance) => {
   }, [startPolling, stopPolling, fetchJobs, lastRefreshTime]);
 
   const createJob = useCallback(
-    async (values: Omit<Job, 'id' | 'status' | 'created_at' | 'updated_at'>) => {
+    async (
+      values: Omit<Job, 'id' | 'status' | 'created_at' | 'updated_at'>
+    ) => {
       setLoading(true);
       try {
         const response = await axios.post(`${VITE_API_BASE_URL}/tasks`, values);

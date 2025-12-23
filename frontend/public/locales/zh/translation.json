@@ -41,7 +41,7 @@
       "refreshedAgo": "几秒前刷新",
       "lastRefresh": "最后刷新",
       "llmTab": "LLM API",
-      "commonApiTab": "通用API",
+      "commonApiTab": "业务API",
       "searchPlaceholderCommon": "搜索任务名称或ID",
       "createSuccess": "任务创建成功",
       "createFailed": "任务创建失败",
@@ -150,6 +150,7 @@
     },
     "systemMonitor": {
       "title": "系统监控",
+      "description": "查看系统日志和运行状态",
       "cpuUsage": "CPU使用率",
       "memoryUsage": "内存使用率",
       "diskUsage": "磁盘使用率",
@@ -159,6 +160,7 @@
     },
     "systemConfig": {
       "title": "系统配置",
+      "description": "管理系统配置信息",
       "save": "保存",
       "cancel": "取消",
       "reset": "重置",
@@ -192,8 +194,8 @@
     },
     "resultComparison": {
       "title": "性能对比",
-      "modelTasks": "模型任务对比",
-      "commonTasks": "通用任务对比",
+      "modelTasks": "LLM API",
+      "commonTasks": "业务API",
       "selectModels": "选择模型",
       "compare": "对比",
       "addModel": "添加模型",

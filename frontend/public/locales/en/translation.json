@@ -40,8 +40,8 @@
       "copyWarning": "Please note: Authentication credentials and uploaded files need to be re-entered",
       "refreshedAgo": "Refreshed a few seconds ago",
       "lastRefresh": "Last refresh",
-      "llmTab": "LLM Load Test",
-      "commonApiTab": "Common API Load Test",
+      "llmTab": "LLM API",
+      "commonApiTab": "Business API",
       "searchPlaceholderCommon": "Search task name or ID",
       "createSuccess": "Task created successfully",
       "createFailed": "Failed to create task",
@@ -149,6 +149,7 @@
     },
     "systemMonitor": {
       "title": "System Monitor",
+      "description": "View system logs and runtime status",
       "cpuUsage": "CPU Usage",
       "memoryUsage": "Memory Usage",
       "diskUsage": "Disk Usage",
@@ -158,6 +159,7 @@
     },
     "systemConfig": {
       "title": "System Configuration",
+      "description": "Manage system configuration information",
       "save": "Save",
       "cancel": "Cancel",
       "reset": "Reset",
@@ -191,8 +193,8 @@
     },
     "resultComparison": {
       "title": "Perf Insight",
-      "modelTasks": "Model Tasks Comparison",
-      "commonTasks": "Common API Comparison",
+      "modelTasks": "LLM API",
+      "commonTasks": "Business API",
       "selectModels": "Select Models",
       "compare": "Compare",
       "addModel": "Add Model",

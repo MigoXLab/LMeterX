@@ -732,113 +732,132 @@ const JobsPage: React.FC = () => {
 
   return (
     <div className='page-container'>
-      <PageHeader
-        title={t('sidebar.testTasks')}
-        icon={<ExperimentOutlined />}
-        description={t('pages.jobs.description')}
-      />
+      <div className='page-header-wrapper'>
+        <PageHeader
+          title={t('sidebar.testTasks')}
+          icon={<ExperimentOutlined />}
+          description={t('pages.jobs.description')}
+        />
+      </div>
 
-      <Tabs
-        activeKey={activeMode}
-        onChange={key => {
-          setActiveMode(key as 'llm' | 'common');
-          localStorage.setItem(MODE_STORAGE_KEY, key as 'llm' | 'common');
-        }}
-        items={[
-          {
-            key: 'llm',
-            label: (
-              <span style={{ fontSize: 18, fontWeight: 600 }}>
-                {t('pages.jobs.llmTab') || 'LLM Load Test'}
-              </span>
-            ),
-          },
-          {
-            key: 'common',
-            label: (
-              <span style={{ fontSize: 18, fontWeight: 600 }}>
-                {t('pages.jobs.commonApiTab') || 'Common API Load Test'}
-              </span>
-            ),
-          },
-        ]}
-        style={{ marginBottom: 16 }}
-      />
+      <div className='jobs-content-wrapper'>
+        <Tabs
+          activeKey={activeMode}
+          onChange={key => {
+            setActiveMode(key as 'llm' | 'common');
+            localStorage.setItem(MODE_STORAGE_KEY, key as 'llm' | 'common');
+          }}
+          items={[
+            {
+              key: 'llm',
+              label: (
+                <span style={{ fontSize: 18, fontWeight: 600 }}>
+                  {t('pages.jobs.llmTab') || 'LLM Load Test'}
+                </span>
+              ),
+            },
+            {
+              key: 'common',
+              label: (
+                <span style={{ fontSize: 18, fontWeight: 600 }}>
+                  {t('pages.jobs.commonApiTab') || 'Common API Load Test'}
+                </span>
+              ),
+            },
+          ]}
+          className='modern-tabs'
+        />
 
-      <div className='flex justify-between align-center mb-24'>
-        <Space>
+        {/* Create Task Button - Prominent Position */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: 24,
+            marginBottom: 16,
+          }}
+        >
           <Button
             type='primary'
+            className='btn-success'
             icon={<PlusOutlined />}
             onClick={() => setIsModalVisible(true)}
             disabled={currentLoading}
           >
             {t('pages.jobs.createNew')}
           </Button>
-          {currentRefreshing && <Badge status='processing' />}
-        </Space>
-        <Space wrap>
-          {renderLastRefreshTime(currentLastRefresh)}
-          <Search
-            placeholder={
-              isCommonMode
-                ? t('pages.jobs.searchPlaceholderCommon')
-                : t('pages.jobs.searchPlaceholder')
-            }
-            value={currentSearchInput}
-            onSearch={currentPerformSearch}
-            onChange={e => currentUpdateSearchInput(e.target.value)}
-            onClear={() => currentPerformSearch('')}
-            className='w-300'
-            allowClear
-            enterButton
-          />
-          <Button
-            icon={<ReloadOutlined spin={currentRefreshing} />}
-            onClick={currentManualRefresh}
-            disabled={currentLoading || currentRefreshing}
-          >
-            {t('pages.jobs.refresh')}
-          </Button>
-        </Space>
-      </div>
+          <Space wrap>
+            {currentRefreshing && <Badge status='processing' />}
+            {renderLastRefreshTime(currentLastRefresh)}
+            <Search
+              placeholder={
+                isCommonMode
+                  ? t('pages.jobs.searchPlaceholderCommon')
+                  : t('pages.jobs.searchPlaceholder')
+              }
+              value={currentSearchInput}
+              onSearch={currentPerformSearch}
+              onChange={e => currentUpdateSearchInput(e.target.value)}
+              onClear={() => currentPerformSearch('')}
+              className='w-300 modern-search'
+              allowClear
+              enterButton
+            />
+            <Button
+              icon={<ReloadOutlined spin={currentRefreshing} />}
+              onClick={currentManualRefresh}
+              disabled={currentLoading || currentRefreshing}
+              className='modern-button'
+            >
+              {t('pages.jobs.refresh')}
+            </Button>
+          </Space>
+        </div>
 
-      <style>{`
-        .table-highlight-row { background-color: rgba(24, 144, 255, 0.05); }
-        .ant-table-row:hover { cursor: pointer; }
+        <style>{`
+          .table-highlight-row {
+            background-color: rgba(0, 0, 0, 0.02) !important;
+          }
+          .ant-table-row:hover {
+            cursor: pointer;
+            background-color: rgba(0, 0, 0, 0.02) !important;
+          }
       `}</style>
 
-      <Table<any>
-        columns={currentColumns as any}
-        rowKey='id'
-        dataSource={currentJobs as any}
-        loading={currentLoading}
-        pagination={currentPagination}
-        onChange={(pag, filters) => {
-          setCurrentPagination({
-            current: pag.current || 1,
-            pageSize: pag.pageSize || currentPagination.pageSize,
-            total: pag.total || currentPagination.total,
-          });
-          handleTableChange(pag, filters);
-        }}
-        scroll={{ x: UI_CONFIG.TABLE_SCROLL_X }}
-        rowClassName={record =>
-          record.status?.toLowerCase() === 'running'
-            ? 'table-highlight-row'
-            : ''
-        }
-        locale={{
-          emptyText: currentError ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={<Text type='danger'>{currentError}</Text>}
-            />
-          ) : (
-            <Empty description={t('common.noData')} />
-          ),
-        }}
-      />
+        <Table<any>
+          columns={currentColumns as any}
+          rowKey='id'
+          dataSource={currentJobs as any}
+          loading={currentLoading}
+          pagination={currentPagination}
+          onChange={(pag, filters) => {
+            setCurrentPagination({
+              current: pag.current || 1,
+              pageSize: pag.pageSize || currentPagination.pageSize,
+              total: pag.total || currentPagination.total,
+            });
+            handleTableChange(pag, filters);
+          }}
+          scroll={{ x: UI_CONFIG.TABLE_SCROLL_X }}
+          className='modern-table unified-table'
+          rowClassName={record =>
+            record.status?.toLowerCase() === 'running'
+              ? 'table-highlight-row'
+              : ''
+          }
+          locale={{
+            emptyText: currentError ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={<Text type='danger'>{currentError}</Text>}
+              />
+            ) : (
+              <Empty description={t('common.noData')} />
+            ),
+          }}
+        />
+      </div>
 
       <Modal
         title={taskToCopy ? t('pages.jobs.edit') : t('pages.jobs.createNew')}

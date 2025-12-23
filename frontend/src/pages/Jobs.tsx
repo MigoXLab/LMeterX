@@ -776,8 +776,6 @@ const JobsPage: React.FC = () => {
             alignItems: 'center',
             marginTop: 24,
             marginBottom: 16,
-            paddingBottom: 16,
-            borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
           }}
         >
           <Button

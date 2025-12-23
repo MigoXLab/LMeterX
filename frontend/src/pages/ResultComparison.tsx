@@ -1410,7 +1410,7 @@ const ResultComparison: React.FC = () => {
 
       {/* Model Info Section */}
       <div ref={modelInfoRef} className='mb-24'>
-        <div className='section-header'>
+        <div className='section-header' style={{ borderBottom: 'none' }}>
           <span className='section-title'>
             {t('pages.resultComparison.taskInfo', 'Task Info')}
           </span>

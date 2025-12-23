@@ -33,11 +33,19 @@ const Header: React.FC = () => {
   };
 
   const logoStyle: React.CSSProperties = {
-    fontSize: '20px',
-    fontWeight: 600,
-    color: '#333',
+    fontSize: '22px',
+    fontWeight: 700,
     cursor: 'pointer',
-    letterSpacing: '-0.01em',
+    letterSpacing: '0.05em',
+    background:
+      'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%)',
+    backgroundSize: '200% 200%',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+    position: 'relative',
+    transition: 'all 0.3s ease',
+    textShadow: '0 0 30px rgba(102, 126, 234, 0.3)',
   };
 
   const menuItems = [
@@ -68,24 +76,26 @@ const Header: React.FC = () => {
   };
 
   const githubButtonStyle: React.CSSProperties = {
-    marginRight: '12px',
+    marginRight: '8px',
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
-    borderRadius: '8px',
-    border: '1px solid rgba(0, 0, 0, 0.12)',
-    background: '#ffffff',
+    gap: '6px',
+    borderRadius: '6px',
+    border: 'none',
+    background: 'transparent',
     color: '#333',
-    transition: 'all 0.2s ease',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     height: '36px',
-    padding: '4px 16px',
+    padding: '6px 12px',
     fontWeight: 500,
+    position: 'relative',
+    overflow: 'hidden',
   };
 
   return (
     <AntdHeader style={headerStyle}>
       <div
-        className='logo'
+        className='logo logo-gradient'
         style={logoStyle}
         onClick={() => navigate('/jobs')}
         onKeyDown={e => {
@@ -96,7 +106,8 @@ const Header: React.FC = () => {
         role='button'
         tabIndex={0}
       >
-        LMeterX
+        <span className='logo-text'>LMeterX</span>
+        <span className='logo-glow' />
       </div>
       <Menu
         mode='horizontal'
@@ -110,18 +121,11 @@ const Header: React.FC = () => {
         <Button
           type='text'
           icon={<GithubOutlined />}
+          className='github-button-tech'
           style={githubButtonStyle}
           href='https://github.com/MigoXLab/LMeterX'
           target='_blank'
           rel='noopener noreferrer'
-          onMouseEnter={e => {
-            e.currentTarget.style.background = '#f5f5f5';
-            e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.2)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = '#ffffff';
-            e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.12)';
-          }}
         >
           GitHub
         </Button>

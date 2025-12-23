@@ -32,7 +32,9 @@ const LanguageSwitcher: React.FC = () => {
           {/* <span style={{ marginRight: '8px' }}>🇺🇸</span> */}
           {t('header.english')}
           {currentLanguage === 'en' && (
-            <span style={{ marginLeft: '8px', color: '#667eea' }}>✓</span>
+            <span style={{ marginLeft: '8px', color: '#333', fontWeight: 600 }}>
+              ✓
+            </span>
           )}
         </div>
       ),
@@ -51,7 +53,9 @@ const LanguageSwitcher: React.FC = () => {
           {/* <span style={{ marginRight: '8px' }}>🇨🇳</span> */}
           {t('header.chinese')}
           {currentLanguage === 'zh' && (
-            <span style={{ marginLeft: '8px', color: '#667eea' }}>✓</span>
+            <span style={{ marginLeft: '8px', color: '#333', fontWeight: 600 }}>
+              ✓
+            </span>
           )}
         </div>
       ),
@@ -76,33 +80,27 @@ const LanguageSwitcher: React.FC = () => {
     >
       <Button
         type='text'
-        className='language-switcher-button'
+        className='language-switcher-button language-switcher-tech'
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          border: '1px solid rgba(0, 0, 0, 0.12)',
-          background: '#ffffff',
+          border: 'none',
+          background: 'transparent',
           color: '#333',
-          borderRadius: '8px',
-          padding: '4px 12px',
+          borderRadius: '6px',
+          padding: '6px 12px',
           height: '36px',
           lineHeight: '1',
-          transition: 'all 0.2s ease',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           fontWeight: 500,
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = '#f5f5f5';
-          e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.2)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = '#ffffff';
-          e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.12)';
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
         <GlobalOutlined
           style={{
-            marginRight: '4px',
+            marginRight: '6px',
             fontSize: '14px',
             display: 'flex',
             alignItems: 'center',
@@ -114,6 +112,7 @@ const LanguageSwitcher: React.FC = () => {
             alignItems: 'center',
             fontSize: '14px',
             lineHeight: '1',
+            fontWeight: 500,
           }}
         >
           {getCurrentLanguageLabel()}

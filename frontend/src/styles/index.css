@@ -12,13 +12,24 @@
 body {
   margin: 0;
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'Roboto',
+    'Oxygen',
+    'Ubuntu',
+    'Cantarell',
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #333;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
+  font-weight: 400;
 }
 
 #root {
@@ -75,6 +86,234 @@ body {
 
 :global(.header-nav-menu .ant-menu-item-selected::after) {
   display: none !important;
+}
+
+/* Logo Gradient & Tech Style */
+:global(.logo-gradient) {
+  position: relative;
+  display: inline-block;
+  padding: 0;
+  user-select: none;
+}
+
+:global(.logo-gradient .logo-text) {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 3s ease infinite;
+  font-family:
+    'Exo 2',
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'Roboto',
+    'Oxygen',
+    'Ubuntu',
+    'Cantarell',
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+  font-size: 22px;
+  filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.4));
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+}
+
+:global(.logo-gradient .logo-glow) {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.3) 0%,
+    rgba(118, 75, 162, 0.3) 100%
+  );
+  border-radius: 50%;
+  filter: blur(12px);
+  opacity: 0.6;
+  z-index: 1;
+  animation: pulse-glow 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+:global(.logo-gradient:hover .logo-text) {
+  filter: drop-shadow(0 0 12px rgba(102, 126, 234, 0.6));
+  transform: scale(1.05);
+  animation-duration: 1.5s;
+}
+
+:global(.logo-gradient:hover .logo-glow) {
+  opacity: 0.8;
+  filter: blur(16px);
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+/* Tech Style Buttons - GitHub & Language Switcher */
+:global(.github-button-tech),
+:global(.language-switcher-tech) {
+  font-family:
+    'Rajdhani',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'Roboto',
+    sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+:global(.github-button-tech) {
+  position: relative;
+  overflow: hidden;
+}
+
+:global(.github-button-tech::before) {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 0, 0, 0.05),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+:global(.github-button-tech:hover::before) {
+  left: 100%;
+}
+
+:global(.github-button-tech:hover) {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #000 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+:global(.github-button-tech span) {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+:global(.github-button-tech:active) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+:global(.github-button-tech .anticon) {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:global(.github-button-tech:hover .anticon) {
+  transform: rotate(15deg) scale(1.1);
+}
+
+:global(.language-switcher-tech) {
+  position: relative;
+  overflow: hidden;
+}
+
+:global(.language-switcher-tech::before) {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 0, 0, 0.05),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+:global(.language-switcher-tech:hover::before) {
+  left: 100%;
+}
+
+:global(.language-switcher-tech:hover) {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #000 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+:global(.language-switcher-tech span) {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+:global(.language-switcher-tech:active) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+:global(.language-switcher-tech .anticon) {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:global(.language-switcher-tech:hover .anticon) {
+  transform: rotate(360deg) scale(1.1);
+}
+
+/* Dropdown Menu Tech Style */
+:global(.ant-dropdown-menu) {
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  padding: 4px !important;
+}
+
+:global(.ant-dropdown-menu-item) {
+  border-radius: 6px !important;
+  margin: 2px 0 !important;
+  transition: all 0.2s ease !important;
+}
+
+:global(.ant-dropdown-menu-item:hover) {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #000 !important;
 }
 
 /* Modern Tabs */
@@ -1581,8 +1820,18 @@ body {
 
 .markdown-content {
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'Roboto',
+    'Oxygen',
+    'Ubuntu',
+    'Cantarell',
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
   line-height: 1.6;
   color: #333;
 }
@@ -1783,6 +2032,11 @@ body {
 
   .logo {
     font-size: 16px !important;
+  }
+
+  :global(.logo-gradient .logo-text) {
+    font-size: 18px !important;
+    letter-spacing: 0.06em !important;
   }
 }
 

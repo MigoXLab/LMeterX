@@ -815,16 +815,6 @@ const JobsPage: React.FC = () => {
           </Space>
         </div>
 
-        <style>{`
-          .table-highlight-row {
-            background-color: rgba(0, 0, 0, 0.02) !important;
-          }
-          .ant-table-row:hover {
-            cursor: pointer;
-            background-color: rgba(0, 0, 0, 0.02) !important;
-          }
-      `}</style>
-
         <Table<any>
           columns={currentColumns as any}
           rowKey='id'

@@ -66,16 +66,28 @@ const CommonResults: React.FC = () => {
   );
   const totalRequests = totalRow?.request_count ?? 0;
   const failureCount = totalRow?.failure_count ?? 0;
+
+  // Smart format success rate: if close to 100% but not 100%, show more decimal places
+  const calculateSuccessRate = (total: number, failures: number): number => {
+    if (total <= 0) return 0;
+    const rate = ((total - failures) / total) * 100;
+    return rate;
+  };
+
+  const rawSuccessRate = calculateSuccessRate(totalRequests, failureCount);
+  // If close to 100% but not 100%, show 5 decimal places; otherwise show 2 decimal places
   const successRate =
-    totalRequests > 0
-      ? Number(
-          (((totalRequests - failureCount) / totalRequests) * 100).toFixed(2)
-        )
-      : 0;
-  const rps =
+    rawSuccessRate >= 99.99 && rawSuccessRate < 100
+      ? Number(rawSuccessRate.toFixed(5))
+      : Number(rawSuccessRate.toFixed(2));
+  // Format RPS consistently with table display (2 decimal places)
+  // Use the same formatting as table to ensure consistency
+  const rawRps =
     totalRow?.rps != null && totalRow.rps !== undefined
       ? Number(totalRow.rps)
       : 0;
+  // Format to 2 decimal places to match table display
+  const rps = Number(rawRps.toFixed(2));
   const avgTimeSec =
     totalRow?.avg_response_time != null
       ? Number((totalRow.avg_response_time / 1000).toFixed(3))
@@ -317,7 +329,9 @@ const CommonResults: React.FC = () => {
                     title={t('pages.results.successRate')}
                     value={successRate}
                     suffix='%'
-                    precision={2}
+                    precision={
+                      rawSuccessRate >= 99.99 && rawSuccessRate < 100 ? 5 : 2
+                    }
                     style={statisticWrapperStyle}
                     valueStyle={statisticValueStyle}
                   />
@@ -326,7 +340,6 @@ const CommonResults: React.FC = () => {
                   <Statistic
                     title='RPS'
                     value={rps}
-                    precision={2}
                     style={statisticWrapperStyle}
                     valueStyle={statisticValueStyle}
                   />

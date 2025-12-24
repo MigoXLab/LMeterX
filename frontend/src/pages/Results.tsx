@@ -360,7 +360,7 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.rps'),
       dataIndex: 'rps',
       key: 'rps',
-      render: (text: number) => (text ? text.toFixed(2) : '0.000'),
+      render: (text: number) => (text ? text.toFixed(2) : '0.00'),
     },
   ];
 
@@ -440,6 +440,26 @@ const TaskResults: React.FC = () => {
       return numericValue;
     };
 
+    // Smart format success rate: if close to 100% but not 100%, show more decimal places
+    const formatSuccessRate = (
+      rate: number | null | undefined
+    ): string | number => {
+      if (rate === null || rate === undefined) {
+        return '-';
+      }
+
+      const numericValue = Number(rate);
+      if (!Number.isFinite(numericValue)) {
+        return '-';
+      }
+
+      // If close to 100% but not 100%, show 5 decimal places; otherwise show 2 decimal places
+      if (numericValue >= 99.99 && numericValue < 100) {
+        return numericValue.toFixed(5);
+      }
+      return numericValue.toFixed(2);
+    };
+
     const createTitleWithTooltip = (
       label: string,
       tooltipKey?: string
@@ -494,7 +514,7 @@ const TaskResults: React.FC = () => {
       {
         key: 'successRate',
         title: t('pages.results.successRate'),
-        value: formatMetricValue(actualSuccessRate, 3),
+        value: formatSuccessRate(actualSuccessRate),
         suffix: '%',
       },
       {

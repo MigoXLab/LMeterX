@@ -481,8 +481,10 @@ body {
   border-bottom: none !important;
 }
 
-:global(.modern-table .ant-table-tbody > tr:hover > td) {
-  background-color: rgba(0, 0, 0, 0.02) !important;
+/* Modern table hover - using higher specificity */
+:global(.modern-table .ant-table-tbody > tr:hover > td),
+:global(.modern-table .ant-table-tbody > tr.ant-table-row:hover > td) {
+  background-color: rgba(0, 0, 0, 0.02);
 }
 
 /* Global Table Styles - Minimalist */
@@ -509,8 +511,10 @@ body {
   font-size: 14px !important;
 }
 
-:global(.ant-table-tbody > tr:hover > td) {
-  background-color: rgba(0, 0, 0, 0.02) !important;
+/* Global table hover - using higher specificity */
+:global(.ant-table-tbody > tr:hover > td),
+:global(.ant-table-tbody > tr.ant-table-row:hover > td) {
+  background-color: rgba(0, 0, 0, 0.02);
 }
 
 /* Jobs Page Specific - Remove double borders */
@@ -1505,7 +1509,16 @@ body {
    Table Utilities
    ======================================== */
 
-.table-highlight-row {
+/* Table highlight row - using higher specificity */
+:global(.ant-table-tbody .table-highlight-row),
+:global(.ant-table-tbody .table-highlight-row td) {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+/* Table row hover styles - using higher specificity */
+:global(.ant-table-tbody .ant-table-row:hover),
+:global(.ant-table-tbody .ant-table-row:hover td) {
+  cursor: pointer;
   background-color: rgba(0, 0, 0, 0.02);
 }
 
@@ -1535,19 +1548,24 @@ body {
   flex-shrink: 0; /* Prevent copy button from shrinking */
 }
 
-/* Copy button optimizations */
-.copy-button {
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  color: #666 !important;
+/* Copy button optimizations - using higher specificity */
+.copy-button.ant-btn,
+.copy-button.ant-btn-default,
+:global(.copy-button.ant-btn),
+:global(.copy-button.ant-btn-default) {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: #666;
   transition: color 0.2s ease;
 }
 
 .copy-button:hover,
-.copy-button:focus {
-  color: #1677ff !important;
-  background: rgba(22, 119, 255, 0.06) !important;
+.copy-button:focus,
+:global(.copy-button.ant-btn:hover),
+:global(.copy-button.ant-btn:focus) {
+  color: #1677ff;
+  background: rgba(22, 119, 255, 0.06);
 }
 
 /* ========================================
@@ -1634,6 +1652,14 @@ body {
   font-size: 12px;
   color: #888;
   margin-right: 10px;
+}
+
+.log-line {
+  min-height: 1.8em;
+  line-height: 1.8;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .log-level-text {

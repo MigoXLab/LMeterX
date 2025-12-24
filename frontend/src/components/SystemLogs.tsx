@@ -300,20 +300,7 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
 
     if (!levelMatch) {
       // Lines without log level use normal style
-      return (
-        <div
-          className='log-line'
-          style={{
-            minHeight: '1.8em',
-            lineHeight: '1.8',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            padding: '2px 0',
-          }}
-        >
-          {line}
-        </div>
-      );
+      return <div className='log-line'>{line}</div>;
     }
 
     // Determine color based on log level
@@ -351,16 +338,7 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
     const afterLevel = line.substring(levelEnd);
 
     return (
-      <div
-        className='log-line'
-        style={{
-          minHeight: '1.8em',
-          lineHeight: '1.8',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-          padding: '2px 0',
-        }}
-      >
+      <div className='log-line'>
         <span>{beforeLevel}</span>
         <span className='log-level-text' style={{ color: levelColor }}>
           {levelPart}

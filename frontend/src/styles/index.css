@@ -1506,7 +1506,13 @@ body {
    ======================================== */
 
 .table-highlight-row {
-  background-color: rgba(0, 0, 0, 0.02);
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* Table row hover styles */
+:global(.ant-table-row:hover) {
+  cursor: pointer;
+  background-color: rgba(0, 0, 0, 0.02) !important;
 }
 
 .table-action-button {
@@ -1634,6 +1640,14 @@ body {
   font-size: 12px;
   color: #888;
   margin-right: 10px;
+}
+
+.log-line {
+  min-height: 1.8em;
+  line-height: 1.8;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .log-level-text {

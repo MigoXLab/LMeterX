@@ -15,9 +15,7 @@ import {
 import {
   Alert,
   Button,
-  Card,
   Col,
-  Descriptions,
   message,
   Modal,
   Row,
@@ -740,6 +738,7 @@ const TaskResults: React.FC = () => {
 
       // Calculate the total height and maximum width of the merged Canvas
       const padding = 30; // Vertical spacing between image blocks
+      const horizontalPadding = 80; // Horizontal padding for left and right
       let totalHeight = 0; // Initialize total height
       let maxWidth = 0;
 
@@ -754,9 +753,9 @@ const TaskResults: React.FC = () => {
         totalHeight += (validCanvases.length - 1) * padding;
       }
 
-      // Create a new Canvas for merging
+      // Create a new Canvas for merging with horizontal padding
       const mergedCanvas = document.createElement('canvas');
-      mergedCanvas.width = maxWidth;
+      mergedCanvas.width = maxWidth + horizontalPadding * 2;
       mergedCanvas.height = totalHeight;
       const ctx = mergedCanvas.getContext('2d');
 
@@ -772,10 +771,9 @@ const TaskResults: React.FC = () => {
       for (let i = 0; i < validCanvases.length; i++) {
         const canvas = validCanvases[i];
 
-        // Draw screenshot
-        // Horizontally center and draw the canvas
-        const offsetX = (mergedCanvas.width - canvas.width) / 2;
-        ctx.drawImage(canvas, offsetX > 0 ? offsetX : 0, currentY);
+        // Draw screenshot with horizontal padding
+        const offsetX = horizontalPadding;
+        ctx.drawImage(canvas, offsetX, currentY);
         currentY += canvas.height;
 
         // Add block spacing
@@ -812,49 +810,49 @@ const TaskResults: React.FC = () => {
   };
 
   return (
-    <div className='page-container'>
-      <div className='flex justify-between align-center mb-24'>
-        <PageHeader
-          title={t('pages.results.title', 'Test Results')}
-          icon={<FileTextOutlined />}
-          level={3}
-          className='text-center w-full'
-        />
+    <div className='page-container results-page'>
+      <div className='page-header-wrapper'>
+        <div className='flex justify-between align-center'>
+          <PageHeader
+            title={t('pages.results.title', 'Test Results')}
+            icon={<FileTextOutlined />}
+            level={3}
+          />
+          <Space>
+            <Button
+              type='default'
+              icon={<RobotOutlined />}
+              onClick={() => setAnalysisModalVisible(true)}
+              loading={isAnalyzing}
+              disabled={loading || !!error || !results || results.length === 0}
+              style={{
+                backgroundColor: '#52c41a',
+                borderColor: '#52c41a',
+                color: '#ffffff',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.backgroundColor = '#73d13d';
+                e.currentTarget.style.borderColor = '#73d13d';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.backgroundColor = '#52c41a';
+                e.currentTarget.style.borderColor = '#52c41a';
+              }}
+            >
+              {t('pages.results.aiSummary')}
+            </Button>
+            <Button
+              type='primary'
+              icon={<DownloadOutlined />}
+              onClick={handleDownloadReport}
+              loading={isDownloading}
+              disabled={loading || !!error || !results || results.length === 0}
+            >
+              {t('pages.results.downloadReport')}
+            </Button>
+          </Space>
+        </div>
       </div>
-
-      <Space className='mb-24'>
-        <Button
-          type='default'
-          icon={<RobotOutlined />}
-          onClick={() => setAnalysisModalVisible(true)}
-          loading={isAnalyzing}
-          disabled={loading || !!error || !results || results.length === 0}
-          style={{
-            backgroundColor: '#52c41a',
-            borderColor: '#52c41a',
-            color: '#ffffff',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#73d13d';
-            e.currentTarget.style.borderColor = '#73d13d';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.backgroundColor = '#52c41a';
-            e.currentTarget.style.borderColor = '#52c41a';
-          }}
-        >
-          {t('pages.results.aiSummary')}
-        </Button>
-        <Button
-          type='primary'
-          icon={<DownloadOutlined />}
-          onClick={handleDownloadReport}
-          loading={isDownloading}
-          disabled={loading || !!error || !results || results.length === 0}
-        >
-          {t('pages.results.downloadReport')}
-        </Button>
-      </Space>
 
       {loading ? (
         <div className='loading-container'>
@@ -883,244 +881,245 @@ const TaskResults: React.FC = () => {
           />
         </div>
       ) : (
-        <>
+        <div className='results-content'>
           {/* AI Summary Report */}
           {showAnalysisReport && analysisResult && (
-            <Card
-              title={
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                  }}
-                >
-                  <span
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                    }}
+            <div className='results-section'>
+              <div className='section-header'>
+                <span className='section-title'>
+                  {t('pages.results.aiSummary')}
+                </span>
+                <Space>
+                  <CopyButton
+                    text={analysisResult.analysis_report}
+                    successMessage={t('pages.results.analysisCopied')}
+                    tooltip={t('pages.results.copyAnalysis')}
+                  />
+                  <Button
+                    type='text'
+                    size='small'
+                    icon={
+                      isAnalysisExpanded ? <UpOutlined /> : <DownOutlined />
+                    }
+                    onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
+                    style={{ padding: '4px 8px' }}
                   >
-                    {t('pages.results.aiSummary')}
-                  </span>
-                  <Space>
-                    <CopyButton
-                      text={analysisResult.analysis_report}
-                      successMessage={t('pages.results.analysisCopied')}
-                      tooltip={t('pages.results.copyAnalysis')}
-                    />
-                    <Button
-                      type='text'
-                      size='small'
-                      icon={
-                        isAnalysisExpanded ? <UpOutlined /> : <DownOutlined />
-                      }
-                      onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
-                      style={{ padding: '4px 8px' }}
-                    >
-                      {isAnalysisExpanded
-                        ? t('pages.results.collapse')
-                        : t('pages.results.expand')}
-                    </Button>
-                  </Space>
-                </div>
-              }
-              variant='borderless'
-              className='mb-24 form-card'
-              style={{
-                border: '1px solid #f0f0f0',
-                borderRadius: '8px',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-              }}
-            >
+                    {isAnalysisExpanded
+                      ? t('pages.results.collapse')
+                      : t('pages.results.expand')}
+                  </Button>
+                </Space>
+              </div>
               {isAnalysisExpanded && (
-                <div style={{ padding: '16px 0' }}>
+                <div className='section-content'>
                   <MarkdownRenderer
                     content={analysisResult.analysis_report}
                     className='analysis-content'
                   />
                 </div>
               )}
-            </Card>
+            </div>
           )}
 
-          {/* Task Info */}
-          <Card
-            ref={configCardRef}
-            title={
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
+          {/* Task Info - Converted to table format */}
+          <div className='results-section unified-section' ref={configCardRef}>
+            <div className='section-header'>
+              <span className='section-title'>
                 {t('pages.results.taskInfo')}
-              </div>
-            }
-            variant='borderless'
-            className='mb-24 form-card'
-          >
-            <Descriptions column={2} size='small'>
-              <Descriptions.Item label={t('pages.results.taskId')}>
-                {taskInfo?.id || id}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.taskName')}>
-                {taskInfo?.name || t('pages.results.taskName')}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.targetUrl')}>
-                <Tooltip
-                  title={
-                    taskInfo?.target_host && taskInfo?.api_path
-                      ? `${taskInfo.target_host}${taskInfo.api_path}`
-                      : taskInfo?.target_host || 'N/A'
-                  }
-                >
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {taskInfo?.target_host && taskInfo?.api_path
-                      ? `${taskInfo.target_host}${taskInfo.api_path}`
-                      : taskInfo?.target_host || 'N/A'}
+              </span>
+            </div>
+            <div className='section-content'>
+              <div className='info-grid'>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.taskId')}
                   </span>
-                </Tooltip>
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.createdTime')}>
-                {taskInfo?.created_at ? formatDate(taskInfo.created_at) : 'N/A'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.datasetSource')}>
-                {(() => {
-                  if (taskInfo?.test_data === 'default') {
-                    return t('pages.results.builtInDataset');
-                  }
-                  if (taskInfo?.test_data && taskInfo.test_data !== 'default') {
-                    return t('pages.results.customDataset');
-                  }
-                  return '-';
-                })()}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.datasetType')}>
-                {(() => {
-                  if (taskInfo?.test_data === 'default') {
-                    return getBuiltInDatasetLabel(taskInfo?.chat_type);
-                  }
-                  return '-';
-                })()}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.modelName')}>
-                {taskInfo?.model || 'none'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.concurrentUsers')}>
-                {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('pages.results.testDuration')}>
-                {taskInfo?.duration || 0} s
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
-
-          {/* Results Overview */}
-          <Card
-            ref={overviewCardRef}
-            title={
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
-                {t('pages.results.resultsOverview')}
-              </div>
-            }
-            variant='borderless'
-            className='mb-24 form-card'
-            style={{
-              border: '2px solid #1890ff',
-              borderRadius: '12px',
-              boxShadow: '0 4px 16px rgba(24, 144, 255, 0.15)',
-              backgroundColor: '#f8fbff',
-            }}
-          >
-            {renderOverviewMetrics()}
-          </Card>
-
-          {/* Response Time */}
-          <Card
-            ref={metricsDetailCardRef}
-            title={
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
-                {t('pages.results.metricsDetail')}
-              </div>
-            }
-            variant='borderless'
-            className='mb-24'
-            style={{
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-            }}
-          >
-            <Table
-              dataSource={results.filter(
-                item =>
-                  item.metric_type !== 'total_tokens_per_second' &&
-                  item.metric_type !== 'completion_tokens_per_second' &&
-                  item.metric_type !== 'token_metrics' &&
-                  (results.length <= 1 ||
-                    !requestMetricTypeSet.has(item.metric_type))
-              )}
-              columns={columns}
-              rowKey='metric_type'
-              pagination={false}
-            />
-          </Card>
-
-          {/* Test Result Details */}
-          <Card
-            ref={detailsCardRef}
-            title={
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
-                {t('pages.results.resultDetails')}
-              </div>
-            }
-            variant='borderless'
-            className='mb-24'
-            style={{
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-            }}
-          >
-            <div style={{ position: 'relative' }}>
-              <pre
-                className='modal-pre'
-                style={{
-                  backgroundColor: '#f5f5f5',
-                  padding: '16px',
-                  borderRadius: '4px',
-                  overflow: 'auto',
-                  maxHeight: '500px',
-                }}
-              >
-                <code>{JSON.stringify(results, null, 2)}</code>
-              </pre>
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                }}
-              >
-                <CopyButton
-                  text={JSON.stringify(results, null, 2)}
-                  successMessage={t('pages.results.resultsCopied')}
-                  tooltip={t('pages.results.copyResults')}
-                />
+                  <span className='info-value'>{taskInfo?.id || id}</span>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.taskName')}
+                  </span>
+                  <span className='info-value'>
+                    {taskInfo?.name || t('pages.results.taskName')}
+                  </span>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.targetUrl')}
+                  </span>
+                  <Tooltip
+                    title={
+                      taskInfo?.target_host && taskInfo?.api_path
+                        ? `${taskInfo.target_host}${taskInfo.api_path}`
+                        : taskInfo?.target_host || 'N/A'
+                    }
+                  >
+                    <span
+                      className='info-value'
+                      style={{
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {taskInfo?.target_host && taskInfo?.api_path
+                        ? `${taskInfo.target_host}${taskInfo.api_path}`
+                        : taskInfo?.target_host || 'N/A'}
+                    </span>
+                  </Tooltip>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.createdTime')}
+                  </span>
+                  <span className='info-value'>
+                    {taskInfo?.created_at
+                      ? formatDate(taskInfo.created_at)
+                      : 'N/A'}
+                  </span>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.datasetSource')}
+                  </span>
+                  <span className='info-value'>
+                    {(() => {
+                      if (taskInfo?.test_data === 'default') {
+                        return t('pages.results.builtInDataset');
+                      }
+                      if (
+                        taskInfo?.test_data &&
+                        taskInfo.test_data !== 'default'
+                      ) {
+                        return t('pages.results.customDataset');
+                      }
+                      return '-';
+                    })()}
+                  </span>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.datasetType')}
+                  </span>
+                  <span className='info-value'>
+                    {(() => {
+                      if (taskInfo?.test_data === 'default') {
+                        return getBuiltInDatasetLabel(taskInfo?.chat_type);
+                      }
+                      return '-';
+                    })()}
+                  </span>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.modelName')}
+                  </span>
+                  <span className='info-value'>
+                    {taskInfo?.model || 'none'}
+                  </span>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.concurrentUsers')}
+                  </span>
+                  <span className='info-value'>
+                    {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
+                  </span>
+                </div>
+                <div className='info-grid-item'>
+                  <span className='info-label'>
+                    {t('pages.results.testDuration')}
+                  </span>
+                  <span className='info-value'>
+                    {taskInfo?.duration || 0} s
+                  </span>
+                </div>
               </div>
             </div>
-          </Card>
-        </>
+          </div>
+
+          {/* Results Overview */}
+          <div
+            className='results-section unified-section'
+            ref={overviewCardRef}
+          >
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.resultsOverview')}
+              </span>
+            </div>
+            <div className='section-content'>{renderOverviewMetrics()}</div>
+          </div>
+
+          {/* Metrics Detail */}
+          <div
+            className='results-section unified-section'
+            ref={metricsDetailCardRef}
+          >
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.metricsDetail')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <Table
+                dataSource={results.filter(
+                  item =>
+                    item.metric_type !== 'total_tokens_per_second' &&
+                    item.metric_type !== 'completion_tokens_per_second' &&
+                    item.metric_type !== 'token_metrics' &&
+                    (results.length <= 1 ||
+                      !requestMetricTypeSet.has(item.metric_type))
+                )}
+                columns={columns}
+                rowKey='metric_type'
+                pagination={false}
+                className='modern-table unified-table'
+              />
+            </div>
+          </div>
+
+          {/* Test Result Details */}
+          <div className='results-section' ref={detailsCardRef}>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.resultDetails')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <div style={{ position: 'relative' }}>
+                <pre
+                  className='modal-pre'
+                  style={{
+                    backgroundColor: '#f5f5f5',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    overflow: 'auto',
+                    maxHeight: '500px',
+                  }}
+                >
+                  <code>{JSON.stringify(results, null, 2)}</code>
+                </pre>
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '8px',
+                    right: '8px',
+                  }}
+                >
+                  <CopyButton
+                    text={JSON.stringify(results, null, 2)}
+                    successMessage={t('pages.results.resultsCopied')}
+                    tooltip={t('pages.results.copyResults')}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* AI Summary Modal */}

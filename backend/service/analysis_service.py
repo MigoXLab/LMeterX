@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import httpx  # Add httpx import for async HTTP calls
 from fastapi import Request
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError, PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from model.analysis import (

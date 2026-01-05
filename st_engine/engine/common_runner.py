@@ -9,7 +9,6 @@ from typing import List
 
 from engine.runner import LocustRunner
 from model.common_task import CommonTask
-from utils.logger import logger
 
 
 class CommonLocustRunner(LocustRunner):

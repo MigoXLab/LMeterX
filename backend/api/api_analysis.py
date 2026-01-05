@@ -3,12 +3,10 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request
 
 from model.analysis import AnalysisRequest, AnalysisResponse, GetAnalysisResponse
 from service.analysis_service import analyze_tasks_svc, get_analysis_svc
-from utils.logger import logger
 
 # Create an API router for analysis-related endpoints
 router = APIRouter()

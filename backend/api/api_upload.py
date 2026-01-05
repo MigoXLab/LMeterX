@@ -5,7 +5,7 @@ Copyright (c) 2025, All Rights Reserved.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Request, UploadFile
 
 from model.upload import UploadFileRsp
 from service.upload_service import upload_file_svc

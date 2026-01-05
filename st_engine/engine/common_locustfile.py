@@ -6,8 +6,7 @@ import json
 import os
 import queue
 import tempfile
-import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import urllib3
 from locust import HttpUser, events, task

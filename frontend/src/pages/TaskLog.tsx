@@ -420,6 +420,28 @@ const TaskLogs: React.FC = () => {
     }
   };
 
+  // Render toolbar with only task ID (for error states)
+  const renderTaskIdOnly = () => {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '16px 0',
+          marginBottom: '16px',
+          borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Text type='secondary' style={{ fontSize: '14px' }}>
+            {t('pages.taskLog.taskId', '任务ID')}:{' '}
+          </Text>
+          <Text style={{ fontSize: '14px' }}>{id}</Text>
+        </div>
+      </div>
+    );
+  };
+
   // Render toolbar
   const renderToolbar = () => {
     return (
@@ -507,12 +529,12 @@ const TaskLogs: React.FC = () => {
   // Render log container
   const renderLogContainer = () => {
     return (
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', backgroundColor: '#ffffff' }}>
         <div
           ref={logContainerRef}
           className='custom-scrollbar'
           style={{
-            backgroundColor: 'transparent',
+            backgroundColor: '#ffffff',
             padding: '20px',
             borderRadius: '0',
             height: getLogContainerHeight(),
@@ -606,7 +628,7 @@ const TaskLogs: React.FC = () => {
         top: 0,
         left: 0,
         zIndex: 1000,
-        backgroundColor: token.colorBgContainer,
+        backgroundColor: '#ffffff',
       };
     }
     return {};
@@ -647,22 +669,35 @@ const TaskLogs: React.FC = () => {
           top: fullscreen ? 0 : 'auto',
           left: fullscreen ? 0 : 'auto',
           zIndex: fullscreen ? 1000 : 'auto',
-          backgroundColor: fullscreen ? token.colorBgContainer : 'transparent',
+          backgroundColor: '#ffffff',
         }}
       >
         {!fullscreen && (
-          <div className='page-header-wrapper'>
+          <div className='page-header-wrapper mb-24'>
             <PageHeader
               title={t('pages.taskLog.title', '任务日志')}
               icon={<MonitorOutlined />}
               level={3}
+              extra={
+                isStatusRefreshing && (
+                  <Tooltip title='refreshing...'>
+                    <span className='ml-8'>
+                      <LoadingSpinner size='small' showText={false} />
+                    </span>
+                  </Tooltip>
+                )
+              }
             />
           </div>
         )}
-        <div className={fullscreen ? '' : 'jobs-content-wrapper'}>
+        <div
+          className={fullscreen ? '' : 'jobs-content-wrapper'}
+          style={{ backgroundColor: '#ffffff' }}
+        >
+          {renderTaskIdOnly()}
           <div
             className='flex justify-center align-center'
-            style={{ height: '60vh' }}
+            style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
           >
             <Alert
               description={error}
@@ -688,7 +723,7 @@ const TaskLogs: React.FC = () => {
           top: fullscreen ? 0 : 'auto',
           left: fullscreen ? 0 : 'auto',
           zIndex: fullscreen ? 1000 : 'auto',
-          backgroundColor: fullscreen ? token.colorBgContainer : 'transparent',
+          backgroundColor: '#ffffff',
         }}
       >
         {!fullscreen && (
@@ -697,13 +732,26 @@ const TaskLogs: React.FC = () => {
               title={t('pages.taskLog.title', '任务日志')}
               icon={<MonitorOutlined />}
               level={3}
+              extra={
+                isStatusRefreshing && (
+                  <Tooltip title='refreshing...'>
+                    <span className='ml-8'>
+                      <LoadingSpinner size='small' showText={false} />
+                    </span>
+                  </Tooltip>
+                )
+              }
             />
           </div>
         )}
-        <div className={fullscreen ? '' : 'jobs-content-wrapper'}>
+        <div
+          className={fullscreen ? '' : 'jobs-content-wrapper'}
+          style={{ backgroundColor: '#ffffff' }}
+        >
+          {renderToolbar()}
           <div
             className='flex justify-center align-center flex-column'
-            style={{ minHeight: '200px' }}
+            style={{ minHeight: '200px', backgroundColor: '#ffffff' }}
           >
             <Alert
               description={

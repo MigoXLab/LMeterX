@@ -10,6 +10,7 @@ import {
   FileTextOutlined,
   InfoCircleOutlined,
   RobotOutlined,
+  UnorderedListOutlined,
   UpOutlined,
 } from '@ant-design/icons';
 import {
@@ -870,6 +871,18 @@ const TaskResults: React.FC = () => {
             >
               {t('pages.results.downloadReport')}
             </Button>
+            <Button
+              type='default'
+              icon={<UnorderedListOutlined />}
+              onClick={() => {
+                if (id) {
+                  window.open(`/logs/task/${id}`, '_blank');
+                }
+              }}
+              disabled={!id}
+            >
+              {t('pages.jobs.logs')}
+            </Button>
           </Space>
         </div>
       </div>
@@ -883,21 +896,27 @@ const TaskResults: React.FC = () => {
           />
         </div>
       ) : error ? (
-        <div className='flex justify-center p-24'>
+        <div
+          className='flex justify-center align-center'
+          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
+        >
           <Alert
             description={error}
             type='error'
             showIcon
-            className='btn-transparent'
+            style={{ background: 'transparent', border: 'none' }}
           />
         </div>
       ) : !results || results.length === 0 ? (
-        <div className='flex justify-center p-24'>
+        <div
+          className='flex justify-center align-center'
+          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
+        >
           <Alert
             description={t('pages.results.noTestResultsAvailable')}
             type='info'
             showIcon
-            className='btn-transparent'
+            style={{ background: 'transparent', border: 'none' }}
           />
         </div>
       ) : (

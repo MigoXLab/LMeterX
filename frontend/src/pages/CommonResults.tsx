@@ -2,13 +2,18 @@
  * @file CommonResults.tsx
  * @description Results page for common API jobs
  */
-import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
+import {
+  DownloadOutlined,
+  FileTextOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
 import {
   Alert,
   Button,
   Col,
   Empty,
   Row,
+  Space,
   Statistic,
   Table,
   Tooltip,
@@ -206,15 +211,29 @@ const CommonResults: React.FC = () => {
             icon={<FileTextOutlined />}
             level={3}
           />
-          <Button
-            type='primary'
-            icon={<DownloadOutlined />}
-            onClick={handleDownloadReport}
-            loading={isDownloading}
-            disabled={loading || !results || results.length === 0}
-          >
-            {t('pages.results.downloadReport')}
-          </Button>
+          <Space>
+            <Button
+              type='primary'
+              icon={<DownloadOutlined />}
+              onClick={handleDownloadReport}
+              loading={isDownloading}
+              disabled={loading || !results || results.length === 0}
+            >
+              {t('pages.results.downloadReport')}
+            </Button>
+            <Button
+              type='default'
+              icon={<UnorderedListOutlined />}
+              onClick={() => {
+                if (id) {
+                  window.open(`/logs/task/${id}`, '_blank');
+                }
+              }}
+              disabled={!id}
+            >
+              {t('pages.jobs.logs')}
+            </Button>
+          </Space>
         </div>
       </div>
 
@@ -227,12 +246,15 @@ const CommonResults: React.FC = () => {
           />
         </div>
       ) : !results || results.length === 0 ? (
-        <div className='flex justify-center p-24'>
+        <div
+          className='flex justify-center align-center'
+          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
+        >
           <Alert
             description={t('pages.results.noTestResultsAvailable')}
             type='info'
             showIcon
-            className='btn-transparent'
+            style={{ background: 'transparent', border: 'none' }}
           />
         </div>
       ) : (

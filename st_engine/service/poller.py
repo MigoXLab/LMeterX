@@ -147,20 +147,20 @@ def common_task_create_poller():
             except Exception:
                 pass
     except Exception as e:
-        logger.exception(f"[COMMON] Failed to run startup reconciliation: {e}")
+        logger.exception(f" Failed to run startup reconciliation: {e}")
 
-    logger.info("[COMMON] Task creation poller started.")
+    logger.info(" Task creation poller started.")
     while True:
         try:
             with get_db_session() as session:
                 task = task_service.get_and_lock_task(session)
                 if task:
-                    logger.info(f"[COMMON] Poller found new task: {task.id}")
+                    logger.info(f" Poller found new task: {task.id}")
                     task_service.update_task_status(session, task, TASK_STATUS_LOCKED)
                     task_service.process_task_pipeline(task, session)
             time.sleep(3)
         except Exception as e:
-            logger.exception(f"[COMMON] Error in common task creation poller: {e}")
+            logger.exception(f" Error in common task creation poller: {e}")
             if "Lost connection" in str(e) or "Connection refused" in str(e):
                 time.sleep(30)
             else:
@@ -169,7 +169,7 @@ def common_task_create_poller():
 
 def common_task_stop_poller():
     """Poller to stop common API tasks."""
-    logger.info("[COMMON] Task stopping poller started.")
+    logger.info(" Task stopping poller started.")
     task_service = CommonTaskService()
 
     while True:
@@ -192,7 +192,7 @@ def common_task_stop_poller():
                             )
                     except Exception as stop_e:
                         logger.error(
-                            f"[COMMON] Exception while stopping task {task_id}: {stop_e}"
+                            f" Exception while stopping task {task_id}: {stop_e}"
                         )
                         try:
                             task_service.update_task_status_by_id(
@@ -200,11 +200,11 @@ def common_task_stop_poller():
                             )
                         except Exception as update_e:
                             logger.error(
-                                f"[COMMON] Failed to update task {task_id} status to failed: {update_e}"
+                                f" Failed to update task {task_id} status to failed: {update_e}"
                             )
             time.sleep(5)
         except Exception as e:
-            logger.exception(f"[COMMON] Error in common task stopping poller: {e}")
+            logger.exception(f" Error in common task stopping poller: {e}")
             if "Lost connection" in str(e) or "Connection refused" in str(e):
                 time.sleep(30)
             else:

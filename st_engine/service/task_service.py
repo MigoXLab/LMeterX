@@ -6,7 +6,9 @@ Copyright (c) 2025, All Rights Reserved.
 import os
 import subprocess  # nosec B404
 
+import pymysql.err  # type: ignore[import-untyped]
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from config.base import ST_ENGINE_DIR, UPLOAD_FOLDER
@@ -131,13 +133,33 @@ class TaskService:
                             f"File cleanup failed for a task: {cleanup_error}"
                         )
 
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            if hasattr(task, "id") and task.id:
+                task_logger = logger.bind(task_id=task.id)
+                task_logger.warning(
+                    f"Database connection error while updating task status: {e}. "
+                    "This may be a transient database issue."
+                )
+            else:
+                logger.warning(
+                    f"Database connection error while updating task status: {e}. "
+                    "This may be a transient database issue."
+                )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            raise
         except Exception as e:
             if hasattr(task, "id") and task.id:
                 task_logger = logger.bind(task_id=task.id)
                 task_logger.exception(f"Failed to update status: {e}")
             else:
                 logger.exception(f"Failed to update status for a task: {e}")
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                pass
 
     def update_task_status_by_id(self, session: Session, task_id: str, status: str):
         """
@@ -155,9 +177,22 @@ class TaskService:
                 self.update_task_status(session, task, status)
             else:
                 task_logger.warning(f"Could not find task to update status.")
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            task_logger.warning(
+                f"Database connection error while updating task status by ID: {e}. "
+                "This may be a transient database issue."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            raise
         except Exception as e:
             task_logger.exception(f"Failed to update status for task: {e}")
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                pass
 
     def get_and_lock_task(self, session: Session) -> Task | None:
         """
@@ -185,9 +220,22 @@ class TaskService:
                 session.commit()
                 return task
             return None
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(
+                f"Database connection error while trying to get and lock a task: {e}. "
+                "This may be a transient database issue. Returning None to allow retry."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            return None
         except Exception as e:
             logger.exception(f"Error while trying to get and lock a task: {e}")
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                pass
             return None
 
     def reconcile_tasks_on_startup(self, session: Session):
@@ -294,8 +342,22 @@ class TaskService:
                     if handler_id is not None:
                         remove_task_log_sink(handler_id)
 
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(
+                f"Database connection error during reconciliation: {e}. "
+                "This may be a transient database issue. Reconciliation will be retried on next startup."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            raise
         except Exception as e:
             logger.exception(f"An error occurred during task reconciliation: {e}")
+            try:
+                session.rollback()
+            except Exception:
+                pass
 
     def start_task(self, task: Task) -> dict:
         """
@@ -349,7 +411,17 @@ class TaskService:
 
             # Refresh the task state to get any updates that may have occurred
             # during the run, such as a manual stop request.
-            session.refresh(task)
+            try:
+                session.refresh(task)
+            except (OperationalError, pymysql.err.OperationalError) as e:
+                task_logger.warning(
+                    f"Database connection error while refreshing task state: {e}. "
+                    "Continuing with task processing."
+                )
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
 
             if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
                 task_logger.info(
@@ -421,6 +493,27 @@ class TaskService:
                     session, task, TASK_STATUS_FAILED, error_message
                 )
 
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            task_logger.warning(
+                f"Database connection error in pipeline: {e}. "
+                "Task processing may be incomplete."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            # Try to update status, but don't fail if database is still unavailable
+            try:
+                self.update_task_status(
+                    session,
+                    task,
+                    TASK_STATUS_FAILED,
+                    f"Pipeline error: Database connection issue - {str(e)}",
+                )
+            except Exception as status_update_error:
+                logger.warning(
+                    f"Could not update task {task.id} status due to database error: {status_update_error}"
+                )
         except Exception as e:
             error_message = f"An unexpected error occurred in the pipeline: {e}"
             task_logger.exception(f"Pipeline failed with an unexpected error: {e}")
@@ -436,6 +529,10 @@ class TaskService:
                 )
                 task_logger.info(
                     f"Task {task.id} status updated to FAILED after exception"
+                )
+            except (OperationalError, pymysql.err.OperationalError) as db_error:
+                logger.warning(
+                    f"Database connection error while updating failed task status: {db_error}"
                 )
             except Exception as status_update_error:
                 task_logger.error(
@@ -592,6 +689,20 @@ class TaskService:
             if stopping_task_ids:
                 logger.info(f"Found stopping tasks: {stopping_task_ids}")
             return stopping_task_ids
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(
+                f"Database connection error while fetching stopping tasks: {e}. "
+                "This may be a transient database issue. Returning empty list."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            return []
         except Exception as e:
             logger.exception("Failed to get stopping task IDs from the database.")
+            try:
+                session.rollback()
+            except Exception:
+                pass
             return []

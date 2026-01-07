@@ -2,6 +2,7 @@ ANALYSIS_PROMPT_EN = """
     Analyze the performance results: {model_info}, then produce a concise, technical evaluation focused on the metrics below.
 
     Rules:
+    - If a specific metric is not present in the provided {model_info}, skip its assessment and mark as N/A in the table.
     - First_token_latency assessment: For text dataset: Good (<1s), Moderate (1–3s), Poor (>3s); For multimodal dataset: Good (<3s), Moderate (3–5s), Poor (>5s).
     - Total_time assessment: Depends on the output length, the longer the output length, the longer the Total_time. Generally, if the average output token number per request is less than 1000, the Total_time is good (<30s), moderate (30–120s), poor (>120s); if the average output token number per request is greater than 1000, the Total_time is good (<120s), moderate (120–360s), poor (>360s).
     - RPS assessment: Good (>10), Moderate (<10). If RPS is Moderate, please pay attention to whether the average input and output token number per request is large and the Total_time is poor.
@@ -9,7 +10,6 @@ ANALYSIS_PROMPT_EN = """
     - Total_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
     - Avg_completion_tokens/req assessment: Concise (>1000), Verbose (<1000).
     - failure_request: If there is a failed request, please indicate it in the `Identified Issues` and direct the user to check the task log for the specific error information.
-    - If a metric is missing, display N/A (do not infer).
     - Keep output under 300 words, technical, and prioritize the most severe issues.
 
     Required Output Format:
@@ -41,6 +41,7 @@ ANALYSIS_PROMPT_CN = """
     请分析 LLM 压测性能结果：{model_info}，然后针对以下指标和要求生成一份简明的技术评估报告。
 
     规则：
+    - 如果提供的 {model_info} 中不存在某个指标，请跳过该指标的评估，并在表格中标记为 N/A。
     - 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），中等（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），中等（3-5 秒），较差（>5 秒）。
     - 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），中等（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），中等（120-360 秒），较差（>360 秒）。
     - 每秒处理的请求数 评估：良好（>10），一般（<10）。如果 每秒处理的请求数 为“一般”，请重点关注是不是由 每个请求的平均输入和输出token总数 较大 以及 端到端总时延 较差导致的。
@@ -48,7 +49,6 @@ ANALYSIS_PROMPT_CN = """
     - 每秒输入和输出token总数 评估：良好（>1000），中等（<10-1000），较差（<10）。
     - 每个请求的平均输出token数 评估：精简（<1000），冗长（>1000）。
     - 失败请求数：如果存在失败的请求，请在“已识别问题”中指出。
-    - 如果缺少某个指标，则显示 N/A（不推断）。
     - 输出内容应控制在 300 字以内，技术性强，并优先处理最严重的问题。
 
     输出格式要求：
@@ -82,14 +82,14 @@ Analyze the performance results of multiple tasks, then generate a concise perfo
 Performance results: {model_info}
 
 Rules:
+- If a specific metric is not present in the provided {model_info}, skip its assessment and mark as N/A in the table.
 - First_token_latency assessment: For text dataset: Good (<1s), Moderate (1–3s), Poor (>3s); For multimodal dataset: Good (<3s), Moderate (3–5s), Poor (>5s).
 - Total_time assessment: Depends on the output length, the longer the output length, the longer the Total_time. Generally, if the average output token number per request is less than 1000, the Total_time is good (<30s), moderate (30–120s), poor (>120s); if the average output token number per request is greater than 1000, the Total_time is good (<120s), moderate (120–360s), poor (>360s).
 - RPS assessment: Good (>10), Moderate (<10). If RPS is Moderate, please pay attention to whether the average input and output token number per request is large and the Total_time is poor.
 - Completion_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
 - Total_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
 - Avg_completion_tokens/req assessment: Concise (>1000), Verbose (<1000).
-- failure_request: If there is a failed request, please indicate it in the
-- If a metric is missing, display N/A (do not infer).
+- failure_request: If there is a failed request, please indicate it in the report.
 
 Required Output Format:
 ### Performance Summary
@@ -189,6 +189,7 @@ COMPARISON_PROMPT_CN = """
 性能结果：{model_info}
 
 指标评估规则：
+- 如果提供的性能结果中不存在某个指标，请跳过该指标的评估，并在表格中标记为 N/A。
 - 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），中等（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），中等（3-5 秒），较差（>5 秒）。
 - 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），中等（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），中等（120-360 秒），较差（>360 秒）。
 - 每秒处理的请求数 评估：良好（>10），一般（<10）。如果 每秒处理的请求数 为“一般”，请重点关注是不是由 每个请求的平均输入和输出token总数 较大 以及 端到端总时延 较差导致的。
@@ -196,7 +197,6 @@ COMPARISON_PROMPT_CN = """
 - 每秒输入和输出token总数 评估：良好（>1000），中等（<10-1000），较差（<10）。
 - 每个请求的平均输出token数 评估：精简（<1000），冗长（>1000）。
 - 失败请求数：如果存在失败的请求，请在“已识别问题”中指出。
-- 如果缺少任何指标，则显示 N/A（不推断）
 
 输出格式要求：
 ### 性能结论

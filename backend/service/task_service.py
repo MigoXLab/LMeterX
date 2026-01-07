@@ -675,13 +675,6 @@ async def compare_performance_svc(
         # Use the shared utility to extract metrics for all tasks
         metrics_data_list = await extract_multiple_task_metrics(db, task_ids)
 
-        # Log metrics extraction results for debugging
-        logger.info(
-            "Extracted metrics for {} out of {} tasks",
-            len(metrics_data_list),
-            len(task_ids),
-        )
-
         # Check if we have any valid metrics
         if not metrics_data_list:
             return ComparisonResponse(
@@ -703,17 +696,19 @@ async def compare_performance_svc(
                         duration=metrics_data["duration"],
                         stream_mode=metrics_data["stream_mode"],
                         dataset_type=metrics_data["dataset_type"],
-                        first_token_latency=metrics_data["first_token_latency"],
-                        total_time=metrics_data["total_time"],
-                        total_tps=metrics_data["total_tps"],
-                        completion_tps=metrics_data["completion_tps"],
-                        avg_total_tokens_per_req=metrics_data[
-                            "avg_total_tokens_per_req"
-                        ],
-                        avg_completion_tokens_per_req=metrics_data[
-                            "avg_completion_tokens_per_req"
-                        ],
-                        rps=metrics_data["rps"],
+                        first_token_latency=metrics_data.get(
+                            "first_token_latency", 0.0
+                        ),
+                        total_time=metrics_data.get("total_time", 0.0),
+                        total_tps=metrics_data.get("total_tps", 0.0),
+                        completion_tps=metrics_data.get("completion_tps", 0.0),
+                        avg_total_tokens_per_req=metrics_data.get(
+                            "avg_total_tokens_per_req", 0.0
+                        ),
+                        avg_completion_tokens_per_req=metrics_data.get(
+                            "avg_completion_tokens_per_req", 0.0
+                        ),
+                        rps=metrics_data.get("rps", 0.0),
                     )
                     comparison_metrics.append(metrics)
                 except Exception as e:

@@ -867,10 +867,13 @@ const ResultComparison: React.FC = () => {
       tooltip: {
         showMarkers: false,
         shared: true,
-        formatter: (datum: { value: number }) => ({
-          name: chartTitle,
-          value: formatMetricValue(datum.value, decimals, unit),
-        }),
+        formatter: (datum: any) => {
+          const value = datum?.value ?? datum;
+          return {
+            name: chartTitle,
+            value: formatMetricValue(value, decimals, unit),
+          };
+        },
       },
       label: showLabels
         ? {
@@ -880,8 +883,10 @@ const ResultComparison: React.FC = () => {
               fontSize: 12,
               fontWeight: 500,
             },
-            formatter: (datum: { value: number }) =>
-              formatMetricValue(datum.value, decimals, unit),
+            formatter: (_value: any, datum: any) => {
+              const val = datum?.value ?? _value ?? 0;
+              return formatMetricValue(val, decimals, unit);
+            },
           }
         : undefined,
       legend: false,
@@ -1416,12 +1421,24 @@ const ResultComparison: React.FC = () => {
           </span>
           <Space>
             <Button
-              type='primary'
-              className='btn-success'
+              type='default'
               icon={<RobotOutlined />}
               onClick={handleAnalyzeComparison}
               loading={isAnalyzing}
               disabled={comparisonMode !== 'model' || !hasSelectedTasks}
+              style={{
+                backgroundColor: '#52c41a',
+                borderColor: '#52c41a',
+                color: '#ffffff',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.backgroundColor = '#73d13d';
+                e.currentTarget.style.borderColor = '#73d13d';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.backgroundColor = '#52c41a';
+                e.currentTarget.style.borderColor = '#52c41a';
+              }}
             >
               {t('pages.resultComparison.aiAnalysis')}
             </Button>

@@ -301,16 +301,18 @@ def on_test_stop(environment, **kwargs):
             wait_time = wait_time_for_stats_sync(runner, int(concurrent_users))
             time.sleep(wait_time)
 
-        final_stats = stats_manager.get_final_stats()
         task_id = global_state.config.task_id
 
-        # Get Locust standard stats
+        # Get Locust standard stats first (needed for TTFT extraction)
         try:
             locust_stats = stats_manager.get_locust_stats(task_id, environment.stats)
             task_logger.info(f"Locust stats: {locust_stats}")
         except Exception as e:
             task_logger.warning(f"Failed to get Locust stats: {e}")
             locust_stats = {}
+
+        # Get final stats with environment.stats for TTFT calculation
+        final_stats = stats_manager.get_final_stats(environment.stats)
 
         _write_result_file(task_id, final_stats, locust_stats, task_logger)
         task_logger.info(f"Final statistics: {final_stats}")

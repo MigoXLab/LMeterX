@@ -84,7 +84,6 @@ const JobsPage: React.FC = () => {
   const {
     filteredJobs: commonFilteredJobs,
     pagination: commonPagination,
-    setPagination: setCommonPagination,
     loading: commonLoading,
     refreshing: commonRefreshing,
     error: commonError,
@@ -639,17 +638,16 @@ const JobsPage: React.FC = () => {
       const isFilterChange = newStatusFilter !== prevStatus;
 
       const nextPage = isFilterChange ? 1 : newPagination.current || 1;
-      const nextPageSize = newPagination.pageSize || commonPagination.pageSize;
+      const nextPageSize =
+        newPagination.pageSize ||
+        (useCommon ? commonPagination.pageSize : pagination.pageSize);
 
       if (useCommon) {
-        setCommonPagination({
-          current: nextPage,
-          pageSize: nextPageSize,
-          // Keep previous total if antd does not provide it on pagination change
-          total: newPagination.total ?? commonPagination.total,
-        });
-        setCommonStatusFilter(newStatusFilter);
-        // Trigger fetch immediately with new pagination to avoid stalled UI
+        // Update status filter first if changed
+        if (newStatusFilter !== commonStatusFilter) {
+          setCommonStatusFilter(newStatusFilter);
+        }
+        // Trigger fetch with new pagination - manualRefresh will update pagination state
         commonManualRefresh({
           page: nextPage,
           pageSize: nextPageSize,
@@ -657,12 +655,14 @@ const JobsPage: React.FC = () => {
           search: commonSearchInput,
         });
       } else {
+        if (newStatusFilter !== statusFilter) {
+          setStatusFilter(newStatusFilter);
+        }
         setPagination({
           current: isFilterChange ? 1 : newPagination.current,
           pageSize: newPagination.pageSize,
           total: newPagination.total ?? pagination.total,
         });
-        setStatusFilter(newStatusFilter);
       }
     },
     [
@@ -672,11 +672,11 @@ const JobsPage: React.FC = () => {
       commonManualRefresh,
       commonPagination.pageSize,
       commonSearchInput,
-      setCommonPagination,
       setCommonStatusFilter,
       setPagination,
       setStatusFilter,
       pagination.total,
+      pagination.pageSize,
       statusFilter,
     ]
   );
@@ -711,9 +711,6 @@ const JobsPage: React.FC = () => {
   const isCommonMode = activeMode === 'common';
   const currentJobs = isCommonMode ? commonFilteredJobs : filteredJobs;
   const currentPagination = isCommonMode ? commonPagination : pagination;
-  const setCurrentPagination = isCommonMode
-    ? setCommonPagination
-    : setPagination;
   const currentLoading = isCommonMode ? commonLoading : loading;
   const currentRefreshing = isCommonMode ? commonRefreshing : refreshing;
   const currentError = isCommonMode ? commonError : error;
@@ -822,11 +819,7 @@ const JobsPage: React.FC = () => {
           loading={currentLoading}
           pagination={currentPagination}
           onChange={(pag, filters) => {
-            setCurrentPagination({
-              current: pag.current || 1,
-              pageSize: pag.pageSize || currentPagination.pageSize,
-              total: pag.total || currentPagination.total,
-            });
+            // Only handle table change, let handleTableChange manage pagination updates
             handleTableChange(pag, filters);
           }}
           scroll={{ x: UI_CONFIG.TABLE_SCROLL_X }}

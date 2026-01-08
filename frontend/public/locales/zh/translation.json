@@ -51,6 +51,7 @@
     "results": {
       "title": "测试结果",
       "downloadReport": "下载报告",
+      "viewLogs": "查看日志",
       "backToJobs": "返回任务列表",
       "taskInfo": "任务信息",
       "performanceMetrics": "性能指标",

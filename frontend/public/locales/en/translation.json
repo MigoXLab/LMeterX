@@ -51,6 +51,7 @@
     "results": {
       "title": "Test Results",
       "downloadReport": "Download Report",
+      "viewLogs": "View Logs",
       "backToJobs": "Back to Jobs",
       "taskInfo": "Task Information",
       "performanceMetrics": "Performance Metrics",

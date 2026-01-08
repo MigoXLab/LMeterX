@@ -222,7 +222,7 @@ const CommonResults: React.FC = () => {
               {t('pages.results.downloadReport')}
             </Button>
             <Button
-              type='default'
+              type='primary'
               icon={<UnorderedListOutlined />}
               onClick={() => {
                 if (id) {
@@ -231,7 +231,7 @@ const CommonResults: React.FC = () => {
               }}
               disabled={!id}
             >
-              {t('pages.jobs.logs')}
+              {t('pages.results.viewLogs')}
             </Button>
           </Space>
         </div>

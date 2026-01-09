@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 
 import { commonJobApi, uploadDatasetFile } from '@/api/services';
 import { CommonJob } from '@/types/job';
+import parseCurlCommand from '@/utils/curl';
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -35,19 +36,6 @@ interface Props {
   initialData?: Partial<CommonJob> | null;
 }
 
-interface ParsedCurlResult {
-  method?: string;
-  url?: string;
-  headers?: { key: string; value: string }[];
-  body?: string;
-}
-
-const curlHeaderRegex = /-H\s+["']?([^:"']+):\s*([^"']+)["']?/gi;
-// Support --data/--data-raw/-d with single or double quotes and tolerate spaces/newlines
-// Capture data payload with balanced quotes; supports -d '...' or -d "..." or unquoted token
-const curlDataRegex =
-  /(?:--data(?:-raw)?|-d)\s+(?:(["'])([\s\S]*?)\1|([^\s"']+))/i;
-
 const HTTP_METHOD_OPTIONS = [
   'GET',
   'POST',
@@ -57,41 +45,6 @@ const HTTP_METHOD_OPTIONS = [
   // 'HEAD',
   // 'OPTIONS',
 ];
-
-const parseCurlCommand = (curl: string): ParsedCurlResult => {
-  const result: ParsedCurlResult = {};
-  if (!curl) return result;
-  curlHeaderRegex.lastIndex = 0;
-  const methodMatch = curl.match(/-X\s+([A-Za-z]+)/i);
-  if (methodMatch) {
-    const [, method] = methodMatch;
-    result.method = method.toUpperCase();
-  }
-  // Pick the first http/https URL appearing in the command
-  const urlMatch = curl.match(/https?:\/\/[^\s'"]+/i);
-  if (urlMatch) {
-    const [url] = urlMatch;
-    result.url = url;
-  }
-  const headerMatches = [...curl.matchAll(curlHeaderRegex)];
-  if (headerMatches.length) {
-    result.headers = headerMatches.map(([, key, value]) => ({
-      key: key.trim(),
-      value: value.trim(),
-    }));
-  }
-  const dataMatch = curl.match(curlDataRegex);
-  if (dataMatch) {
-    result.body = dataMatch[2] || dataMatch[3] || '';
-    if (!result.method) {
-      result.method = 'POST';
-    }
-  }
-  if (!result.method) {
-    result.method = 'GET';
-  }
-  return result;
-};
 
 const CreateCommonJobForm: React.FC<Props> = ({
   onSubmit,
@@ -184,7 +137,6 @@ const CreateCommonJobForm: React.FC<Props> = ({
     if (!initialData) {
       form.setFieldsValue(defaultValues);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reset form when initialData changes (especially when it becomes null)
@@ -209,7 +161,6 @@ const CreateCommonJobForm: React.FC<Props> = ({
       setTestModalVisible(false);
       setTestResult(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
   const buildPayload = (values: any, includeTempId: boolean = false) => {

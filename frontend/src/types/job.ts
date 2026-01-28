@@ -44,6 +44,7 @@ export interface Job {
     cert_file?: string;
     key_file?: string;
   };
+  created_by?: string;
   test_data?: string;
   status:
     | 'pending'
@@ -79,6 +80,7 @@ export interface CommonJob {
   concurrent_users: number;
   spawn_rate?: number;
   duration: number;
+  created_by?: string;
   status:
     | 'pending'
     | 'running'

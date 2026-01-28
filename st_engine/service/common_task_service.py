@@ -41,6 +41,7 @@ class CommonTaskService:
     """Lifecycle management for common API load test tasks."""
 
     def __init__(self):
+        """Initialize runner and result service for common API tasks."""
         self.runner = CommonLocustRunner(ST_ENGINE_DIR)
         self.result_service = CommonResultService()
 
@@ -51,6 +52,7 @@ class CommonTaskService:
         status: str,
         error_message: str | None = None,
     ):
+        """Update task status and optional error message, committing changes."""
         try:
             task.status = status  # type: ignore
             if error_message:
@@ -61,7 +63,7 @@ class CommonTaskService:
                     if len(error_message) > max_length
                     else error_message
                 )
-                setattr(task, "error_message", truncated_error)
+                task.error_message = truncated_error  # type: ignore[assignment]
             session.commit()
         except (OperationalError, pymysql.err.OperationalError) as e:
             task_logger = logger.bind(task_id=getattr(task, "id", "unknown"))
@@ -72,7 +74,10 @@ class CommonTaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after updating task status.",
+                    exc_info=True,
+                )
             raise
         except Exception as e:
             task_logger = logger.bind(task_id=getattr(task, "id", "unknown"))
@@ -80,9 +85,13 @@ class CommonTaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after update task status failure.",
+                    exc_info=True,
+                )
 
     def update_task_status_by_id(self, session: Session, task_id: str, status: str):
+        """Update task status by task id when a task instance is not provided."""
         task_logger = logger.bind(task_id=task_id)
         try:
             task = session.get(CommonTask, task_id)
@@ -98,16 +107,23 @@ class CommonTaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after updating task status by ID.",
+                    exc_info=True,
+                )
             raise
         except Exception as e:
             task_logger.exception(f" Failed to update status for task: {e}")
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after update task status by ID failure.",
+                    exc_info=True,
+                )
 
     def get_and_lock_task(self, session: Session) -> CommonTask | None:
+        """Fetch a pending task and mark it as locked in the same transaction."""
         try:
             query = (
                 select(CommonTask)
@@ -131,17 +147,24 @@ class CommonTaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after get-and-lock failure.",
+                    exc_info=True,
+                )
             return None
         except Exception as e:
             logger.exception(f" Error while trying to get and lock a task: {e}")
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after get-and-lock error.",
+                    exc_info=True,
+                )
             return None
 
     def get_stopping_task_ids(self, session: Session) -> List[str]:
+        """Return all task ids that are currently stopping."""
         try:
             query = select(CommonTask.id).where(
                 CommonTask.status == TASK_STATUS_STOPPING
@@ -156,14 +179,20 @@ class CommonTaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after fetching stopping tasks.",
+                    exc_info=True,
+                )
             return []
         except Exception as e:
             logger.exception(f" Error fetching stopping tasks: {e}")
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after stopping tasks error.",
+                    exc_info=True,
+                )
             return []
 
     def reconcile_tasks_on_startup(self, session: Session):
@@ -256,16 +285,23 @@ class CommonTaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session during reconciliation.",
+                    exc_info=True,
+                )
             raise
         except Exception as e:
             logger.exception(f" reconcile error: {e}")
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after reconciliation error.",
+                    exc_info=True,
+                )
 
     def start_task(self, task: CommonTask) -> dict:
+        """Run the common task and return the runner result payload."""
         task_logger = logger.bind(task_id=task.id)
         try:
             task_logger.info(f" Starting execution for task {task.id}.")
@@ -280,6 +316,7 @@ class CommonTaskService:
             }
 
     def process_task_pipeline(self, task: CommonTask, session: Session):
+        """Process a single task end-to-end and persist its status/results."""
         handler_id = None
         task_logger = logger.bind(task_id=task.id)
         try:
@@ -300,7 +337,10 @@ class CommonTaskService:
                 try:
                     session.rollback()
                 except Exception:
-                    pass
+                    task_logger.debug(
+                        "Failed to rollback session after refresh error.",
+                        exc_info=True,
+                    )
 
             if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
                 task_logger.info(
@@ -339,7 +379,10 @@ class CommonTaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after pipeline DB error.",
+                    exc_info=True,
+                )
             # Try to update status, but don't fail if database is still unavailable
             try:
                 self.update_task_status(
@@ -372,6 +415,7 @@ class CommonTaskService:
                 remove_task_log_sink(handler_id)
 
     def stop_task(self, task_id: str) -> bool:
+        """Stop a running task and clean up process resources."""
         task_logger = logger.bind(task_id=task_id)
         try:
             task_logger.info(f" Received stop request for task {task_id}.")

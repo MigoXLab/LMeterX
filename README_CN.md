@@ -13,34 +13,35 @@
   </p>
 </div>
 
-> ⭐ 如果你喜欢这个项目，请点击右上角的 "Star" 按钮支持我们。你的支持是我们前进的动力！
+# LMeterX
 
 ## 内容导航
-- [内容导航](#内容导航)
-- [📋 项目简介](#-项目简介)
-- [✨ 核心特性](#-核心特性)
-  - [工具对比](#工具对比)
-- [🏗️ 系统架构](#️-系统架构)
-- [🚀 快速开始](#-快速开始)
-  - [环境检查清单](#环境检查清单)
-  - [一键部署（推荐）](#一键部署推荐)
-  - [数据目录与挂载说明](#数据目录与挂载说明)
-  - [使用指南](#使用指南)
-    - [LLM API 压测](#llm-api-压测)
-    - [通用 API 压测](#通用-api-压测)
-- [🔧 配置说明](#-配置说明)
-  - [数据库配置](#数据库配置)
-  - [资源配置](#资源配置)
-- [🤝 开发指南](#-开发指南)
-  - [技术栈](#技术栈)
-  - [开发环境搭建](#开发环境搭建)
-- [🗺️ 发展路线图](#️-发展路线图)
-  - [开发中](#开发中)
-  - [规划中](#规划中)
-- [🗂️ 数据集引用说明](#️-数据集引用说明)
-- [👥 贡献](#-贡献)
-- [📝 引用](#-引用)
-- [📄 开源许可](#-开源许可)
+- [LMeterX](#lmeterx)
+  - [内容导航](#内容导航)
+  - [📋 项目简介](#-项目简介)
+  - [✨ 核心特性](#-核心特性)
+    - [工具对比](#工具对比)
+  - [🏗️ 系统架构](#️-系统架构)
+  - [🚀 快速开始](#-快速开始)
+    - [环境检查清单](#环境检查清单)
+    - [一键部署（推荐）](#一键部署推荐)
+    - [数据目录与挂载说明](#数据目录与挂载说明)
+    - [使用指南](#使用指南)
+  - [🔧 配置说明](#-配置说明)
+    - [数据库配置](#数据库配置)
+    - [LDAP/AD 认证配置](#ldapad-认证配置)
+    - [资源配置](#资源配置)
+  - [🤝 开发指南](#-开发指南)
+    - [技术栈](#技术栈)
+    - [开发环境搭建](#开发环境搭建)
+  - [🗺️ 发展路线图](#️-发展路线图)
+    - [开发中](#开发中)
+    - [规划中](#规划中)
+  - [📚 相关文档](#-相关文档)
+  - [👥 贡献者](#-贡献者)
+  - [🗂️ 数据集引用说明](#️-数据集引用说明)
+  - [📄 开源许可](#-开源许可)
+  - [本项目采用 Apache 2.0 许可证。](#本项目采用-apache-20-许可证)
 
 ## 📋 项目简介
 
@@ -55,13 +56,12 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 
 - **通用框架支持** - 兼容主流推理框架（vLLM、LiteLLM、TensorRT-LLM）和云服务（Azure、AWS、Google Cloud）
 - **全模型兼容** - 支持 GPT、Claude、Llama 等主流大模型，也支持[MinerU](https://github.com/opendatalab/MinerU)、[dots.ocr](https://github.com/rednote-hilab/dots.ocr)等文档解析大模型
-- **通用API压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 支持任意业务服务的HTTP API压测，支持curl命令一键解析和自定义数据集批量压测
 - **高负载压测** - 模拟高并发请求，精准探测模型性能极限
 - **多场景覆盖**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 支持流式/非流式、文本/多模态/自定义数据集
 - **专业指标统计** - 首Token延迟、吞吐量(RPS、TPS)、成功率等核心性能指标
 - **AI智能报告**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 提供 AI 智能分析报告，多维度多模型可视化结果对比
 - **Web控制台** - 提供任务创建、停止、状态跟踪、全链路日志监控等一站式管理
-- **企业级部署** - Docker容器化，支持弹性扩展与分布式部署
+- **企业级部署** - Docker容器化，支持弹性扩展与分布式部署，&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 内置 LDAP/AD 集成，支持企业用户认证和单点登录
 
 ### 工具对比
 
@@ -117,9 +117,7 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 
 ### 使用指南
 
-#### LLM API 压测
-
-1. **访问界面**: 打开 http://localhost:8080，切换到「LLM API」标签页
+1. **访问界面**: 打开 http://localhost:8080
 2. **创建任务**: 导航至 测试任务 → 创建任务，配置 API 请求信息、测试数据以及请求响应字段映射
    - 2.1 基础信息: 对于 OpenAI-like 和 Claude-like API 只需填写 API 路径、模型与响应模式，也可在请求参数中补充完整 payload
    - 2.2 数据&负载: 根据需要选择数据集类型、并发数、压测时间等
@@ -128,22 +126,8 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 3. **API 测试**: 在 测试任务 → 创建任务，点击基础信息面板的「测试」按钮，快速验证接口连通性（建议使用简短 prompt）
 4. **实时监控**: 访问 测试任务 → 日志/监控中心，查看全链路测试日志，快速定位异常
 5. **结果分析**: 进入 测试任务 → 结果，查看详细性能指标并导出报告
-6. **性能对比**: 在 性能对比 模块选择多个模型/版本，进行多维度性能对比
-7. **AI 分析**: 在 测试任务 → 结果 或者 性能对比页面，可对单个或多个任务进行AI分析和评估
-
-#### 通用 API 压测
-
-1. **访问界面**: 打开 http://localhost:8080，切换到「通用API」标签页
-2. **创建任务**: 导航至 测试任务 → 创建任务
-   - 填写完整 curl 命令，点击「一键解析」，系统会自动解析请求方法、URL、Headers、请求体等信息
-   - 检查解析后的请求信息是否完整且准确
-3. **API 测试**: 点击「测试」按钮，测试 API 连通性，确保压测前请求信息准确
-4. **数据集准备**（可选）: 若要使用数据集压测，请提前准备好 JSONL 格式文件上传，每行必须是一个完整的 payload JSON 对象
-5. **启动压测**: 配置并发用户数、压测时长等参数，点击「创建」启动压测任务
-6. **实时监控**: 测试过程中可点击「日志」按钮，查看压测情况和实时日志
-7. **结果分析**: 测试完成后可点击「结果」按钮，查看压测结果，包括 RPS、响应时间、成功率等指标
-8. **复制模板**: 如需压测相同的 API，可在操作列点击「...」→「复制模板」，注意复制模板后数据集需要重新上传，建议重复步骤 3-7
-9. **性能对比**: 如需比较不同版本、不同并发下的性能，可前往「性能对比」页面进行对比
+6. **结果对比**: 在 模型擂台 模块选择多个模型/版本，进行多维度性能对比
+7. **AI 分析**: 在 测试任务 → 结果/模型擂台 中配置 AI 分析服务后，可对单个或多任务进行智能评估
 
 ## 🔧 配置说明
 
@@ -156,6 +140,41 @@ DB_USER=lmeterx
 DB_PASSWORD=lmeterx_password
 DB_NAME=lmeterx
 ```
+
+### LDAP/AD 认证配置
+
+```bash
+=== LDAP 认证配置 ===
+# 启用或禁用 LDAP 认证 (on/off)，默认关闭
+LDAP_ENABLED=on
+
+# LDAP 服务器连接配置
+LDAP_SERVER=ldap://ldap.example.com    # LDAP 服务器地址
+LDAP_PORT=389                          # LDAP 服务器端口 (389为LDAP，636为LDAPS)
+LDAP_USE_SSL=false                     # 是否使用 SSL/TLS 连接 (LDAPS使用true)
+LDAP_TIMEOUT=5                         # 连接超时时间(秒)
+
+# LDAP 搜索配置
+LDAP_SEARCH_BASE=dc=example,dc=com     # 用户搜索基准 DN
+LDAP_SEARCH_FILTER=(sAMAccountName={username})  # LDAP 搜索过滤器
+
+# 认证方式 1: 使用 DN 模板直接绑定(适用于简单 LDAP 场景)
+LDAP_USER_DN_TEMPLATE=cn={username},ou=users,dc=example,dc=com
+
+# 认证方式 2: 使用服务账号绑定(适用于 Active Directory)
+LDAP_BIND_DN=cn=service,ou=users,dc=example,dc=com    # 服务账号 DN
+LDAP_BIND_PASSWORD=service_password                   # 服务账号密码
+
+# JWT 配置(可选)
+JWT_SECRET_KEY=your-secret-key-here    # JWT 签名密钥(生产环境请修改)
+JWT_EXPIRE_MINUTES=480                 # Token 过期时间(分钟，默认8小时)
+```
+
+**配置说明:**
+- **简单 LDAP 部署**: 使用 `LDAP_USER_DN_TEMPLATE` 进行用户直接绑定
+- **Active Directory**: 使用 `LDAP_BIND_DN` + `LDAP_BIND_PASSWORD` 进行服务账号绑定
+- **安全性**: 生产环境务必设置 `LDAP_USE_SSL=true`
+- **前端配置**: 设置 `VITE_LDAP_ENABLED=on` 以启用登录界面
 
 ### 资源配置
 ```bash
@@ -185,16 +204,6 @@ deploy:
 - **前端** - React + TypeScript + Ant Design + Vite
 - **部署** - Docker + Docker Compose + Nginx
 
-```
-LMeterX/
-├── backend/          # 后端服务
-├── st_engine/        # 压测引擎
-├── frontend/         # 前端服务
-├── docs/             # 文档
-├── docker-compose.yml
-└── README_CN.md      # 中文说明
-```
-
 ### 开发环境搭建
 
 1. **Fork项目** → 克隆到本地
@@ -211,6 +220,19 @@ LMeterX/
 ### 规划中
 - [ ] CLI 命令行工具
 
+## 📚 相关文档
+
+- [部署指南](docs/DEPLOYMENT_GUIDE_CN.md) - 详细部署说明
+- [贡献指南](docs/CONTRIBUTING.md) - 参与开发指南
+- [数据集使用指南](docs/DATASET_GUIDE.md) - 自定义图文数据集准备与使用说明
+
+## 👥 贡献者
+
+感谢所有为 LMeterX 做出贡献的开发者：
+
+- [@LuckyYC](https://github.com/LuckyYC) - 项目维护者 & 核心开发者
+- [@del-zhenwu](https://github.com/del-zhenwu) - 核心开发者
+
 ## 🗂️ 数据集引用说明
 
 > LMeterX 基于开源 ShareGPT 数据集构建测试样本，严格遵循原始许可要求。
@@ -220,33 +242,13 @@ LMeterX/
   - 筛选高质量对话样本，剔除低质量或与压测场景无关的数据
   - 进行随机抽样，减轻数据规模的同时保留多样化对话
 
-## 👥 贡献
-
-我们欢迎来自社区的任何贡献！请参考我们的 [贡献指南](docs/CONTRIBUTING.md)。
-感谢所有为 LMeterX 做出贡献的开发者!
-
-<a href="https://github.com/MigoXLab/LMeterX/graphs/contributors" target="_blank">
-  <table>
-    <tr>
-      <th colspan="2">
-        <br><img src="https://contrib.rocks/image?repo=MigoXLab/LMeterX"><br><br>
-      </th>
-    </tr>
-  </table>
-</a>
-
-## 📝 引用
-如果您在研究中使用了 LMeterX，请引用我们的工作：
-
-```bibtex
-@software{LMeterX2025,
-  author  = {LMeterX Team},
-  title   = {LMeterX: Enterprise-Grade Performance Benchmarking Platform for Large Language Models},
-  year    = {2025},
-  url     = {https://github.com/MigoXLab/LMeterX},
-}
-```
-
 ## 📄 开源许可
 
 本项目采用 [Apache 2.0 许可证](LICENSE)。
+---
+
+<div align="center">
+
+**⭐ 如果这个项目对您有帮助，请给我们一个 Star！您的支持是我们持续改进的动力。**
+
+</div>

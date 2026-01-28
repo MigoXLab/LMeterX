@@ -6,6 +6,7 @@
  * */
 
 import { Dataset, JobResultLegacy } from '../types';
+import { LoginResponse, UserInfo } from '../types/auth';
 import { CommonJob, Job } from '../types/job';
 import api, { uploadFiles } from './apiClient';
 
@@ -170,6 +171,11 @@ export const commonJobApi = {
 
   createJob: (data: any) => api.post<CommonJob>('/common-tasks', data),
 
+  updateJob: (id: string, data: Partial<CommonJob>) =>
+    api.put<CommonJob>(`/common-tasks/${id}`, data),
+
+  deleteJob: (id: string) => api.delete<void>(`/common-tasks/${id}`),
+
   testJob: (data: any) => api.post('/common-tasks/test', data),
 
   stopJob: (id: string) => api.post<CommonJob>(`/common-tasks/stop/${id}`),
@@ -321,6 +327,14 @@ export const analysisApi = {
     }>(`/analyze/${taskId}`, {
       timeout: 300000, // 5 minutes timeout for getting analysis result
     }),
+};
+
+// Auth API methods
+export const authApi = {
+  login: (username: string, password: string) =>
+    api.post<LoginResponse>('/auth/login', { username, password }),
+  me: () => api.get<UserInfo>('/auth/profile'),
+  logout: () => api.post<void>('/auth/logout'),
 };
 
 // System Configuration API methods

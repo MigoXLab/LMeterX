@@ -6,11 +6,13 @@
  */
 import { message } from 'antd';
 import axios from 'axios';
+import { getApiBaseUrl } from './runtimeConfig';
 
 // Create axios instance
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: getApiBaseUrl(),
   timeout: 300000, // Increase to 300 seconds (5 minutes) to match backend AI service timeout
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',

@@ -6,6 +6,7 @@
  * */
 import {
   ClockCircleOutlined,
+  EditOutlined,
   ExclamationCircleOutlined,
   ExperimentOutlined,
   MoreOutlined,
@@ -30,7 +31,7 @@ import type { ColumnsType } from 'antd/es/table';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { commonJobApi } from '../api/services';
+import { commonJobApi, jobApi } from '../api/services';
 import CreateCommonJobForm from '../components/CreateCommonJobForm';
 import CreateJobForm from '../components/CreateJobForm';
 import CopyButton from '../components/ui/CopyButton';
@@ -39,14 +40,17 @@ import StatusTag from '../components/ui/StatusTag';
 import { useCommonJobs } from '../hooks/useCommonJobs';
 import { useJobs } from '../hooks/useJobs';
 import { CommonJob, Job } from '../types/job';
+import { getStoredUser } from '../utils/auth';
 import { TASK_STATUS_MAP, UI_CONFIG } from '../utils/constants';
 import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
 import { formatDate, getTimestamp } from '../utils/date';
+import { getLdapEnabled } from '../utils/runtimeConfig';
 
 const { Search } = Input;
 const { Text } = Typography;
 
 const MODE_STORAGE_KEY = 'jobsActiveMode';
+const LDAP_ENABLED = getLdapEnabled();
 
 const JobsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -59,9 +63,29 @@ const JobsPage: React.FC = () => {
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
     return stored === 'common' ? 'common' : 'llm';
   });
+  const [renameTarget, setRenameTarget] = useState<{
+    id: string;
+    name?: string;
+    type: 'llm' | 'common';
+    created_by?: string;
+  } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   // Get message instance from App context
   const { message: messageApi, modal } = App.useApp();
+
+  const currentUsername = useMemo(() => getStoredUser()?.username || '', []);
+  const canManage = useCallback(
+    (creator?: string) => {
+      // Allow managing anonymous tasks when LDAP is disabled
+      if (creator === '-') return true;
+      // forbidden to manage task without created_by
+      if (!creator || !currentUsername) return false;
+      return creator === currentUsername;
+    },
+    [currentUsername]
+  );
 
   // Using the custom hook to manage job-related logic
   const {
@@ -76,6 +100,8 @@ const JobsPage: React.FC = () => {
     statusFilter,
     createJob,
     stopJob,
+    updateJobName,
+    deleteJob,
     manualRefresh,
     performSearch,
     updateSearchInput,
@@ -92,6 +118,8 @@ const JobsPage: React.FC = () => {
     statusFilter: commonStatusFilter,
     createJob: createCommonJob,
     stopJob: stopCommonJob,
+    updateJobName: updateCommonJobName,
+    deleteJob: deleteCommonJob,
     manualRefresh: commonManualRefresh,
     performSearch: commonPerformSearch,
     updateSearchInput: updateCommonSearchInput,
@@ -102,119 +130,88 @@ const JobsPage: React.FC = () => {
    * Handle copying a job template
    */
   const handleCopyJob = useCallback(
-    (job: Job) => {
-      const copiedName = job.name
-        ? `${job.name} (Copy)`
-        : `Copy Task ${job.id.substring(0, 8)}`;
-
-      const jobToCopyData: Partial<Job> = {
-        ...job,
-        name: copiedName,
-        id: undefined,
-        status: undefined,
-        created_at: undefined,
-        updated_at: undefined,
-      };
-
-      // Handle headers using safe JSON parsing
-      if (jobToCopyData.headers) {
-        const headerObject =
-          typeof jobToCopyData.headers === 'string'
-            ? safeJsonParse(jobToCopyData.headers, [])
-            : jobToCopyData.headers;
-        jobToCopyData.headers = deepClone(headerObject) || [];
+    async (job: Job) => {
+      if (!canManage(job.created_by)) {
+        messageApi.warning(t('pages.jobs.ownerOnly'));
+        return;
       }
-
-      // Handle request_payload - preserve for custom APIs
-      if (jobToCopyData.request_payload) {
-        jobToCopyData.request_payload =
-          typeof jobToCopyData.request_payload === 'string'
-            ? jobToCopyData.request_payload
-            : safeJsonStringify(jobToCopyData.request_payload);
-      }
-
-      // Handle field_mapping - preserve configuration with proper structure
-      if (jobToCopyData.field_mapping) {
-        const fieldMappingObject =
-          typeof jobToCopyData.field_mapping === 'string'
-            ? safeJsonParse(jobToCopyData.field_mapping, {})
-            : jobToCopyData.field_mapping;
-
-        // Ensure all required field_mapping properties exist
-        const completeFieldMapping = {
-          prompt: '',
-          stream_prefix: '',
-          data_format: 'json',
-          content: '',
-          reasoning_content: '',
-          end_prefix: '',
-          stop_flag: '',
-          end_field: '',
-          ...fieldMappingObject, // Override with actual values
-        };
-
-        jobToCopyData.field_mapping = deepClone(completeFieldMapping) || {};
-      } else {
-        // Initialize empty field_mapping structure if not present
-        jobToCopyData.field_mapping = {
-          prompt: '',
-          stream_prefix: '',
-          data_format: 'json',
-          content: '',
-          reasoning_content: '',
-          end_prefix: '',
-          stop_flag: '',
-          end_field: '',
-        };
-      }
-
-      setTaskToCopy(jobToCopyData);
-      setIsModalVisible(true);
-
-      // Show toast notification about re-entering sensitive information
-      messageApi.warning({
-        content: t('pages.jobs.copyWarning'),
-        duration: 5,
-      });
-    },
-    [messageApi, t]
-  );
-
-  /**
-   * Handle copying a common API job template
-   */
-  const handleCopyCommonJob = useCallback(
-    async (job: CommonJob) => {
       try {
-        // Fetch full task details to get request_body and other fields
-        const fullJobResponse = await commonJobApi.getJob(job.id);
-        const fullJob = (fullJobResponse.data as CommonJob) || job;
+        const copiedName = job.name
+          ? `${job.name} (Copy)`
+          : `Copy Task ${job.id.substring(0, 8)}`;
 
-        const copiedName = fullJob.name
-          ? `${fullJob.name} (Copy)`
-          : `Copy Task ${fullJob.id.substring(0, 8)}`;
+        // Always fetch full task detail to preserve headers, datasets and mapping
+        const fullJobResp = await jobApi.getJob(job.id);
+        const fullJob = (fullJobResp as any)?.data || job;
 
-        // Don't copy headers to avoid exposing sensitive information
-        // Use default header value instead
-        const defaultHeaders = 'Content-Type: application/json';
-
-        const jobToCopyData: Partial<CommonJob> = {
+        const jobToCopyData: Partial<Job> = {
           ...fullJob,
           name: copiedName,
           id: undefined,
           status: undefined,
           created_at: undefined,
           updated_at: undefined,
-          headers: defaultHeaders as any,
-          // Ensure request_body is included
-          request_body: fullJob.request_body || '',
         };
 
-        setCommonTaskToCopy(jobToCopyData);
+        // Handle headers using safe JSON parsing
+        if (jobToCopyData.headers) {
+          const headerObject =
+            typeof jobToCopyData.headers === 'string'
+              ? safeJsonParse(jobToCopyData.headers, [])
+              : jobToCopyData.headers;
+          jobToCopyData.headers = deepClone(headerObject) || [];
+        }
+
+        // Handle request_payload - preserve for custom APIs
+        if (jobToCopyData.request_payload) {
+          jobToCopyData.request_payload =
+            typeof jobToCopyData.request_payload === 'string'
+              ? jobToCopyData.request_payload
+              : safeJsonStringify(jobToCopyData.request_payload);
+        }
+
+        // Handle field_mapping - preserve configuration with proper structure
+        if (jobToCopyData.field_mapping) {
+          const fieldMappingObject =
+            typeof jobToCopyData.field_mapping === 'string'
+              ? safeJsonParse(jobToCopyData.field_mapping, {})
+              : jobToCopyData.field_mapping;
+
+          // Ensure all required field_mapping properties exist
+          const completeFieldMapping = {
+            prompt: '',
+            stream_prefix: '',
+            data_format: 'json',
+            content: '',
+            reasoning_content: '',
+            end_prefix: '',
+            stop_flag: '',
+            end_field: '',
+            ...fieldMappingObject, // Override with actual values
+          };
+
+          jobToCopyData.field_mapping = deepClone(completeFieldMapping) || {};
+        } else {
+          // Initialize empty field_mapping structure if not present
+          jobToCopyData.field_mapping = {
+            prompt: '',
+            stream_prefix: '',
+            data_format: 'json',
+            content: '',
+            reasoning_content: '',
+            end_prefix: '',
+            stop_flag: '',
+            end_field: '',
+          };
+        }
+
+        setTaskToCopy(jobToCopyData);
         setIsModalVisible(true);
 
+        // Show toast notification about re-entering sensitive information
+        messageApi.destroy();
         messageApi.warning({
-          content: t('pages.jobs.copyWarning'),
+          content: '请注意数据集需要重新上传',
           duration: 5,
         });
       } catch (error) {
@@ -225,7 +222,58 @@ const JobsPage: React.FC = () => {
         });
       }
     },
-    [messageApi, t]
+    [canManage, messageApi, t]
+  );
+
+  /**
+   * Handle copying a common API job template
+   */
+  const handleCopyCommonJob = useCallback(
+    async (job: CommonJob) => {
+      try {
+        if (!canManage(job.created_by)) {
+          messageApi.warning(t('pages.jobs.ownerOnly'));
+          return;
+        }
+        // Fetch full task details to get request_body and other fields
+        const fullJobResponse = await commonJobApi.getJob(job.id);
+        const fullJob = (fullJobResponse.data as CommonJob) || job;
+
+        const copiedName = fullJob.name
+          ? `${fullJob.name} (Copy)`
+          : `Copy Task ${fullJob.id.substring(0, 8)}`;
+
+        const jobToCopyData: Partial<CommonJob> = {
+          ...fullJob,
+          name: copiedName,
+          id: undefined,
+          status: undefined,
+          created_at: undefined,
+          updated_at: undefined,
+          // Ensure request_body is included as string
+          request_body:
+            typeof fullJob.request_body === 'string'
+              ? fullJob.request_body
+              : (fullJob.request_body ?? ''),
+        };
+
+        setCommonTaskToCopy(jobToCopyData);
+        setIsModalVisible(true);
+
+        messageApi.destroy();
+        messageApi.warning({
+          content: '请注意数据集需要重新上传',
+          duration: 5,
+        });
+      } catch (error) {
+        console.error('Failed to fetch full job details:', error);
+        messageApi.error({
+          content: t('pages.jobs.copyError', 'Failed to load task details'),
+          duration: 3,
+        });
+      }
+    },
+    [canManage, messageApi, t]
   );
 
   /**
@@ -252,11 +300,92 @@ const JobsPage: React.FC = () => {
     [activeMode, modal, stopCommonJob, stopJob, t]
   );
 
+  const openRenameModal = useCallback(
+    (record: Job | CommonJob, type: 'llm' | 'common') => {
+      if (!canManage(record.created_by)) {
+        messageApi.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      setRenameTarget({
+        id: record.id,
+        name: record.name,
+        type,
+        created_by: record.created_by,
+      });
+      setRenameValue(record.name || '');
+    },
+    [canManage, messageApi, t]
+  );
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!renameTarget) return;
+    setRenaming(true);
+    const success =
+      renameTarget.type === 'llm'
+        ? await updateJobName(renameTarget.id, renameValue)
+        : await updateCommonJobName(renameTarget.id, renameValue);
+    setRenaming(false);
+    if (success) {
+      setRenameTarget(null);
+      setRenameValue('');
+    }
+  }, [renameTarget, renameValue, updateCommonJobName, updateJobName]);
+
+  const closeRenameModal = useCallback(() => {
+    setRenameTarget(null);
+    setRenameValue('');
+  }, []);
+
+  const handleDeleteTask = useCallback(
+    (record: Job | CommonJob, type: 'llm' | 'common') => {
+      if (!canManage(record.created_by)) {
+        messageApi.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      const statusLower = record.status?.toLowerCase();
+      if (statusLower === 'running' || statusLower === 'stopping') {
+        messageApi.warning(
+          t(
+            'pages.jobs.deleteRunningBlocked',
+            'Please stop the task and wait for it to finish before deleting.'
+          )
+        );
+        return;
+      }
+      modal.confirm({
+        title: t('pages.jobs.deleteConfirmTitle'),
+        icon: <ExclamationCircleOutlined />,
+        content: (
+          <span>
+            <Text code>{record.name || record.id}</Text>{' '}
+            {t('pages.jobs.deleteConfirmContent')}
+          </span>
+        ),
+        okText: t('pages.jobs.delete'),
+        okType: 'danger',
+        cancelText: t('common.cancel'),
+        onOk: () =>
+          type === 'llm' ? deleteJob(record.id) : deleteCommonJob(record.id),
+      });
+    },
+    [canManage, deleteCommonJob, deleteJob, messageApi, modal, t]
+  );
+
   /**
    * Table column definitions
    */
-  const columns: ColumnsType<Job> = useMemo(
-    () => [
+  const columns: ColumnsType<Job> = useMemo(() => {
+    const createdByColumn = {
+      title: t('pages.jobs.createdBy'),
+      dataIndex: 'created_by',
+      key: 'created_by',
+      width: 120,
+      minWidth: 100,
+      ellipsis: true,
+      render: (creator?: string) => creator || '-',
+    };
+
+    const tableColumns: ColumnsType<Job> = [
       {
         title: t('pages.jobs.taskId'),
         dataIndex: 'id',
@@ -286,6 +415,29 @@ const JobsPage: React.FC = () => {
         dataIndex: 'name',
         key: 'name',
         ellipsis: true,
+        render: (name: string, record: Job) => (
+          <div className='table-cell-with-copy'>
+            <Tooltip title={name}>
+              <Text className='table-cell-text' ellipsis>
+                {name}
+              </Text>
+            </Tooltip>
+            {canManage(record.created_by) && (
+              <div className='table-cell-action'>
+                <Button
+                  type='text'
+                  size='small'
+                  className='table-action-button'
+                  icon={<EditOutlined />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    openRenameModal(record, 'llm');
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        ),
       },
       {
         title: t('pages.jobs.targetUrl'),
@@ -314,28 +466,26 @@ const JobsPage: React.FC = () => {
         dataIndex: 'model',
         key: 'model',
         ellipsis: true,
-        width: 120,
       },
-      {
-        title: t('pages.jobs.concurrentUsers'),
-        dataIndex: 'concurrent_users',
-        key: 'concurrent_users',
-        align: 'center',
-        width: 120,
-      },
-      {
-        title: t('pages.jobs.duration'),
-        dataIndex: 'duration',
-        key: 'duration',
-        align: 'center',
-        render: (duration: number) => `${duration || 0}s`,
-        width: 120,
-      },
+      // {
+      //   title: t('pages.jobs.concurrentUsers'),
+      //   dataIndex: 'concurrent_users',
+      //   key: 'concurrent_users',
+      //   align: 'center',
+      // },
+      // {
+      //   title: t('pages.jobs.duration'),
+      //   dataIndex: 'duration',
+      //   key: 'duration',
+      //   align: 'center',
+      //   render: (duration: number) => `${duration || 0}s`,
+      // },
       {
         title: t('pages.jobs.status'),
         dataIndex: 'status',
         key: 'status',
         width: 120,
+        minWidth: 100,
         filters: Object.entries(TASK_STATUS_MAP).map(([key]) => ({
           text: t(`status.${key}`),
           value: key,
@@ -344,11 +494,13 @@ const JobsPage: React.FC = () => {
         // Remove onFilter since we're using server-side filtering
         render: (status: string) => <StatusTag status={status} />,
       },
+      ...(LDAP_ENABLED ? [createdByColumn] : []),
       {
         title: t('pages.jobs.createdTime'),
         dataIndex: 'created_at',
         key: 'created_at',
-        width: 200,
+        width: 180,
+        minWidth: 100,
         sorter: (a, b) =>
           getTimestamp(a.created_at) - getTimestamp(b.created_at),
         render: (time: string) => formatDate(time),
@@ -356,29 +508,16 @@ const JobsPage: React.FC = () => {
       {
         title: t('pages.jobs.actions'),
         key: 'action',
-        width: 200,
-        fixed: 'right',
+        width: 240,
+        minWidth: 100,
         render: (_, record) => {
-          const menuItems = [
-            {
-              key: 'copy',
-              label: (
-                <Button
-                  type='text'
-                  size='small'
-                  className='table-action-button'
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleCopyJob(record);
-                  }}
-                >
-                  {t('pages.jobs.copyTemplate')}
-                </Button>
-              ),
-            },
-          ];
+          const menuItems = [];
+          const statusLower = record.status?.toLowerCase();
 
-          if (['running', 'queued'].includes(record.status?.toLowerCase())) {
+          if (
+            canManage(record.created_by) &&
+            ['running', 'queued'].includes(record.status?.toLowerCase())
+          ) {
             menuItems.push({
               key: 'stop',
               label: (
@@ -393,6 +532,30 @@ const JobsPage: React.FC = () => {
                   }}
                 >
                   {t('pages.jobs.stop')}
+                </Button>
+              ),
+            });
+          }
+
+          if (
+            canManage(record.created_by) &&
+            statusLower !== 'running' &&
+            statusLower !== 'stopping'
+          ) {
+            menuItems.push({
+              key: 'delete',
+              label: (
+                <Button
+                  type='text'
+                  danger
+                  size='small'
+                  className='table-action-button'
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleDeleteTask(record, 'llm');
+                  }}
+                >
+                  {t('pages.jobs.delete')}
                 </Button>
               ),
             });
@@ -420,6 +583,18 @@ const JobsPage: React.FC = () => {
               >
                 {t('pages.jobs.logs')}
               </Button>
+              {canManage(record.created_by) && (
+                <Button
+                  size='small'
+                  type='primary'
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleCopyJob(record);
+                  }}
+                >
+                  {t('pages.jobs.copyTemplate')}
+                </Button>
+              )}
               {menuItems.length > 0 && (
                 <Dropdown menu={{ items: menuItems }} trigger={['click']}>
                   <Button
@@ -433,12 +608,30 @@ const JobsPage: React.FC = () => {
           );
         },
       },
-    ],
-    [handleCopyJob, showStopConfirm, t]
-  );
+    ];
 
-  const commonColumns: ColumnsType<CommonJob> = useMemo(
-    () => [
+    return tableColumns;
+  }, [
+    canManage,
+    handleCopyJob,
+    handleDeleteTask,
+    openRenameModal,
+    showStopConfirm,
+    t,
+  ]);
+
+  const commonColumns: ColumnsType<CommonJob> = useMemo(() => {
+    const createdByColumn = {
+      title: t('pages.jobs.createdBy'),
+      dataIndex: 'created_by',
+      key: 'created_by',
+      width: 120,
+      minWidth: 100,
+      ellipsis: true,
+      render: (creator?: string) => creator || '-',
+    };
+
+    const tableColumns: ColumnsType<CommonJob> = [
       {
         title: t('pages.jobs.taskId'),
         dataIndex: 'id',
@@ -468,12 +661,34 @@ const JobsPage: React.FC = () => {
         dataIndex: 'name',
         key: 'name',
         ellipsis: true,
+        render: (name: string, record: CommonJob) => (
+          <div className='table-cell-with-copy'>
+            <Tooltip title={name}>
+              <Text className='table-cell-text' ellipsis>
+                {name}
+              </Text>
+            </Tooltip>
+            {canManage(record.created_by) && (
+              <div className='table-cell-action'>
+                <Button
+                  type='text'
+                  size='small'
+                  className='table-action-button'
+                  icon={<EditOutlined />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    openRenameModal(record, 'common');
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        ),
       },
       {
         title: t('pages.jobs.targetUrl'),
         dataIndex: 'target_url',
         key: 'target_url',
-        width: 350,
         ellipsis: true,
         render: (target_url: string) => (
           <div className='table-cell-with-copy'>
@@ -488,29 +703,31 @@ const JobsPage: React.FC = () => {
           </div>
         ),
       },
-      {
-        title: t('pages.jobs.method'),
-        dataIndex: 'method',
-        key: 'method',
-        align: 'center',
-      },
-      {
-        title: t('pages.jobs.concurrentUsers'),
-        dataIndex: 'concurrent_users',
-        key: 'concurrent_users',
-        align: 'center',
-      },
-      {
-        title: t('pages.jobs.duration'),
-        dataIndex: 'duration',
-        key: 'duration',
-        align: 'center',
-        render: (duration: number) => `${duration || 0}s`,
-      },
+      // {
+      //   title: t('pages.jobs.method'),
+      //   dataIndex: 'method',
+      //   key: 'method',
+      //   align: 'center',
+      // },
+      // {
+      //   title: t('pages.jobs.concurrentUsers'),
+      //   dataIndex: 'concurrent_users',
+      //   key: 'concurrent_users',
+      //   align: 'center',
+      // },
+      // {
+      //   title: t('pages.jobs.duration'),
+      //   dataIndex: 'duration',
+      //   key: 'duration',
+      //   align: 'center',
+      //   render: (duration: number) => `${duration || 0}s`,
+      // },
       {
         title: t('pages.jobs.status'),
         dataIndex: 'status',
         key: 'status',
+        width: 120,
+        minWidth: 100,
         filters: Object.entries(TASK_STATUS_MAP).map(([key]) => ({
           text: t(`status.${key}`),
           value: key,
@@ -520,10 +737,13 @@ const JobsPage: React.FC = () => {
           : null,
         render: (status: string) => <StatusTag status={status} />,
       },
+      ...(LDAP_ENABLED ? [createdByColumn] : []),
       {
         title: t('pages.jobs.createdTime'),
         dataIndex: 'created_at',
         key: 'created_at',
+        width: 180,
+        minWidth: 100,
         sorter: (a, b) =>
           getTimestamp(a.created_at) - getTimestamp(b.created_at),
         render: (time: string) => formatDate(time),
@@ -531,27 +751,15 @@ const JobsPage: React.FC = () => {
       {
         title: t('pages.jobs.actions'),
         key: 'action',
-        width: 200,
-        fixed: 'right',
+        width: 240,
+        minWidth: 100,
         render: (_, record) => {
           const menuItems = [];
-          menuItems.push({
-            key: 'copy',
-            label: (
-              <Button
-                type='text'
-                size='small'
-                className='table-action-button'
-                onClick={e => {
-                  e.stopPropagation();
-                  handleCopyCommonJob(record);
-                }}
-              >
-                {t('pages.jobs.copyTemplate')}
-              </Button>
-            ),
-          });
-          if (['running', 'queued'].includes(record.status?.toLowerCase())) {
+          const statusLower = record.status?.toLowerCase();
+          if (
+            canManage(record.created_by) &&
+            ['running', 'queued'].includes(record.status?.toLowerCase())
+          ) {
             menuItems.push({
               key: 'stop',
               label: (
@@ -566,6 +774,28 @@ const JobsPage: React.FC = () => {
                   }}
                 >
                   {t('pages.jobs.stop')}
+                </Button>
+              ),
+            });
+          }
+          if (canManage(record.created_by)) {
+            menuItems.push({
+              key: 'delete',
+              label: (
+                <Button
+                  type='text'
+                  danger
+                  size='small'
+                  className='table-action-button'
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleDeleteTask(record, 'common');
+                  }}
+                  disabled={
+                    statusLower === 'running' || statusLower === 'stopping'
+                  }
+                >
+                  {t('pages.jobs.delete')}
                 </Button>
               ),
             });
@@ -592,6 +822,18 @@ const JobsPage: React.FC = () => {
               >
                 {t('pages.jobs.logs')}
               </Button>
+              {canManage(record.created_by) && (
+                <Button
+                  size='small'
+                  type='primary'
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleCopyCommonJob(record);
+                  }}
+                >
+                  {t('pages.jobs.copyTemplate')}
+                </Button>
+              )}
               {menuItems.length > 0 && (
                 <Dropdown menu={{ items: menuItems }} trigger={['click']}>
                   <Button
@@ -605,9 +847,18 @@ const JobsPage: React.FC = () => {
           );
         },
       },
-    ],
-    [commonStatusFilter, showStopConfirm, t]
-  );
+    ];
+
+    return tableColumns;
+  }, [
+    canManage,
+    commonStatusFilter,
+    handleCopyCommonJob,
+    handleDeleteTask,
+    openRenameModal,
+    showStopConfirm,
+    t,
+  ]);
 
   /**
    * Handle job creation
@@ -843,6 +1094,23 @@ const JobsPage: React.FC = () => {
       </div>
 
       <Modal
+        title={t('pages.jobs.renameTitle')}
+        open={!!renameTarget}
+        onCancel={closeRenameModal}
+        onOk={handleRenameSubmit}
+        confirmLoading={renaming}
+        destroyOnHidden
+        maskClosable={false}
+      >
+        <Input
+          value={renameValue}
+          onChange={e => setRenameValue(e.target.value)}
+          maxLength={100}
+          placeholder={t('pages.jobs.renamePlaceholder')}
+        />
+      </Modal>
+
+      <Modal
         title={taskToCopy ? t('pages.jobs.edit') : t('pages.jobs.createNew')}
         open={isModalVisible}
         onCancel={handleModalCancel}
@@ -857,6 +1125,7 @@ const JobsPage: React.FC = () => {
             onCancel={handleModalCancel}
             loading={currentLoading}
             initialData={taskToCopy}
+            suppressCopyWarning={!!taskToCopy}
           />
         ) : (
           <CreateCommonJobForm

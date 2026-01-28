@@ -1,18 +1,22 @@
 FROM mysql:5.7
 
-# 设置环境变量
-ENV MYSQL_ROOT_PASSWORD=lmeterx123
-ENV MYSQL_DATABASE=lmeterx
+# Set environment variables
+# Note: These can be overridden via docker-compose or runtime environment variables
+# For production, use secrets management instead of hardcoded values
+ARG MYSQL_ROOT_PASSWORD_ARG=lmeterx123
+ARG MYSQL_DATABASE_ARG=lmeterx
+ENV MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD_ARG}
+ENV MYSQL_DATABASE=${MYSQL_DATABASE_ARG}
 
-# 复制初始化脚本
+# Copy initialization script
 COPY ../init_db.sql /docker-entrypoint-initdb.d/
 
-# 设置 MySQL 配置
+# Set MySQL configuration
 CMD ["mysqld", "--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--init-connect=SET NAMES utf8mb4"]
 
-# 健康检查
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD mysqladmin ping -h localhost -u root -p$MYSQL_ROOT_PASSWORD || exit 1
 
-# 暴露端口
+# Expose port
 EXPOSE 3306

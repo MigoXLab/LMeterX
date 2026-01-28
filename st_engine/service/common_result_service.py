@@ -15,6 +15,7 @@ class CommonResultService:
     def insert_locust_results(
         self, session: Session, locust_result: dict, task_id: str
     ):
+        """Insert locust statistics for the given task into the database."""
         task_logger = logger.bind(task_id=task_id)
         try:
             locust_stats_list = locust_result.get("locust_stats", [])

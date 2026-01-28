@@ -212,6 +212,7 @@ class Task(Base):
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     status = Column(String(32), nullable=False)
+    created_by = Column(String(100), nullable=True)
     target_host = Column(String(255), nullable=False)
     model = Column(String(100), nullable=True)
 

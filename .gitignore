@@ -19,10 +19,6 @@ results/
 upload_files/
 tmp/
 
-
-# env
-.env
-
 # frontend
 dist/
 node_modules
@@ -42,3 +38,7 @@ code_check/
 coverage.xml
 bandit-report.json
 htmlcov
+
+# env
+backend/.env
+st_engine/.env

@@ -54,14 +54,34 @@ def mask_sensitive_command(command_list: list) -> list:
 
     safe_list = []
     try:
+        skip_next = False
         for item in command_list:
-            new_item = re.sub(
-                r'("Authorization"\s*:\s*").*?(")',
-                r"\1********\2",
-                item,
-                flags=re.IGNORECASE,
-            )
-            safe_list.append(new_item)
+            if skip_next:
+                safe_list.append("***")
+                skip_next = False
+                continue
+
+            if isinstance(item, str):
+                lower_item = item.lower()
+                if lower_item in ("--headers", "--cookies"):
+                    safe_list.append(item)
+                    skip_next = True
+                    continue
+                if lower_item.startswith("--headers=") or lower_item.startswith(
+                    "--cookies="
+                ):
+                    key = item.split("=", 1)[0]
+                    safe_list.append(f"{key}=***")
+                    continue
+                new_item = re.sub(
+                    r'("Authorization"\s*:\s*").*?(")',
+                    r"\1********\2",
+                    item,
+                    flags=re.IGNORECASE,
+                )
+                safe_list.append(new_item)
+            else:
+                safe_list.append(item)
         return safe_list
     except Exception as e:
         logger.warning(f"Error masking sensitive command: {str(e)}")

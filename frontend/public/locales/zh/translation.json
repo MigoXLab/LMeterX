@@ -8,7 +8,8 @@
   "header": {
     "languageSwitch": "语言切换",
     "english": "English",
-    "chinese": "中文"
+    "chinese": "中文",
+    "logout": "退出登录"
   },
   "pages": {
     "jobs": {
@@ -28,8 +29,9 @@
       "model": "模型",
       "concurrentUsers": "并发用户数",
       "duration": "压测时长(秒)",
+      "createdBy": "创建人",
       "createdTime": "创建时间",
-      "copyTemplate": "复制模板",
+      "copyTemplate": "复制",
       "stop": "停止",
       "results": "结果",
       "logs": "日志",
@@ -46,7 +48,16 @@
       "createSuccess": "任务创建成功",
       "createFailed": "任务创建失败",
       "stopSuccess": "任务停止成功",
-      "stopFailed": "任务停止失败"
+      "stopFailed": "任务停止失败",
+      "deleteSuccess": "删除任务成功",
+      "deleteFailed": "删除任务失败",
+      "deleteConfirmTitle": "确定要删除该任务吗？",
+      "deleteConfirmContent": "删除后将无法恢复，相关结果也会被清理",
+      "renameTitle": "修改任务名称",
+      "renamePlaceholder": "请输入新的任务名称",
+      "renameSuccess": "任务名称更新成功",
+      "renameFailed": "任务名称更新失败",
+      "ownerOnly": "仅创建人可以执行此操作"
     },
     "results": {
       "title": "测试结果",

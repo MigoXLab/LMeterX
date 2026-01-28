@@ -8,7 +8,8 @@
   "header": {
     "languageSwitch": "Language Switch",
     "english": "English",
-    "chinese": "中文"
+    "chinese": "中文",
+    "logout": "Logout"
   },
   "pages": {
     "jobs": {
@@ -28,8 +29,9 @@
       "model": "Model",
       "concurrentUsers": "Concurrent Users",
       "duration": "Duration (s)",
+      "createdBy": "Creator",
       "createdTime": "Created Time",
-      "copyTemplate": "Copy Template",
+      "copyTemplate": "Copy",
       "stop": "Stop",
       "results": "Results",
       "logs": "Logs",
@@ -46,7 +48,16 @@
       "createSuccess": "Task created successfully",
       "createFailed": "Failed to create task",
       "stopSuccess": "Task stopped successfully",
-      "stopFailed": "Failed to stop task"
+      "stopFailed": "Failed to stop task",
+      "deleteSuccess": "Task deleted successfully",
+      "deleteFailed": "Failed to delete task",
+      "deleteConfirmTitle": "Delete this task?",
+      "deleteConfirmContent": "This action cannot be undone and related results will be cleaned up.",
+      "renameTitle": "Rename Task",
+      "renamePlaceholder": "Enter new task name",
+      "renameSuccess": "Task name updated",
+      "renameFailed": "Failed to update task name",
+      "ownerOnly": "Only the creator can perform this action"
     },
     "results": {
       "title": "Test Results",

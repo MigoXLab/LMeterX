@@ -20,6 +20,7 @@ from engine.core import ConfigManager, GlobalStateManager, ValidationManager
 from engine.request_processor import APIClient, PayloadBuilder
 from utils.common import mask_sensitive_data
 from utils.error_handler import ErrorResponse
+from utils.event_handler import EventManager
 from utils.logger import logger
 from utils.stats_manager import StatsManager
 from utils.token_counter import count_tokens
@@ -424,9 +425,17 @@ class LLMTestUser(HttpUser):
                 # Ensure total_tokens consistency
                 if total_tokens == 0:
                     total_tokens = input_tokens + completion_tokens
+                logger.debug(f"usage: {usage}")
+            # If usage provides total+input but not completion, derive completion to avoid extra tokenization
+            if completion_tokens == 0 and total_tokens > 0 and input_tokens > 0:
+                completion_tokens = max(total_tokens - input_tokens, 0)
 
-            # If completion_tokens is 0 and there is content to calculate, fallback to manual calculation
-            if completion_tokens == 0 and (content or reasoning_content):
+            # Only fallback to manual tokenization when usage does not provide totals
+            if (
+                completion_tokens == 0
+                and total_tokens == 0
+                and (content or reasoning_content)
+            ):
                 input_tokens = (
                     count_tokens(str(user_prompt), model_name) if user_prompt else 0
                 )
@@ -442,6 +451,13 @@ class LLMTestUser(HttpUser):
                 total_tokens = input_tokens + completion_tokens
 
             if completion_tokens > 0 or total_tokens > 0:
+                # Register token counts in Locust metrics for percentile stats
+                if input_tokens > 0:
+                    EventManager.fire_metric_event("Input_tokens", int(input_tokens), 0)
+                if completion_tokens > 0:
+                    EventManager.fire_metric_event(
+                        "Completion_tokens", int(completion_tokens), 0
+                    )
                 # Select statistics based on runner type
                 runner = self.environment.runner
                 try:

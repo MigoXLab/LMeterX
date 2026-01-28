@@ -61,7 +61,7 @@ LMeterX is a professional large language model performance testing platform that
 - **Professional Metrics**  - Core performance metrics including first token latency, throughput(RPS、TPS), and success rate
 - **AI Smart Reports** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - AI-powered performance analysis, multi-dimensional model comparison and visualization
 - **Web Console** - One-stop management for task creation, stopping, status tracking, and full-chain log monitoring
-- **Enterprise-level Deployment** - Docker containerization with elastic scaling and distributed deployment support, &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Built-in LDAP/AD integration for enterprise user authentication and SSO
+- **Enterprise-level Deployment** - Docker containerization with elastic scaling and distributed deployment support, &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> Built-in LDAP/AD integration for enterprise user authentication and SSO
 
 ### Feature Comparison
 | Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |

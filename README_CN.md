@@ -61,7 +61,7 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 - **专业指标统计** - 首Token延迟、吞吐量(RPS、TPS)、成功率等核心性能指标
 - **AI智能报告**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 提供 AI 智能分析报告，多维度多模型可视化结果对比
 - **Web控制台** - 提供任务创建、停止、状态跟踪、全链路日志监控等一站式管理
-- **企业级部署** - Docker容器化，支持弹性扩展与分布式部署，&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - 内置 LDAP/AD 集成，支持企业用户认证和单点登录
+- **企业级部署** - Docker容器化，支持弹性扩展与分布式部署，&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> 内置 LDAP/AD 集成，支持企业用户认证和单点登录
 
 ### 工具对比
 

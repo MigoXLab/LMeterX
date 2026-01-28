@@ -1,10 +1,13 @@
 export type RuntimeConfig = {
   VITE_API_BASE_URL?: string;
-  VITE_LDAP_ENABLED?: string;
-  VITE_PERSIST_ACCESS_TOKEN?: string;
+  VITE_LDAP_ENABLED?: string | boolean;
+  VITE_PERSIST_ACCESS_TOKEN?: string | boolean;
 };
 
-const normalizeEnvFlag = (value?: string): boolean => {
+const normalizeEnvFlag = (value?: string | boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
   const normalized = (value || '').toLowerCase().trim();
   return ['true', '1', 'yes', 'on'].includes(normalized);
 };

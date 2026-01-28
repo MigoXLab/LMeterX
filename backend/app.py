@@ -3,6 +3,8 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import os
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -80,8 +82,9 @@ async def add_backend_marker(request: Request, call_next):
     return response
 
 
-# Add auth middleware (exclude health and login) only when LDAP is enabled
-if auth_settings.LDAP_ENABLED:
+# Add auth middleware (exclude health and login) only when LDAP is enabled.
+# Tests set TESTING=1 to avoid auth when running locally.
+if auth_settings.LDAP_ENABLED and not os.getenv("TESTING"):
     app.add_middleware(
         AuthMiddleware,
         exempt_paths={"/health", "/", "/api/auth/login", "/api/auth/logout"},

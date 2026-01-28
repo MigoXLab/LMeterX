@@ -13,6 +13,7 @@ import pytest
 
 # Set testing environment variables before any imports
 os.environ["TESTING"] = "1"
+os.environ.setdefault("LDAP_ENABLED", "0")
 
 # Ensure backend package is importable when tests run from project root
 BACKEND_ROOT = Path(__file__).resolve().parents[1]

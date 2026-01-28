@@ -211,7 +211,7 @@ const JobsPage: React.FC = () => {
         // Show toast notification about re-entering sensitive information
         messageApi.destroy();
         messageApi.warning({
-          content: '请注意数据集需要重新上传',
+          content: t('pages.jobs.datasetReuploadWarning'),
           duration: 5,
         });
       } catch (error) {
@@ -262,7 +262,7 @@ const JobsPage: React.FC = () => {
 
         messageApi.destroy();
         messageApi.warning({
-          content: '请注意数据集需要重新上传',
+          content: t('pages.jobs.datasetReuploadWarning'),
           duration: 5,
         });
       } catch (error) {

@@ -33,7 +33,7 @@ def _ensure_ldap_ready() -> None:
     if settings.LDAP_BIND_DN:
         if not settings.LDAP_BIND_PASSWORD:
             missing.append("LDAP_BIND_PASSWORD")
-        if not settings.LDAP_SEARCH_BASE and not settings.LDAP_USER_DN_TEMPLATE:
+        if not settings.LDAP_SEARCH_BASE:
             missing.append("LDAP_SEARCH_BASE")
     if missing:
         raise ErrorResponse.bad_request(

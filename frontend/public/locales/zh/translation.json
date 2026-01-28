@@ -12,6 +12,20 @@
     "logout": "退出登录"
   },
   "pages": {
+    "login": {
+      "title": "欢迎登录 LMeterX",
+      "subtitle": "使用AD账号完成身份验证",
+      "ldapHint": "如无法登录，请检查LDAP配置",
+      "usernameLabel": "用户名",
+      "usernamePlaceholder": "用户名",
+      "usernameRequired": "请输入用户名",
+      "passwordLabel": "密码",
+      "passwordPlaceholder": "密码",
+      "passwordRequired": "请输入密码",
+      "loginButton": "登录",
+      "loginSuccess": "登录成功",
+      "loginFailedDefault": "登录失败，请检查用户名或密码"
+    },
     "jobs": {
       "title": "基准测试任务",
       "description": "测试任务管理和监控",
@@ -40,6 +54,7 @@
       "stopConfirmContent": "停止任务后无法恢复",
       "confirmStop": "确认停止",
       "copyWarning": "请注意：认证凭据和上传的文件需要重新输入",
+      "datasetReuploadWarning": "请注意数据集需要重新上传",
       "refreshedAgo": "几秒前刷新",
       "lastRefresh": "最后刷新",
       "llmTab": "LLM API",

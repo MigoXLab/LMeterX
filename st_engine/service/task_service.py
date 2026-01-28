@@ -148,7 +148,10 @@ class TaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after status update DB error.",
+                    exc_info=True,
+                )
             raise
         except Exception as e:
             if hasattr(task, "id") and task.id:
@@ -159,7 +162,10 @@ class TaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after status update error.",
+                    exc_info=True,
+                )
 
     def update_task_status_by_id(self, session: Session, task_id: str, status: str):
         """
@@ -185,14 +191,20 @@ class TaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after updating task status.",
+                    exc_info=True,
+                )
             raise
         except Exception as e:
             task_logger.exception(f"Failed to update status for task: {e}")
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after update task status failure.",
+                    exc_info=True,
+                )
 
     def get_and_lock_task(self, session: Session) -> Task | None:
         """
@@ -228,14 +240,20 @@ class TaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after get-and-lock DB error.",
+                    exc_info=True,
+                )
             return None
         except Exception as e:
             logger.exception(f"Error while trying to get and lock a task: {e}")
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after get-and-lock error.",
+                    exc_info=True,
+                )
             return None
 
     def reconcile_tasks_on_startup(self, session: Session):
@@ -350,14 +368,20 @@ class TaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session during reconciliation DB error.",
+                    exc_info=True,
+                )
             raise
         except Exception as e:
             logger.exception(f"An error occurred during task reconciliation: {e}")
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after reconciliation error.",
+                    exc_info=True,
+                )
 
     def start_task(self, task: Task) -> dict:
         """
@@ -383,7 +407,7 @@ class TaskService:
                 "return_code": -1,
             }
 
-    def process_task_pipeline(self, task: Task, session: Session):
+    def process_task_pipeline(self, task: Task, session: Session):  # noqa: C901
         """
         Manages the complete pipeline for processing a single task.
 
@@ -421,7 +445,10 @@ class TaskService:
                 try:
                     session.rollback()
                 except Exception:
-                    pass
+                    task_logger.debug(
+                        "Failed to rollback session after refresh error.",
+                        exc_info=True,
+                    )
 
             if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
                 task_logger.info(
@@ -501,7 +528,10 @@ class TaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                task_logger.debug(
+                    "Failed to rollback session after pipeline DB error.",
+                    exc_info=True,
+                )
             # Try to update status, but don't fail if database is still unavailable
             try:
                 self.update_task_status(
@@ -697,12 +727,17 @@ class TaskService:
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after DB error.", exc_info=True
+                )
             return []
         except Exception as e:
             logger.exception("Failed to get stopping task IDs from the database.")
             try:
                 session.rollback()
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to rollback session after unexpected error.",
+                    exc_info=True,
+                )
             return []

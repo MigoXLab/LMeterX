@@ -30,10 +30,10 @@
     - [General API Load Testing](#general-api-load-testing)
 - [🔧 Configuration](#-configuration)
   - [Database Configuration](#database-configuration)
+  - [LDAP/AD Authentication Configuration](#ldapad-authentication-configuration)
   - [Resource Configuration](#resource-configuration)
 - [🤝 Development Guide](#-development-guide)
   - [Technology Stack](#technology-stack)
-  - [Project Structure](#project-structure)
   - [Development Environment Setup](#development-environment-setup)
 - [🗺️ Development Roadmap](#️-development-roadmap)
   - [In Development](#in-development)
@@ -61,7 +61,7 @@ LMeterX is a professional large language model performance testing platform that
 - **Professional Metrics**  - Core performance metrics including first token latency, throughput(RPS、TPS), and success rate
 - **AI Smart Reports** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - AI-powered performance analysis, multi-dimensional model comparison and visualization
 - **Web Console** - One-stop management for task creation, stopping, status tracking, and full-chain log monitoring
-- **Enterprise-level Deployment** - Docker containerization with elastic scaling and distributed deployment support
+- **Enterprise-level Deployment** - Docker containerization with elastic scaling and distributed deployment support, &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> Built-in LDAP/AD integration for enterprise user authentication and SSO
 
 ### Feature Comparison
 | Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |
@@ -157,6 +157,41 @@ DB_PASSWORD=lmeterx_password  # Database password (use secrets management in pro
 DB_NAME=lmeterx         # Database name
 ```
 
+### LDAP/AD Authentication Configuration
+
+```bash
+# ================= LDAP Authentication Configuration =================
+# Enable or disable LDAP authentication (on/off)
+LDAP_ENABLED=on
+
+# LDAP server connection
+LDAP_SERVER=ldap://ldap.example.com    # LDAP server address
+LDAP_PORT=389                          # LDAP server port (389 for LDAP, 636 for LDAPS)
+LDAP_USE_SSL=false                     # Use SSL/TLS connection (true for LDAPS)
+LDAP_TIMEOUT=5                         # Connection timeout in seconds
+
+# LDAP search configuration
+LDAP_SEARCH_BASE=dc=example,dc=com     # Base DN for user search
+LDAP_SEARCH_FILTER=(sAMAccountName={username})  # LDAP search filter
+
+# Authentication method 1: Direct bind with DN template (recommended for simple setups)
+LDAP_USER_DN_TEMPLATE=cn={username},ou=users,dc=example,dc=com
+
+# Authentication method 2: Bind with service account (recommended for Active Directory)
+LDAP_BIND_DN=cn=service,ou=users,dc=example,dc=com    # Service account DN
+LDAP_BIND_PASSWORD=service_password                   # Service account password
+
+# JWT configuration (optional)
+JWT_SECRET_KEY=your-secret-key-here    # JWT signing key (change in production)
+JWT_EXPIRE_MINUTES=480                 # Token expiration time in minutes (default: 8 hours)
+```
+
+**Configuration Notes:**
+- **Simple LDAP Setup**: Use `LDAP_USER_DN_TEMPLATE` for direct user binding
+- **Active Directory**: Use `LDAP_BIND_DN` + `LDAP_BIND_PASSWORD` for service account binding
+- **Security**: Always use `LDAP_USE_SSL=true` in production environments
+- **Frontend**: Set `VITE_LDAP_ENABLED=on` to enable login UI
+
 ### Resource Configuration
 ```bash
 # ================= High-Concurrency Load Testing Deployment Requirements =================
@@ -190,19 +225,6 @@ LMeterX adopts a modern technology stack to ensure system reliability and mainta
 - **Load Testing Engine**: Python + Locust + Custom Extensions
 - **Frontend Interface**: React + TypeScript + Ant Design + Vite
 - **Deployment & Operations**: Docker + Docker Compose + Nginx
-
-### Project Structure
-
-```
-LMeterX/
-├── backend/                  # Backend service
-├── st_engine/                # Load testing engine service
-├── frontend/                 # Frontend service
-├── docs/                     # Documentation directory
-├── docker-compose.yml        # Docker Compose configuration
-├── Makefile                  # Run complete code checks
-├── README.md                 # English README
-```
 
 ### Development Environment Setup
 

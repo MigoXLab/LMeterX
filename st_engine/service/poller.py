@@ -145,7 +145,10 @@ def common_task_create_poller():
             try:
                 task_service.reconcile_tasks_on_startup(session)
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to run startup reconciliation for common tasks.",
+                    exc_info=True,
+                )
     except Exception as e:
         logger.exception(f" Failed to run startup reconciliation: {e}")
 

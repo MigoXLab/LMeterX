@@ -7,6 +7,8 @@ import axios from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pagination as ApiPagination, Job } from '../types/job';
+import { getToken } from '../utils/auth';
+import { getApiBaseUrl } from '../utils/runtimeConfig';
 
 interface AntdPagination {
   current: number;
@@ -14,7 +16,17 @@ interface AntdPagination {
   total: number;
 }
 
-const VITE_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const VITE_API_BASE_URL = getApiBaseUrl();
+
+const buildAuthHeaders = () => {
+  const token = getToken();
+  return token
+    ? {
+        // Use X-Authorization to avoid upstream filters blocking Authorization
+        'X-Authorization': `Bearer ${token}`,
+      }
+    : {};
+};
 
 export const useJobs = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
@@ -62,6 +74,7 @@ export const useJobs = (messageApi: MessageInstance) => {
             'Cache-Control': 'no-cache',
             Pragma: 'no-cache',
             Expires: '0',
+            ...buildAuthHeaders(),
           },
         });
 
@@ -124,6 +137,7 @@ export const useJobs = (messageApi: MessageInstance) => {
       const response = await axios.get(`${VITE_API_BASE_URL}/tasks/status`, {
         signal: controller.signal,
         timeout: 30000,
+        headers: buildAuthHeaders(),
       });
 
       if (controller.signal.aborted) return;
@@ -295,7 +309,11 @@ export const useJobs = (messageApi: MessageInstance) => {
     ) => {
       setLoading(true);
       try {
-        const response = await axios.post(`${VITE_API_BASE_URL}/tasks`, values);
+        const response = await axios.post(
+          `${VITE_API_BASE_URL}/tasks`,
+          values,
+          { headers: buildAuthHeaders() }
+        );
         if (response.data?.task_id) {
           messageApi.success(t('common.createSuccess'));
           await fetchJobs(true);
@@ -319,13 +337,66 @@ export const useJobs = (messageApi: MessageInstance) => {
     async (jobId: string) => {
       messageApi.loading({ content: t('common.stoppingTask'), key: jobId });
       try {
-        await axios.post(`${VITE_API_BASE_URL}/tasks/stop/${jobId}`);
+        await axios.post(`${VITE_API_BASE_URL}/tasks/stop/${jobId}`, null, {
+          headers: buildAuthHeaders(),
+        });
         messageApi.success({ content: t('common.taskStopping'), key: jobId });
         setTimeout(() => fetchJobs(true), 1000);
       } catch (error: any) {
         const errorMsg =
           error.response?.data?.message || t('common.stopTaskFailed');
         messageApi.error({ content: errorMsg, key: jobId });
+      }
+    },
+    [fetchJobs, messageApi, t]
+  );
+
+  const updateJobName = useCallback(
+    async (taskId: string, name: string) => {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        messageApi.error(t('pages.jobs.renameFailed'));
+        return false;
+      }
+      setLoading(true);
+      try {
+        await axios.put(
+          `${VITE_API_BASE_URL}/tasks/${taskId}`,
+          { name: trimmedName },
+          { headers: buildAuthHeaders() }
+        );
+        messageApi.success(t('pages.jobs.renameSuccess'));
+        await fetchJobs(true);
+        return true;
+      } catch (error: any) {
+        messageApi.error(
+          error?.response?.data?.error || t('pages.jobs.renameFailed')
+        );
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchJobs, messageApi, t]
+  );
+
+  const deleteJob = useCallback(
+    async (taskId: string) => {
+      setLoading(true);
+      try {
+        await axios.delete(`${VITE_API_BASE_URL}/tasks/${taskId}`, {
+          headers: buildAuthHeaders(),
+        });
+        messageApi.success(t('pages.jobs.deleteSuccess'));
+        await fetchJobs(true);
+        return true;
+      } catch (error: any) {
+        messageApi.error(
+          error?.response?.data?.error || t('pages.jobs.deleteFailed')
+        );
+        return false;
+      } finally {
+        setLoading(false);
       }
     },
     [fetchJobs, messageApi, t]
@@ -376,6 +447,8 @@ export const useJobs = (messageApi: MessageInstance) => {
     statusFilter,
     createJob,
     stopJob,
+    updateJobName,
+    deleteJob,
     manualRefresh: () => fetchJobs(true),
     performSearch,
     updateSearchInput,

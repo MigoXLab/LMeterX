@@ -12,6 +12,7 @@ CREATE TABLE `tasks` (
   `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'idle',
+  `created_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Creator username',
   `target_host` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `api_path` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT '/chat/completions' COMMENT 'API path',
   `request_payload` longtext COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Custom request payload for non-chat completions APIs',
@@ -36,6 +37,7 @@ CREATE TABLE `tasks` (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_status_created` (`status`,`created_at`),
+  KEY `idx_created_by` (`created_by`),
   KEY `idx_name` (`name`),
   KEY `idx_status` (`status`),
   KEY `idx_created_at` (`created_at`),
@@ -79,6 +81,7 @@ CREATE TABLE `common_tasks` (
   `id` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `status` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Creator username',
   `method` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL,
   `target_url` varchar(2000) COLLATE utf8mb4_unicode_ci NOT NULL,
   `target_host` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -99,6 +102,7 @@ CREATE TABLE `common_tasks` (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_common_status_created` (`status`,`created_at`),
+  KEY `idx_common_created_by` (`created_by`),
   KEY `idx_common_name` (`name`),
   KEY `idx_common_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -162,6 +162,7 @@ def validate_mime_type(file_content: bytes, filename: str, file_type: str) -> No
         ValueError: If MIME type is not allowed
     """
     # Get MIME type from file content
+    mime_type: Optional[str] = None
     try:
         import magic  # type: ignore
 
@@ -169,8 +170,8 @@ def validate_mime_type(file_content: bytes, filename: str, file_type: str) -> No
     except ImportError:
         # Fallback to mimetypes if python-magic is not available
         mime_type, _ = mimetypes.guess_type(filename)
-        if not mime_type:
-            mime_type = "application/octet-stream"
+    if not mime_type:
+        mime_type = "application/octet-stream"
 
     allowed_mime_types = ALLOWED_MIME_TYPES.get(file_type, set())
 

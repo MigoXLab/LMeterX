@@ -22,6 +22,7 @@ import {
   App,
   Button,
   Card,
+  CardProps,
   Col,
   Collapse,
   Form,
@@ -60,6 +61,7 @@ interface CreateJobFormProps {
   onCancel: () => void;
   loading?: boolean;
   initialData?: Partial<Job> | null;
+  suppressCopyWarning?: boolean;
 }
 
 const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
@@ -67,6 +69,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   onCancel,
   loading,
   initialData,
+  suppressCopyWarning,
 }) => {
   const { message } = App.useApp();
   const { t } = useI18n();
@@ -541,7 +544,9 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const hasCertConfig = !!(initialData as any).cert_config;
 
       if (hasCustomHeaders || hasCookies || hasCertConfig) {
-        message.warning(t('components.createJobForm.taskTemplateCopied'), 5);
+        if (!suppressCopyWarning) {
+          message.warning(t('components.createJobForm.taskTemplateCopied'), 5);
+        }
       }
     } else if (!isCopyMode) {
       setIsCopyMode(false);
@@ -714,8 +719,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       // Validate only the required fields for testing
       await form.validateFields(requiredFields);
 
-      // Get all form values after validation
-      const values = form.getFieldsValue();
+      // Get all form values after validation (include unmounted fields)
+      const values = form.getFieldsValue(true);
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
 
@@ -777,6 +782,13 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           message.error(errorMessage);
           return;
         }
+      }
+
+      // Ensure default headers when none are provided
+      if (!values.headers || values.headers.length === 0) {
+        values.headers = [
+          { key: 'Content-Type', value: 'application/json', fixed: true },
+        ];
       }
 
       // Prepare test data - provide default values for missing fields
@@ -1835,8 +1847,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           };
 
           const cardBodyStyle = { padding: '16px 20px' };
-          const cardProps = {
-            bordered: false,
+          const cardProps: CardProps = {
+            variant: 'borderless',
             style: cardStyle,
             bodyStyle: cardBodyStyle,
           };

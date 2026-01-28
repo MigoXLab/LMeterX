@@ -224,7 +224,7 @@ const SystemConfiguration: React.FC = () => {
                             </Text>
                           ) : config.key === 'ai_service_host' ? (
                             <Text>
-                              {existingConfig.config_value}/chat/completions
+                              {existingConfig.config_value}/v1/chat/completions
                             </Text>
                           ) : (
                             <Text>{existingConfig.config_value}</Text>
@@ -273,10 +273,10 @@ const SystemConfiguration: React.FC = () => {
               placeholder='https://your-api-domain.com'
               addonAfter={
                 <Input
-                  value='/chat/completions'
+                  value='/v1/chat/completions'
                   disabled
                   style={{
-                    width: '180px',
+                    width: '200px',
                     backgroundColor: '#f5f5f5',
                     border: 'none',
                   }}

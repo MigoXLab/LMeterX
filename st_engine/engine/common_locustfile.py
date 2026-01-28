@@ -140,6 +140,7 @@ def init_parser(parser):
 
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
+    """Log test start for common API tasks."""
     task_id = environment.parsed_options.task_id or os.environ.get("TASK_ID", "unknown")
     logger.bind(task_id=task_id).info("Common API load test started.")
 
@@ -175,9 +176,12 @@ def on_test_stop(environment, **kwargs):
 class CommonApiUser(HttpUser):
     """Simple user class that replays a single API request."""
 
-    wait_time = lambda self: 0  # type: ignore
+    def wait_time(self):  # type: ignore[override]
+        """Disable wait time between requests for common API tasks."""
+        return 0
 
     def on_start(self):
+        """Initialize runtime options before the task starts."""
         options = self.environment.parsed_options
         self.task_id = options.task_id or os.environ.get("TASK_ID", "unknown")
         self.api_path = options.api_path or "/"

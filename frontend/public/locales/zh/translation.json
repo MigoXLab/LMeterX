@@ -8,9 +8,24 @@
   "header": {
     "languageSwitch": "语言切换",
     "english": "English",
-    "chinese": "中文"
+    "chinese": "中文",
+    "logout": "退出登录"
   },
   "pages": {
+    "login": {
+      "title": "欢迎登录 LMeterX",
+      "subtitle": "使用AD账号完成身份验证",
+      "ldapHint": "如无法登录，请检查LDAP配置",
+      "usernameLabel": "用户名",
+      "usernamePlaceholder": "用户名",
+      "usernameRequired": "请输入用户名",
+      "passwordLabel": "密码",
+      "passwordPlaceholder": "密码",
+      "passwordRequired": "请输入密码",
+      "loginButton": "登录",
+      "loginSuccess": "登录成功",
+      "loginFailedDefault": "登录失败，请检查用户名或密码"
+    },
     "jobs": {
       "title": "基准测试任务",
       "description": "测试任务管理和监控",
@@ -28,8 +43,9 @@
       "model": "模型",
       "concurrentUsers": "并发用户数",
       "duration": "压测时长(秒)",
+      "createdBy": "创建人",
       "createdTime": "创建时间",
-      "copyTemplate": "复制模板",
+      "copyTemplate": "复制",
       "stop": "停止",
       "results": "结果",
       "logs": "日志",
@@ -38,6 +54,7 @@
       "stopConfirmContent": "停止任务后无法恢复",
       "confirmStop": "确认停止",
       "copyWarning": "请注意：认证凭据和上传的文件需要重新输入",
+      "datasetReuploadWarning": "请注意数据集需要重新上传",
       "refreshedAgo": "几秒前刷新",
       "lastRefresh": "最后刷新",
       "llmTab": "LLM API",
@@ -46,7 +63,16 @@
       "createSuccess": "任务创建成功",
       "createFailed": "任务创建失败",
       "stopSuccess": "任务停止成功",
-      "stopFailed": "任务停止失败"
+      "stopFailed": "任务停止失败",
+      "deleteSuccess": "删除任务成功",
+      "deleteFailed": "删除任务失败",
+      "deleteConfirmTitle": "确定要删除该任务吗？",
+      "deleteConfirmContent": "删除后将无法恢复，相关结果也会被清理",
+      "renameTitle": "修改任务名称",
+      "renamePlaceholder": "请输入新的任务名称",
+      "renameSuccess": "任务名称更新成功",
+      "renameFailed": "任务名称更新失败",
+      "ownerOnly": "仅创建人可以执行此操作"
     },
     "results": {
       "title": "测试结果",

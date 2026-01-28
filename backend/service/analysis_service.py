@@ -208,7 +208,7 @@ async def _build_model_info_payload(
     return metrics
 
 
-async def extract_task_metrics(
+async def extract_task_metrics(  # noqa: C901
     db, task_id: str, task: Optional[Task] = None
 ) -> Optional[Dict]:
     """
@@ -384,7 +384,7 @@ async def _call_ai_service(
         )
 
     prompt = _build_analysis_prompt_text(type, language, model_info)
-    url = f"{host}/chat/completions"
+    url = f"{host}/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",

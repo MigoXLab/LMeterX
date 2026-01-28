@@ -97,20 +97,19 @@ const CreateCommonJobForm: React.FC<Props> = ({
   const initialValues = useMemo(() => {
     if (initialData) {
       // When copying template, copy the headers value from the template
-      // let headersValue = 'Content-Type: application/json';
-      // const { headers } = initialData;
-      // if (headers) {
-      //   if (typeof headers === 'string') {
-      //     const trimmed = (headers as string).trim();
-      //     headersValue = trimmed ? headers : 'Content-Type: application/json';
-      //   } else if (Array.isArray(headers) && headers.length > 0) {
-      //     // Convert array format to string format
-      //     headersValue = (headers as Array<{ key: string; value: string }>)
-      //       .map(h => `${h.key}: ${h.value}`)
-      //       .join('\n');
-      //   }
-      // }
-      const headersValue = 'Content-Type: application/json';
+      let headersValue = 'Content-Type: application/json';
+      const { headers } = initialData;
+      if (headers) {
+        if (typeof headers === 'string') {
+          const trimmed = (headers as string).trim();
+          headersValue = trimmed ? headers : 'Content-Type: application/json';
+        } else if (Array.isArray(headers) && headers.length > 0) {
+          // Convert array format to string format
+          headersValue = (headers as Array<{ key: string; value: string }>)
+            .map(h => `${h.key}: ${h.value}`)
+            .join('\n');
+        }
+      }
 
       // When copying template, ensure request_body is properly handled
       let requestBodyValue = '';
@@ -126,6 +125,10 @@ const CreateCommonJobForm: React.FC<Props> = ({
         ...initialData,
         headers: headersValue,
         request_body: requestBodyValue,
+        dataset_source:
+          (initialData as any).dataset_source ?? defaultValues.dataset_source,
+        dataset_file:
+          (initialData as any).dataset_file ?? defaultValues.dataset_file,
         temp_task_id: tempTaskId, // Always use new tempTaskId
       };
     }
@@ -144,9 +147,17 @@ const CreateCommonJobForm: React.FC<Props> = ({
     if (initialData) {
       // Set form values when copying template
       form.setFieldsValue(initialValues);
-      // Clear dataset file name when copying template (file needs to be re-uploaded)
-      setDatasetFileName('');
-      form.setFieldsValue({ dataset_file: undefined });
+      // Preserve uploaded dataset path and show filename for clarity
+      const datasetPath = (initialValues as any).dataset_file;
+      if (datasetPath) {
+        const guessedName =
+          typeof datasetPath === 'string'
+            ? datasetPath.split('/').pop() || datasetPath
+            : '';
+        setDatasetFileName(guessedName);
+      } else {
+        setDatasetFileName('');
+      }
     } else {
       // When creating new task (initialData is null), generate new tempTaskId and reset form completely
       const newTempTaskId = `temp-${Date.now()}`;
@@ -336,7 +347,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
   };
 
   return (
-    <Card bordered={false}>
+    <Card variant='borderless'>
       <Form
         key={tempTaskId}
         layout='vertical'
@@ -652,7 +663,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
           </Button>,
         ]}
         width={760}
-        destroyOnClose
+        destroyOnHidden
         centered={false}
         mask={false}
         maskClosable={false}

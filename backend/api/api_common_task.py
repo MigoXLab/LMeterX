@@ -23,6 +23,7 @@ from service.common_task_service import (
 from service.common_task_service import (
     compare_common_performance_svc,
     create_common_task_svc,
+    delete_common_task_svc,
     get_common_task_result_svc,
     get_common_task_status_svc,
     get_common_task_svc,
@@ -30,6 +31,7 @@ from service.common_task_service import (
     get_common_tasks_status_svc,
     get_common_tasks_svc,
     stop_common_task_svc,
+    update_common_task_svc,
 )
 
 router = APIRouter()
@@ -85,6 +87,18 @@ async def stop_common_task(request: Request, task_id: str):
 @router.get("/{task_id}/results", response_model=CommonTaskResultRsp)
 async def get_common_task_result(request: Request, task_id: str):
     return await get_common_task_result_svc(request, task_id)
+
+
+@router.put("/{task_id}")
+async def update_common_task(request: Request, task_id: str, payload: Dict[str, Any]):
+    """Update mutable fields of a common task (e.g., rename). Only creator can update."""
+    return await update_common_task_svc(request, task_id, payload)
+
+
+@router.delete("/{task_id}")
+async def delete_common_task(request: Request, task_id: str):
+    """Delete a common task. Only creator can delete."""
+    return await delete_common_task_svc(request, task_id)
 
 
 @router.get("/{task_id}", response_model=Dict[str, Any])

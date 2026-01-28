@@ -59,10 +59,20 @@ per-file-ignores =
     # __init__.py files can have unused imports and be empty
     __init__.py:F401,D104,W391,E261
     # Test files can have unused imports and long lines
-    test_*.py:F401,E501,D100,D103
-    *_test.py:F401,E501,D100,D103
+    test_*.py:F401,E501,D100,D102,D103
+    *_test.py:F401,E501,D100,D102,D103
+    # App entrypoint can be thin and self-explanatory
+    app.py:D103
     # API files can have some flexibility
-    api/*.py:F403,F405
+    api/*.py:F403,F405,D103
+    # Service layer often uses self-explanatory helpers
+    service/*.py:D103
+    # Middleware classes are small and clear in context
+    middleware/*.py:D102,D103,D107
+    # Model methods are mostly CRUD helpers
+    model/*.py:D102
+    # Settings container does not need docstrings
+    utils/auth_settings.py:D106
     # Fix script can have unused imports
     fix_code_*.py:F401
 

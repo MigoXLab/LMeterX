@@ -366,16 +366,128 @@ docker stats $(docker-compose ps -q)
 
    # Change application secret key
    SECRET_KEY=your_random_secret_key
+   JWT_SECRET_KEY=your_random_jwt_secret_key
    ```
 
-2. **Restrict Network Access**:
+2. **Enable LDAP/AD Authentication** (Recommended for Enterprise):
+
+   LMeterX supports enterprise LDAP/Active Directory authentication for centralized user management and SSO.
+
+   **Step 1: Configure Backend LDAP Settings**
+
+   Add the following environment variables to the `backend` service in `docker-compose.yml`:
+
+   ```yaml
+   backend:
+     environment:
+       # Enable LDAP authentication
+       - LDAP_ENABLED=on
+
+       # LDAP server connection
+       - LDAP_SERVER=ldap://ldap.example.com
+       - LDAP_PORT=389
+       - LDAP_USE_SSL=false          # Set to true for LDAPS
+       - LDAP_TIMEOUT=5
+
+       # LDAP search configuration
+       - LDAP_SEARCH_BASE=dc=example,dc=com
+       - LDAP_SEARCH_FILTER=(sAMAccountName={username})
+
+       # Choose one authentication method:
+       # Method 1: Direct bind (simple LDAP)
+       - LDAP_USER_DN_TEMPLATE=cn={username},ou=users,dc=example,dc=com
+
+       # Method 2: Service account (Active Directory)
+       - LDAP_BIND_DN=cn=service,ou=users,dc=example,dc=com
+       - LDAP_BIND_PASSWORD=service_password
+
+       # JWT configuration
+       - JWT_SECRET_KEY=change-me-to-a-random-string
+       - JWT_EXPIRE_MINUTES=480      # 8 hours
+   ```
+
+   **Step 2: Enable Frontend Login UI**
+
+   Add the following environment variable to the `frontend` service:
+
+   ```yaml
+   frontend:
+     environment:
+       - VITE_LDAP_ENABLED=on
+       - VITE_PERSIST_ACCESS_TOKEN=true
+   ```
+
+   **Step 3: Restart Services**
+
+   ```bash
+   docker-compose down
+   docker-compose up -d
+   ```
+
+   **Common LDAP Configuration Examples:**
+
+   <details>
+   <summary>Active Directory (Microsoft AD)</summary>
+
+   ```bash
+   LDAP_ENABLED=on
+   LDAP_SERVER=ldap://ad.company.com
+   LDAP_PORT=389
+   LDAP_USE_SSL=false
+   LDAP_SEARCH_BASE=dc=company,dc=com
+   LDAP_SEARCH_FILTER=(sAMAccountName={username})
+   LDAP_BIND_DN=cn=ldapservice,ou=ServiceAccounts,dc=company,dc=com
+   LDAP_BIND_PASSWORD=YourServicePassword
+   ```
+   </details>
+
+   <details>
+   <summary>OpenLDAP</summary>
+
+   ```bash
+   LDAP_ENABLED=on
+   LDAP_SERVER=ldap://ldap.example.com
+   LDAP_PORT=389
+   LDAP_USE_SSL=false
+   LDAP_SEARCH_BASE=ou=users,dc=example,dc=com
+   LDAP_USER_DN_TEMPLATE=uid={username},ou=users,dc=example,dc=com
+   ```
+   </details>
+
+   <details>
+   <summary>LDAPS (Secure LDAP)</summary>
+
+   ```bash
+   LDAP_ENABLED=on
+   LDAP_SERVER=ldaps://ldap.example.com
+   LDAP_PORT=636
+   LDAP_USE_SSL=true
+   LDAP_SEARCH_BASE=dc=example,dc=com
+   LDAP_BIND_DN=cn=admin,dc=example,dc=com
+   LDAP_BIND_PASSWORD=admin_password
+   ```
+   </details>
+
+   **Testing LDAP Connection:**
+
+   ```bash
+   # Check backend logs for LDAP connection status
+   docker-compose logs backend | grep -i ldap
+
+   # Test login via API
+   curl -X POST http://localhost:5001/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"testuser","password":"testpass"}'
+   ```
+
+3. **Restrict Network Access**:
    ```yaml
    # Only expose necessary ports
    ports:
      - "127.0.0.1:80:80"
    ```
 
-3. **Enable HTTPS**:
+4. **Enable HTTPS**:
    ```nginx
    # Add SSL configuration in Nginx config
    server {

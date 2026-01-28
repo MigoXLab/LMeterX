@@ -20,20 +20,20 @@ const readRuntimeConfig = (): RuntimeConfig => {
 };
 
 export const getApiBaseUrl = (): string =>
-  readRuntimeConfig().VITE_API_BASE_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
+  readRuntimeConfig().VITE_API_BASE_URL ??
+  import.meta.env.VITE_API_BASE_URL ??
   '/api';
 
 export const getLdapEnabled = (): boolean =>
   normalizeEnvFlag(
-    readRuntimeConfig().VITE_LDAP_ENABLED ||
-      import.meta.env.VITE_LDAP_ENABLED ||
+    readRuntimeConfig().VITE_LDAP_ENABLED ??
+      import.meta.env.VITE_LDAP_ENABLED ??
       'false'
   );
 
 export const getPersistAccessToken = (): boolean =>
   normalizeEnvFlag(
-    readRuntimeConfig().VITE_PERSIST_ACCESS_TOKEN ||
-      import.meta.env.VITE_PERSIST_ACCESS_TOKEN ||
+    readRuntimeConfig().VITE_PERSIST_ACCESS_TOKEN ??
+      import.meta.env.VITE_PERSIST_ACCESS_TOKEN ??
       'true'
   );

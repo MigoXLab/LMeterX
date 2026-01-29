@@ -558,7 +558,14 @@
       "cookieNameRequired": "Cookie name is required",
       "cookieNameLengthLimit": "Cookie name length should not exceed 100 characters",
       "cookieValueLengthLimit": "Cookie value length should not exceed 1000 characters",
-      "pleaseSelectApiType": "Please select API type"
+      "pleaseSelectApiType": "Please select API type",
+      "warmupConfiguration": "Warmup Configuration",
+      "warmupMode": "Warmup Mode",
+      "warmupModeTooltip": "When enabled, the system will use the original request parameters to perform a warmup load test for the specified duration, stabilizing the KV Cache in the model's GPU memory for more accurate performance measurements.",
+      "warmupDuration": "Warmup Duration",
+      "warmupDurationSeconds": "{{duration}}s",
+      "warmupEnabled": "Enabled",
+      "warmupDisabled": "Disabled"
     },
     "createCommonJobForm": {
       "taskName": "Task Name",

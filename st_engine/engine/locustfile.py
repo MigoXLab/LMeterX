@@ -45,12 +45,27 @@ def _register_signal_handlers(task_logger):
             task_logger.warning(f"Failed to register handler for {sig}: {exc}")
 
 
+def _is_warmup_mode(options) -> bool:
+    """Check if running in warmup mode."""
+    warmup_mode = getattr(options, "warmup_mode", "false")
+    return str(warmup_mode).lower() in ("true", "1", "yes")
+
+
 def _ensure_prompt_queue(environment, options, task_logger):
     """
     Ensure the Locust environment carries a prompt_queue.
     Returns the queue instance for chaining.
+    In warmup mode, skip dataset loading - use default prompt only.
     """
     if hasattr(environment, "prompt_queue"):
+        return environment.prompt_queue
+
+    # In warmup mode, skip dataset loading to use original payload
+    if _is_warmup_mode(options):
+        task_logger.info(
+            "Warmup mode: skipping dataset loading, using original payload"
+        )
+        environment.prompt_queue = queue.Queue()
         return environment.prompt_queue
 
     try:
@@ -234,6 +249,12 @@ def init_parser(parser):
         default=60,
         help="Test duration in seconds (used as fallback when start_time is unavailable)",
     )
+    parser.add_argument(
+        "--warmup_mode",
+        type=str,
+        default="false",
+        help="Whether this is a warmup run (no stats collection)",
+    )
 
 
 @events.init.add_listener
@@ -270,8 +291,13 @@ def on_locust_init(environment, **kwargs):
         _ensure_prompt_queue(environment, options, task_logger)
 
         environment.global_config = config
+        environment.warmup_mode = _is_warmup_mode(options)
         masked_config = mask_sensitive_data(config.__dict__)
         task_logger.info(f"Loaded task configuration: {masked_config}")
+        if environment.warmup_mode:
+            task_logger.info(
+                "Running in warmup mode - token stats will not be collected"
+            )
         global_state.start_time = time.time()
 
         # Register message handlers
@@ -290,6 +316,11 @@ def on_test_stop(environment, **kwargs):
 
         task_logger = global_state.get_task_logger(global_state.config.task_id)
         runner = environment.runner
+
+        # Skip stats collection in warmup mode
+        if getattr(environment, "warmup_mode", False):
+            task_logger.info("Warmup mode completed - skipping stats collection")
+            return
 
         # Only Master and LocalRunner need to output report
         if not isinstance(runner, (MasterRunner, LocalRunner)):
@@ -394,7 +425,11 @@ class LLMTestUser(HttpUser):
         content: str,
         usage: Optional[Dict[str, Optional[int]]] = None,
     ) -> None:
-        """Record token counts"""
+        """Record token counts. Skip in warmup mode."""
+        # Skip token stats collection in warmup mode
+        if getattr(self.environment, "warmup_mode", False):
+            return
+
         try:
             model_name = self.config.model_name or ""
             user_prompt = user_prompt or ""

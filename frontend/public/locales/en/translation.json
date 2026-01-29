@@ -43,6 +43,7 @@
       "model": "Model",
       "concurrentUsers": "Concurrent Users",
       "duration": "Duration (s)",
+      "loadConfig": "Load Configuration",
       "createdBy": "Creator",
       "createdTime": "Created Time",
       "copyTemplate": "Copy",

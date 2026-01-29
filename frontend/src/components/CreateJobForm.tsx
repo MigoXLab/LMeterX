@@ -2226,52 +2226,50 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         </Space>
       </div>
 
-      <div style={{ padding: '16px' }}>
-        <Row gutter={24} align='middle'>
-          <Col span={12}>
-            <Form.Item
-              label={
-                <span>
-                  {t('components.createJobForm.warmupMode')}
-                  <Tooltip
-                    title={t('components.createJobForm.warmupModeTooltip')}
-                  >
-                    <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                  </Tooltip>
-                </span>
-              }
-              style={{ marginBottom: 0 }}
-            >
-              <Space>
-                <Radio.Group value='enabled' disabled>
-                  <Radio value='enabled'>
-                    {t('components.createJobForm.warmupEnabled')}
-                  </Radio>
-                  <Radio value='disabled'>
-                    {t('components.createJobForm.warmupDisabled')}
-                  </Radio>
-                </Radio.Group>
-              </Space>
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item
-              label={t('components.createJobForm.warmupDuration')}
-              style={{ marginBottom: 0 }}
-            >
-              <InputNumber
-                value={120}
-                disabled
-                style={{
-                  width: '120px',
-                  backgroundColor: token.colorBgContainerDisabled,
-                }}
-                addonAfter='s'
-              />
-            </Form.Item>
-          </Col>
-        </Row>
-      </div>
+      <Row gutter={24} align='middle'>
+        <Col span={12}>
+          <Form.Item
+            label={
+              <span>
+                {t('components.createJobForm.warmupMode')}
+                <Tooltip
+                  title={t('components.createJobForm.warmupModeTooltip')}
+                >
+                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                </Tooltip>
+              </span>
+            }
+            style={{ marginBottom: 0 }}
+          >
+            <Space>
+              <Radio.Group value='enabled' disabled>
+                <Radio value='enabled'>
+                  {t('components.createJobForm.warmupEnabled')}
+                </Radio>
+                <Radio value='disabled'>
+                  {t('components.createJobForm.warmupDisabled')}
+                </Radio>
+              </Radio.Group>
+            </Space>
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            label={t('components.createJobForm.warmupDuration')}
+            style={{ marginBottom: 0 }}
+          >
+            <InputNumber
+              value={120}
+              disabled
+              style={{
+                width: '120px',
+                backgroundColor: token.colorBgContainerDisabled,
+              }}
+              addonAfter='s'
+            />
+          </Form.Item>
+        </Col>
+      </Row>
     </div>
   );
 

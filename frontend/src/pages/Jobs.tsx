@@ -371,6 +371,25 @@ const JobsPage: React.FC = () => {
     [canManage, deleteCommonJob, deleteJob, messageApi, modal, t]
   );
 
+  const renderLoadConfig = useCallback(
+    (concurrentUsers?: number, duration?: number) => {
+      const users = concurrentUsers ?? 0;
+      const seconds = duration ?? 0;
+
+      return (
+        <Space direction='vertical' size={0}>
+          <Text>
+            {t('pages.jobs.concurrentUsers')}: {users}
+          </Text>
+          <Text>
+            {t('pages.jobs.duration')}: {seconds}
+          </Text>
+        </Space>
+      );
+    },
+    [t]
+  );
+
   /**
    * Table column definitions
    */
@@ -466,6 +485,15 @@ const JobsPage: React.FC = () => {
         dataIndex: 'model',
         key: 'model',
         ellipsis: true,
+      },
+      {
+        title: t('pages.jobs.loadConfig'),
+        key: 'load_config',
+        render: (_, record) =>
+          renderLoadConfig(
+            record.concurrent_users ?? record.concurrency,
+            record.duration
+          ),
       },
       // {
       //   title: t('pages.jobs.concurrentUsers'),
@@ -616,6 +644,7 @@ const JobsPage: React.FC = () => {
     handleCopyJob,
     handleDeleteTask,
     openRenameModal,
+    renderLoadConfig,
     showStopConfirm,
     t,
   ]);
@@ -739,6 +768,12 @@ const JobsPage: React.FC = () => {
       },
       ...(LDAP_ENABLED ? [createdByColumn] : []),
       {
+        title: t('pages.jobs.loadConfig'),
+        key: 'load_config',
+        render: (_, record) =>
+          renderLoadConfig(record.concurrent_users, record.duration),
+      },
+      {
         title: t('pages.jobs.createdTime'),
         dataIndex: 'created_at',
         key: 'created_at',
@@ -856,6 +891,7 @@ const JobsPage: React.FC = () => {
     handleCopyCommonJob,
     handleDeleteTask,
     openRenameModal,
+    renderLoadConfig,
     showStopConfirm,
     t,
   ]);

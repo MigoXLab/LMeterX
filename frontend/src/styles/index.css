@@ -521,6 +521,7 @@ body {
 }
 
 :global(.jobs-content-wrapper .modern-table .ant-table-thead > tr > th) {
+  background: transparent !important;
   padding-left: 24px !important;
   padding-right: 24px !important;
 }

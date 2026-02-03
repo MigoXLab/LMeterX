@@ -6,7 +6,9 @@ Copyright (c) 2025, All Rights Reserved.
 import os
 import subprocess  # nosec B404
 
+import pymysql.err  # type: ignore[import-untyped]
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from config.base import ST_ENGINE_DIR, UPLOAD_FOLDER
@@ -131,13 +133,39 @@ class TaskService:
                             f"File cleanup failed for a task: {cleanup_error}"
                         )
 
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            if hasattr(task, "id") and task.id:
+                task_logger = logger.bind(task_id=task.id)
+                task_logger.warning(
+                    f"Database connection error while updating task status: {e}. "
+                    "This may be a transient database issue."
+                )
+            else:
+                logger.warning(
+                    f"Database connection error while updating task status: {e}. "
+                    "This may be a transient database issue."
+                )
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session after status update DB error.",
+                    exc_info=True,
+                )
+            raise
         except Exception as e:
             if hasattr(task, "id") and task.id:
                 task_logger = logger.bind(task_id=task.id)
                 task_logger.exception(f"Failed to update status: {e}")
             else:
                 logger.exception(f"Failed to update status for a task: {e}")
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session after status update error.",
+                    exc_info=True,
+                )
 
     def update_task_status_by_id(self, session: Session, task_id: str, status: str):
         """
@@ -155,9 +183,28 @@ class TaskService:
                 self.update_task_status(session, task, status)
             else:
                 task_logger.warning(f"Could not find task to update status.")
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            task_logger.warning(
+                f"Database connection error while updating task status by ID: {e}. "
+                "This may be a transient database issue."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                task_logger.debug(
+                    "Failed to rollback session after updating task status.",
+                    exc_info=True,
+                )
+            raise
         except Exception as e:
             task_logger.exception(f"Failed to update status for task: {e}")
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                task_logger.debug(
+                    "Failed to rollback session after update task status failure.",
+                    exc_info=True,
+                )
 
     def get_and_lock_task(self, session: Session) -> Task | None:
         """
@@ -185,9 +232,28 @@ class TaskService:
                 session.commit()
                 return task
             return None
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(
+                f"Database connection error while trying to get and lock a task: {e}. "
+                "This may be a transient database issue. Returning None to allow retry."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session after get-and-lock DB error.",
+                    exc_info=True,
+                )
+            return None
         except Exception as e:
             logger.exception(f"Error while trying to get and lock a task: {e}")
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session after get-and-lock error.",
+                    exc_info=True,
+                )
             return None
 
     def reconcile_tasks_on_startup(self, session: Session):
@@ -294,8 +360,28 @@ class TaskService:
                     if handler_id is not None:
                         remove_task_log_sink(handler_id)
 
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(
+                f"Database connection error during reconciliation: {e}. "
+                "This may be a transient database issue. Reconciliation will be retried on next startup."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session during reconciliation DB error.",
+                    exc_info=True,
+                )
+            raise
         except Exception as e:
             logger.exception(f"An error occurred during task reconciliation: {e}")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session after reconciliation error.",
+                    exc_info=True,
+                )
 
     def start_task(self, task: Task) -> dict:
         """
@@ -321,7 +407,7 @@ class TaskService:
                 "return_code": -1,
             }
 
-    def process_task_pipeline(self, task: Task, session: Session):
+    def process_task_pipeline(self, task: Task, session: Session):  # noqa: C901
         """
         Manages the complete pipeline for processing a single task.
 
@@ -349,11 +435,30 @@ class TaskService:
 
             # Refresh the task state to get any updates that may have occurred
             # during the run, such as a manual stop request.
-            session.refresh(task)
+            try:
+                session.refresh(task)
+            except (OperationalError, pymysql.err.OperationalError) as e:
+                task_logger.warning(
+                    f"Database connection error while refreshing task state: {e}. "
+                    "Continuing with task processing."
+                )
+                try:
+                    session.rollback()
+                except Exception:
+                    task_logger.debug(
+                        "Failed to rollback session after refresh error.",
+                        exc_info=True,
+                    )
 
             if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
                 task_logger.info(
                     f"Task {task.id} was stopped during execution. Marking as '{TASK_STATUS_STOPPED}'."
+                )
+                self.update_task_status(session, task, TASK_STATUS_STOPPED)
+            elif run_status == "STOPPED":
+                # Task was stopped during warmup or main test phase
+                task_logger.info(
+                    f"Task {task.id} was stopped (possibly during warmup). Marking as '{TASK_STATUS_STOPPED}'."
                 )
                 self.update_task_status(session, task, TASK_STATUS_STOPPED)
             elif run_status == "COMPLETED":
@@ -421,6 +526,30 @@ class TaskService:
                     session, task, TASK_STATUS_FAILED, error_message
                 )
 
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            task_logger.warning(
+                f"Database connection error in pipeline: {e}. "
+                "Task processing may be incomplete."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                task_logger.debug(
+                    "Failed to rollback session after pipeline DB error.",
+                    exc_info=True,
+                )
+            # Try to update status, but don't fail if database is still unavailable
+            try:
+                self.update_task_status(
+                    session,
+                    task,
+                    TASK_STATUS_FAILED,
+                    f"Pipeline error: Database connection issue - {str(e)}",
+                )
+            except Exception as status_update_error:
+                logger.warning(
+                    f"Could not update task {task.id} status due to database error: {status_update_error}"
+                )
         except Exception as e:
             error_message = f"An unexpected error occurred in the pipeline: {e}"
             task_logger.exception(f"Pipeline failed with an unexpected error: {e}")
@@ -437,6 +566,10 @@ class TaskService:
                 task_logger.info(
                     f"Task {task.id} status updated to FAILED after exception"
                 )
+            except (OperationalError, pymysql.err.OperationalError) as db_error:
+                logger.warning(
+                    f"Database connection error while updating failed task status: {db_error}"
+                )
             except Exception as status_update_error:
                 task_logger.error(
                     f"Failed to update task status after pipeline error: {status_update_error}"
@@ -452,6 +585,7 @@ class TaskService:
     def stop_task(self, task_id: str) -> bool:
         """
         Stops a running task by delegating the termination to the LocustRunner.
+        This method handles both warmup and main test phases for LLM API tasks.
         This method is designed to be called from the API or UI.
         Args:
             task_id (str): The ID of the task to stop.
@@ -463,56 +597,132 @@ class TaskService:
         try:
             task_logger.info(f"Received stop request for task {task_id}.")
 
-            process = self.runner._process_dict.get(task_id)
-            if not process:
-                task_logger.warning(
-                    f"Task {task_id}: Process not found in runner's dictionary. "
-                    f"It might have finished, be on another node, or not started yet."
-                )
-                return True
+            # Mark this task as stopped so warmup phase can detect it
+            # This is critical for stopping tasks during warmup before main test starts
+            self.runner._stopped_task_ids.add(task_id)
+            task_logger.debug(f"Marked task {task_id} in _stopped_task_ids.")
 
-            if process.poll() is not None:
-                task_logger.info(
-                    f"Task {task_id}: Process with PID {process.pid} has already terminated. Cleaning up local reference."
-                )
-                self.runner._process_dict.pop(task_id, None)
-                cleanup_task_resources(task_id)
-                return True
+            # Stop both warmup and main test processes
+            # Warmup process uses {task_id}_warmup as key
+            warmup_task_id = f"{task_id}_warmup"
+            process_ids_to_stop = [warmup_task_id, task_id]
+            any_process_found = False
+            all_stopped_successfully = True
 
-            group_info = get_task_process_status(task_id)
-            group_terminated = False
-
-            if group_info:
-                task_logger.info(
-                    f"Task {task_id}: Terminating registered multiprocess group."
-                )
-                group_terminated = terminate_locust_process_group(task_id, timeout=15.0)
-                if not group_terminated:
-                    task_logger.warning(
-                        f"Task {task_id}: Multiprocess group termination reported failure. Falling back to direct termination."
+            for proc_id in process_ids_to_stop:
+                process = self.runner._process_dict.get(proc_id)
+                if not process:
+                    task_logger.debug(
+                        f"Process for '{proc_id}' not found in runner's dictionary."
                     )
-            else:
-                task_logger.debug(
-                    f"Task {task_id}: No registered multiprocess group found. Falling back to direct termination."
-                )
+                    continue
 
-            if process.poll() is None:
-                if not self._terminate_local_process(process, task_id, task_logger):
-                    return False
-            else:
-                task_logger.info(
-                    f"Task {task_id}: Process exited after multiprocess termination."
-                )
+                any_process_found = True
+                task_logger.info(f"Found process for '{proc_id}', attempting to stop.")
 
-            self.runner._process_dict.pop(task_id, None)
-            cleanup_task_resources(task_id)
-            return True
+                if process.poll() is not None:
+                    task_logger.info(
+                        f"Process '{proc_id}' with PID {process.pid} has already terminated. Cleaning up."
+                    )
+                    self.runner._process_dict.pop(proc_id, None)
+                    cleanup_task_resources(proc_id)
+                    continue
+
+                # Check for multiprocess group
+                group_info = get_task_process_status(proc_id)
+                if group_info:
+                    task_logger.info(
+                        f"Terminating registered multiprocess group for '{proc_id}'."
+                    )
+                    group_terminated = terminate_locust_process_group(
+                        proc_id, timeout=15.0
+                    )
+                    if not group_terminated:
+                        task_logger.warning(
+                            f"Multiprocess group termination for '{proc_id}' reported failure. "
+                            "Falling back to direct termination."
+                        )
+                else:
+                    task_logger.debug(
+                        f"No registered multiprocess group for '{proc_id}'. "
+                        "Using direct termination."
+                    )
+
+                # Terminate local process if still running
+                if process.poll() is None:
+                    if not self._terminate_local_process(process, proc_id, task_logger):
+                        all_stopped_successfully = False
+                else:
+                    task_logger.info(
+                        f"Process '{proc_id}' exited after multiprocess termination."
+                    )
+
+                self.runner._process_dict.pop(proc_id, None)
+                cleanup_task_resources(proc_id)
+
+            if not any_process_found:
+                task_logger.warning(
+                    f"Task {task_id}: No processes found in runner's dictionary. "
+                    f"It might have finished, be on another node, or not started yet. "
+                    f"Attempting to find and kill any orphaned locust processes."
+                )
+                # Try to find and kill any orphaned processes by task_id
+                self._kill_orphaned_processes(task_id, task_logger)
+                return True
+
+            return all_stopped_successfully
 
         except Exception as e:
             task_logger.exception(
                 f"An unexpected error occurred while stopping task {task_id}: {e}"
             )
             return False
+
+    def _kill_orphaned_processes(self, task_id: str, task_logger) -> None:
+        """
+        Kill any orphaned locust processes associated with a task.
+        This is a fallback when processes are not found in _process_dict.
+
+        Args:
+            task_id (str): The ID of the task.
+            task_logger: Structured logger bound to the task.
+        """
+        try:
+            import psutil
+
+            # Find processes matching this task_id (including warmup)
+            killed_count = 0
+            for proc in psutil.process_iter(["pid", "cmdline"]):
+                try:
+                    cmdline = proc.info.get("cmdline") or []
+                    if not isinstance(cmdline, list):
+                        continue
+                    cmdline_str = " ".join(str(arg) for arg in cmdline)
+
+                    # Match both main task and warmup task
+                    if "locust" in cmdline_str.lower() and (
+                        f"--task-id {task_id}" in cmdline_str
+                        or f"--task-id {task_id}_warmup" in cmdline_str
+                    ):
+                        task_logger.info(
+                            f"Found orphaned locust process PID={proc.pid}, terminating."
+                        )
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=10)
+                        except psutil.TimeoutExpired:
+                            proc.kill()
+                            proc.wait(timeout=5)
+                        killed_count += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+            if killed_count > 0:
+                task_logger.info(
+                    f"Killed {killed_count} orphaned locust process(es) for task {task_id}."
+                )
+        except Exception as e:
+            task_logger.warning(f"Error while killing orphaned processes: {e}")
 
     def _terminate_local_process(
         self,
@@ -592,6 +802,25 @@ class TaskService:
             if stopping_task_ids:
                 logger.info(f"Found stopping tasks: {stopping_task_ids}")
             return stopping_task_ids
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(
+                f"Database connection error while fetching stopping tasks: {e}. "
+                "This may be a transient database issue. Returning empty list."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session after DB error.", exc_info=True
+                )
+            return []
         except Exception as e:
             logger.exception("Failed to get stopping task IDs from the database.")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback session after unexpected error.",
+                    exc_info=True,
+                )
             return []

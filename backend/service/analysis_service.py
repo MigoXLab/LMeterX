@@ -4,8 +4,8 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import json
+import re
 import ssl
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 import httpx  # Add httpx import for async HTTP calls
@@ -36,31 +36,6 @@ METRIC_TYPES = (
     "Total_time",
     "token_metrics",
 )
-
-
-@dataclass
-class TaskMetricSnapshot:
-    """Lightweight container for the latest aggregated task metrics."""
-
-    first_token_latency: float = 0.0
-    total_time: float = 0.0
-    total_tps: float = 0.0
-    completion_tps: float = 0.0
-    avg_total_tokens_per_req: float = 0.0
-    avg_completion_tokens_per_req: float = 0.0
-    rps: float = 0.0
-
-    def to_dict(self) -> Dict[str, float]:
-        """Serialize the snapshot to a plain dictionary for API responses."""
-        return {
-            "first_token_latency": self.first_token_latency,
-            "total_time": self.total_time,
-            "total_tps": self.total_tps,
-            "completion_tps": self.completion_tps,
-            "avg_total_tokens_per_req": self.avg_total_tokens_per_req,
-            "avg_completion_tokens_per_req": self.avg_completion_tokens_per_req,
-            "rps": self.rps,
-        }
 
 
 def _resolve_dataset_type(task: Task) -> str:
@@ -179,7 +154,6 @@ async def _persist_single_task_analysis(
     existing_analysis = existing_analysis_result.scalar_one_or_none()
 
     if existing_analysis:
-        logger.debug("Updating existing analysis for task {}", task_id)
         update_stmt = (
             update(TaskAnalysis)
             .where(TaskAnalysis.task_id == task_id)
@@ -199,7 +173,7 @@ async def _persist_single_task_analysis(
             else ""
         )
 
-    logger.debug("Creating new analysis for task {}", task_id)
+    logger.info("Creating new analysis for task {}", task_id)
     analysis = TaskAnalysis(
         task_id=task_id,
         eval_prompt=eval_prompt_value,
@@ -234,7 +208,7 @@ async def _build_model_info_payload(
     return metrics
 
 
-async def extract_task_metrics(
+async def extract_task_metrics(  # noqa: C901
     db, task_id: str, task: Optional[Task] = None
 ) -> Optional[Dict]:
     """
@@ -258,38 +232,75 @@ async def extract_task_metrics(
 
         metrics_map = await _fetch_latest_metric_entries(db, task_id)
 
-        ttft_reasoning_data = metrics_map.get("Time_to_first_reasoning_token")
-        ttft_output_data = metrics_map.get("Time_to_first_output_token")
+        metrics_data = {}
+
+        # Handle First Token Latency (TTFT)
+        # Check both reasoning and output token metrics
+        ttft_val = None
+        ttft_reasoning = metrics_map.get("Time_to_first_reasoning_token")
+        if (
+            ttft_reasoning
+            and ttft_reasoning.avg_latency
+            and float(ttft_reasoning.avg_latency) > 0
+        ):
+            ttft_val = float(ttft_reasoning.avg_latency) / 1000.0
+
+        if ttft_val is None:
+            ttft_output = metrics_map.get("Time_to_first_output_token")
+            if (
+                ttft_output
+                and ttft_output.avg_latency
+                and float(ttft_output.avg_latency) > 0
+            ):
+                ttft_val = float(ttft_output.avg_latency) / 1000.0
+
+        if ttft_val is not None:
+            metrics_data["first_token_latency"] = ttft_val
+
+        # Handle Total Time
         total_time_data = metrics_map.get("Total_time")
+        if (
+            total_time_data
+            and total_time_data.avg_latency
+            and float(total_time_data.avg_latency) > 0
+        ):
+            metrics_data["total_time"] = float(total_time_data.avg_latency) / 1000.0
+
+        # Handle RPS
+        rps_val = None
+        # Check Total_time first
+        if total_time_data and getattr(total_time_data, "rps", None):
+            val = float(total_time_data.rps)
+            if val > 0:
+                rps_val = val
+
+        # Fallback to Time_to_first_output_token if RPS is still None
+        if rps_val is None:
+            ttft_output = metrics_map.get("Time_to_first_output_token")
+            if ttft_output and getattr(ttft_output, "rps", None):
+                val = float(ttft_output.rps)
+                if val > 0:
+                    rps_val = val
+
+        if rps_val is not None:
+            metrics_data["rps"] = rps_val
+
+        # Handle Token Metrics
         token_data = metrics_map.get("token_metrics")
-
-        snapshot = TaskMetricSnapshot()
-
-        if ttft_reasoning_data and ttft_reasoning_data.avg_latency:
-            snapshot.first_token_latency = (
-                float(ttft_reasoning_data.avg_latency) / 1000.0
-            )
-        elif ttft_output_data and ttft_output_data.avg_latency:
-            snapshot.first_token_latency = float(ttft_output_data.avg_latency) / 1000.0
-
-        if total_time_data and total_time_data.avg_latency:
-            snapshot.total_time = float(total_time_data.avg_latency) / 1000.0
-
-        rps_value = _first_non_empty(
-            float(getattr(total_time_data, "rps", 0.0)) if total_time_data else None,
-            float(getattr(ttft_output_data, "rps", 0.0)) if ttft_output_data else None,
-        )
-        snapshot.rps = float(rps_value) if rps_value is not None else 0.0
-
         if token_data:
-            snapshot.total_tps = float(token_data.total_tps or 0.0)
-            snapshot.completion_tps = float(token_data.completion_tps or 0.0)
-            snapshot.avg_total_tokens_per_req = float(
-                token_data.avg_total_tokens_per_req or 0.0
-            )
-            snapshot.avg_completion_tokens_per_req = float(
-                token_data.avg_completion_tokens_per_req or 0.0
-            )
+            total_tps = float(token_data.total_tps or 0.0)
+            completion_tps = float(token_data.completion_tps or 0.0)
+            avg_total = float(token_data.avg_total_tokens_per_req or 0.0)
+            avg_completion = float(token_data.avg_completion_tokens_per_req or 0.0)
+
+            if total_tps > 0:
+                metrics_data["total_tps"] = total_tps
+            if completion_tps > 0:
+                metrics_data["completion_tps"] = completion_tps
+            if avg_total > 0:
+                metrics_data["avg_total_tokens_per_req"] = avg_total
+            if avg_completion > 0:
+                metrics_data["avg_completion_tokens_per_req"] = avg_completion
 
         dataset_type = _resolve_dataset_type(task)
 
@@ -301,7 +312,7 @@ async def extract_task_metrics(
             "duration": f"{getattr(task, 'duration', 0)}s",
             "stream_mode": truthy(getattr(task, "stream_mode", False)),
             "dataset_type": dataset_type,
-            **snapshot.to_dict(),
+            **metrics_data,
         }
 
     except Exception as e:
@@ -373,7 +384,7 @@ async def _call_ai_service(
         )
 
     prompt = _build_analysis_prompt_text(type, language, model_info)
-    url = f"{host}/chat/completions"
+    url = f"{host}/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -407,6 +418,16 @@ async def _call_ai_service(
             message = choices[0].get("message", {})
             content = message.get("content")
             if content:
+                # Remove thinking content wrapped in <think> tags
+                # This handles models with reasoning mode that include thinking process
+                content = re.sub(
+                    r"<think>.*?</think>",
+                    "",
+                    content,
+                    flags=re.DOTALL,
+                )
+                # Clean up any extra whitespace left after removal
+                content = content.strip()
                 return content
 
         error_msg = "Invalid response format from AI service - missing content"

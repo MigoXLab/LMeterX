@@ -15,6 +15,7 @@ class CommonResultService:
     def insert_locust_results(
         self, session: Session, locust_result: dict, task_id: str
     ):
+        """Insert locust statistics for the given task into the database."""
         task_logger = logger.bind(task_id=task_id)
         try:
             locust_stats_list = locust_result.get("locust_stats", [])
@@ -74,19 +75,17 @@ class CommonResultService:
                     task_result = CommonTaskResult(**mapped_stat)
                     session.add(task_result)
                     task_logger.debug(
-                        f"[COMMON] Inserted stat for {metric_type}: "
+                        f" Inserted stat for {metric_type}: "
                         f"{mapped_stat['num_requests']} requests, {mapped_stat['num_failures']} failures"
                     )
                 else:
-                    task_logger.warning(
-                        f"[COMMON] Skipping invalid stat record: {stat}"
-                    )
+                    task_logger.warning(f" Skipping invalid stat record: {stat}")
 
             session.commit()
             task_logger.debug(
-                f"[COMMON] Successfully inserted {len(locust_stats_list)} stat entries."
+                f" Successfully inserted {len(locust_stats_list)} stat entries."
             )
         except Exception as e:
-            task_logger.exception(f"[COMMON] Failed to insert test results: {e}")
+            task_logger.exception(f" Failed to insert test results: {e}")
             session.rollback()
             raise

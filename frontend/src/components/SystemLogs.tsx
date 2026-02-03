@@ -160,9 +160,7 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
       if (error) setError(null);
     } catch (err: any) {
       const errorMessage =
-        err?.response?.data?.error ||
-        err?.message ||
-        `Failed to fetch ${displayName}`;
+        err?.response?.data?.error || err?.message || `Failed to fetch logs`;
       // Show serious errors on initial load, and non-blocking errors on polling
       if (loading) {
         setError(errorMessage);

@@ -223,7 +223,7 @@ class TaskCreateReq(BaseModel):
         v = v.strip()
         if len(v) > 255:
             raise ValueError("API address length cannot exceed 255 characters")
-        # 基本URL格式验证
+        # Basic URL format validation
         if not (v.startswith("http://") or v.startswith("https://")):
             raise ValueError("API address must start with http:// or https://")
         return v
@@ -498,6 +498,7 @@ class Task(Base):
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     status = Column(String(32), nullable=False)
+    created_by = Column(String(100), nullable=True)
     target_host = Column(String(255), nullable=False)
     model = Column(String(100), nullable=True)
     stream_mode = Column(String(20), nullable=False)

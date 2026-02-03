@@ -105,7 +105,6 @@ class ErrorResponse:
                 error_msg=error_msg,
                 response=None,
                 response_time=response_time,
-                additional_context={"api_path": self.config.api_path},
             )
             return True
 
@@ -121,7 +120,6 @@ class ErrorResponse:
                     error_msg=error_msg,
                     response=response,
                     response_time=response_time,
-                    additional_context={"api_path": self.config.api_path},
                 )
                 return True
 
@@ -138,7 +136,6 @@ class ErrorResponse:
                     error_msg=error_msg,
                     response=response,
                     response_time=response_time,
-                    additional_context={"api_path": self.config.api_path},
                 )
                 return True
         except Exception as e:
@@ -148,7 +145,6 @@ class ErrorResponse:
                 error_msg=error_msg,
                 response=response,
                 response_time=response_time,
-                additional_context={"api_path": self.config.api_path},
             )
             return True
 
@@ -174,5 +170,4 @@ class ErrorResponse:
             error_msg=error_msg,
             response=response,
             response_time=response_time,
-            additional_context={"api_path": self.config.api_path},
         )

@@ -9,11 +9,11 @@ import os
 import ssl
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import httpx
 from fastapi import Query, Request
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import delete, func, or_, select, text
 from starlette.responses import JSONResponse
 
 from model.common_task import CommonTask
@@ -34,6 +34,8 @@ from model.task import (
     TaskStatusRsp,
 )
 from service.analysis_service import extract_multiple_task_metrics
+from utils.auth import get_current_user
+from utils.auth_settings import get_auth_settings
 from utils.be_config import UPLOAD_FOLDER
 from utils.converters import (
     dict_to_kv_list,
@@ -53,6 +55,25 @@ MAX_HEADER_ITEMS = 20
 MAX_COOKIE_ITEMS = 20
 DEFAULT_API_TYPE = "openai-chat"
 AUTO_FIELD_MAPPING_APIS = {"openai-chat", "claude-chat"}
+settings = get_auth_settings()
+
+
+def _get_username_from_request(request: Request) -> str:
+    """
+    Extract the username from the authenticated request.
+    Returns an empty string when unavailable to avoid None handling.
+    """
+    user = get_current_user(request)
+    if isinstance(user, dict):
+        username = str(user.get("username") or user.get("sub") or "").strip()
+        return username
+    return ""
+
+
+def _resolve_created_by(value: Optional[str]) -> Optional[str]:
+    if settings.LDAP_ENABLED:
+        return value
+    return value or "-"
 
 
 def _build_task_summary(task: Task) -> Dict[str, Any]:
@@ -63,6 +84,7 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
         "id": task.id,
         "name": task.name,
         "status": task.status,
+        "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "target_host": task.target_host,
         "api_path": task.api_path,
         "model": task.model,
@@ -94,6 +116,7 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "id": task.id,
         "name": task.name,
         "status": task.status,
+        "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "target_host": task.target_host,
         "model": task.model,
         "duration": task.duration,
@@ -121,8 +144,8 @@ def _build_common_task_detail(task: CommonTask) -> Dict[str, Any]:
         "id": task.id,
         "name": task.name,
         "status": task.status,
+        "created_by": getattr(task, "created_by", None),
         "target_host": task.target_host,
-        "api_path": task.api_path,
         "model": task.method,  # reuse method label for display
         "duration": task.duration,
         "concurrent_users": task.concurrent_users,
@@ -238,6 +261,7 @@ async def get_tasks_svc(
                     Task.name.ilike(f"%{search}%"),
                     Task.id.ilike(f"%{search}%"),
                     Task.model.ilike(f"%{search}%"),
+                    Task.created_by.ilike(f"%{search}%"),
                 )
             )
 
@@ -323,6 +347,12 @@ async def stop_task_svc(request: Request, task_id: str):
                 status="unknown", task_id=task_id, message="Task not found"
             )
 
+        if settings.LDAP_ENABLED:
+            username = _get_username_from_request(request)
+            # forbid stopping task without creator info or by non-creator
+            if not task.created_by or task.created_by != username:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+
         if task.status != "running":
             return TaskCreateRsp(
                 status=task.status,
@@ -368,10 +398,19 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
     test_data = body.test_data or ""
 
     request_payload_dict = _prepare_request_payload(body)
-    request_payload = json.dumps(request_payload_dict)
+    request_payload = json.dumps(request_payload_dict, ensure_ascii=False)
 
     db = request.state.db
     try:
+        # Resolve creator from authenticated user
+        user = get_current_user(request)
+        created_by: Optional[str] = None
+        if isinstance(user, dict):
+            created_by = str(user.get("username") or user.get("sub") or "").strip()
+        created_by = created_by[:100] or None
+        if not settings.LDAP_ENABLED:
+            created_by = created_by or "-"
+
         # Convert field_mapping to JSON string if provided
         # For standard chat APIs (openai-chat, claude-chat), empty field_mapping is acceptable
         # as st_engine will auto-generate it based on api_type
@@ -403,6 +442,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             error_message="",
             cert_file=cert_file,
             key_file=key_file,
+            created_by=created_by,
             api_path=body.api_path,
             request_payload=request_payload,
             field_mapping=field_mapping_json,
@@ -425,6 +465,88 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
         error_msg = "Failed to create task in database"
         logger.error("Failed to create task in database: {}", e, exc_info=True)
         raise ErrorResponse.internal_server_error(error_msg)
+
+
+async def update_task_svc(request: Request, task_id: str, payload: Dict[str, Any]):
+    """
+    Update mutable fields of a task. Currently only supports renaming.
+    Enforces that only the creator can perform the update when recorded.
+    """
+    if not task_id:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
+
+    new_name = str(payload.get("name") or "").strip()
+    if not new_name:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_NAME_REQUIRED)
+    if len(new_name) > 100:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_NAME_LENGTH_INVALID)
+
+    db = request.state.db
+    try:
+        task = await db.get(Task, task_id)
+        if not task:
+            raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+
+        if settings.LDAP_ENABLED:
+            username = _get_username_from_request(request)
+            # forbidden to update task without created_by
+            if not task.created_by:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            if task.created_by != username:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+
+        task.name = new_name
+        await db.commit()
+        await db.refresh(task)
+        return {"status": "success", "task_id": task_id, "name": task.name}
+    except ErrorResponse:
+        await db.rollback()
+        raise
+    except Exception as e:  # pragma: no cover - defensive logging
+        await db.rollback()
+        logger.error("Failed to update task {}: {}", task_id, e, exc_info=True)
+        raise ErrorResponse.internal_server_error(ErrorMessages.TASK_UPDATE_FAILED)
+
+
+async def delete_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
+    """
+    Delete a task and its related results. Only the creator can delete.
+    """
+    if not task_id:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
+
+    db = request.state.db
+    try:
+        task = await db.get(Task, task_id)
+        if not task:
+            raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+
+        # Prevent deleting tasks that are running or currently stopping to avoid orphaned resources
+        if str(task.status).lower() in {"running", "stopping"}:
+            raise ErrorResponse.bad_request(
+                "Cannot delete a task while it is running or stopping. Please stop the task and wait until it finishes."
+            )
+
+        if settings.LDAP_ENABLED:
+            username = _get_username_from_request(request)
+            # forbidden to delete task without created_by
+            if not task.created_by:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            if task.created_by != username:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+
+        # Clean up related results to avoid orphaned data
+        await db.execute(delete(TaskResult).where(TaskResult.task_id == task_id))
+        await db.delete(task)
+        await db.commit()
+        return {"status": "success", "task_id": task_id, "message": "Task deleted"}
+    except ErrorResponse:
+        await db.rollback()
+        raise
+    except Exception as e:  # pragma: no cover - defensive logging
+        await db.rollback()
+        logger.error("Failed to delete task {}: {}", task_id, e, exc_info=True)
+        raise ErrorResponse.internal_server_error(ErrorMessages.TASK_DELETION_FAILED)
 
 
 async def get_task_result_svc(request: Request, task_id: str):
@@ -675,13 +797,6 @@ async def compare_performance_svc(
         # Use the shared utility to extract metrics for all tasks
         metrics_data_list = await extract_multiple_task_metrics(db, task_ids)
 
-        # Log metrics extraction results for debugging
-        logger.info(
-            "Extracted metrics for {} out of {} tasks",
-            len(metrics_data_list),
-            len(task_ids),
-        )
-
         # Check if we have any valid metrics
         if not metrics_data_list:
             return ComparisonResponse(
@@ -703,17 +818,19 @@ async def compare_performance_svc(
                         duration=metrics_data["duration"],
                         stream_mode=metrics_data["stream_mode"],
                         dataset_type=metrics_data["dataset_type"],
-                        first_token_latency=metrics_data["first_token_latency"],
-                        total_time=metrics_data["total_time"],
-                        total_tps=metrics_data["total_tps"],
-                        completion_tps=metrics_data["completion_tps"],
-                        avg_total_tokens_per_req=metrics_data[
-                            "avg_total_tokens_per_req"
-                        ],
-                        avg_completion_tokens_per_req=metrics_data[
-                            "avg_completion_tokens_per_req"
-                        ],
-                        rps=metrics_data["rps"],
+                        first_token_latency=metrics_data.get(
+                            "first_token_latency", 0.0
+                        ),
+                        total_time=metrics_data.get("total_time", 0.0),
+                        total_tps=metrics_data.get("total_tps", 0.0),
+                        completion_tps=metrics_data.get("completion_tps", 0.0),
+                        avg_total_tokens_per_req=metrics_data.get(
+                            "avg_total_tokens_per_req", 0.0
+                        ),
+                        avg_completion_tokens_per_req=metrics_data.get(
+                            "avg_completion_tokens_per_req", 0.0
+                        ),
+                        rps=metrics_data.get("rps", 0.0),
                     )
                     comparison_metrics.append(metrics)
                 except Exception as e:
@@ -858,7 +975,7 @@ def _validate_certificate_files(
             ):
                 return False, "Private key file is not a valid PEM private key"
         else:
-            # 仅提供了一个 cert_file，需同时包含证书+私钥
+            # Only cert_file provided, must contain both certificate and private key
             if (
                 "BEGIN PRIVATE KEY" not in cert_text
                 and "BEGIN RSA PRIVATE KEY" not in cert_text

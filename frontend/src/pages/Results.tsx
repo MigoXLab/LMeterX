@@ -10,6 +10,7 @@ import {
   FileTextOutlined,
   InfoCircleOutlined,
   RobotOutlined,
+  UnorderedListOutlined,
   UpOutlined,
 } from '@ant-design/icons';
 import {
@@ -505,6 +506,12 @@ const TaskResults: React.FC = () => {
       isMeaningfulValue(ttftDisplay) &&
       isMeaningfulValue(firstTokenResult?.avg_response_time);
 
+    const rpsValue = CompletionResult?.rps ?? firstTokenResult?.rps;
+    const qpmValue =
+      rpsValue !== null && rpsValue !== undefined
+        ? Number(rpsValue) * 60
+        : null;
+
     const firstRowMetrics: (OverviewMetric | null)[] = [
       {
         key: 'totalRequests',
@@ -518,12 +525,9 @@ const TaskResults: React.FC = () => {
         suffix: '%',
       },
       {
-        key: 'rps',
-        title: createTitleWithTooltip(t('pages.results.rps'), 'RPS'),
-        value: formatMetricValue(
-          CompletionResult?.rps ?? firstTokenResult?.rps,
-          2
-        ),
+        key: 'qpm',
+        title: 'QPM',
+        value: formatMetricValue(qpmValue, 2),
       },
     ];
 
@@ -870,6 +874,18 @@ const TaskResults: React.FC = () => {
             >
               {t('pages.results.downloadReport')}
             </Button>
+            <Button
+              type='primary'
+              icon={<UnorderedListOutlined />}
+              onClick={() => {
+                if (id) {
+                  window.open(`/logs/task/${id}`, '_blank');
+                }
+              }}
+              disabled={!id}
+            >
+              {t('pages.results.viewLogs')}
+            </Button>
           </Space>
         </div>
       </div>
@@ -883,21 +899,27 @@ const TaskResults: React.FC = () => {
           />
         </div>
       ) : error ? (
-        <div className='flex justify-center p-24'>
+        <div
+          className='flex justify-center align-center'
+          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
+        >
           <Alert
             description={error}
             type='error'
             showIcon
-            className='btn-transparent'
+            style={{ background: 'transparent', border: 'none' }}
           />
         </div>
       ) : !results || results.length === 0 ? (
-        <div className='flex justify-center p-24'>
+        <div
+          className='flex justify-center align-center'
+          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
+        >
           <Alert
             description={t('pages.results.noTestResultsAvailable')}
             type='info'
             showIcon
-            className='btn-transparent'
+            style={{ background: 'transparent', border: 'none' }}
           />
         </div>
       ) : (

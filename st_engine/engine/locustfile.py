@@ -20,6 +20,7 @@ from engine.core import ConfigManager, GlobalStateManager, ValidationManager
 from engine.request_processor import APIClient, PayloadBuilder
 from utils.common import mask_sensitive_data
 from utils.error_handler import ErrorResponse
+from utils.event_handler import EventManager
 from utils.logger import logger
 from utils.stats_manager import StatsManager
 from utils.token_counter import count_tokens
@@ -44,12 +45,27 @@ def _register_signal_handlers(task_logger):
             task_logger.warning(f"Failed to register handler for {sig}: {exc}")
 
 
+def _is_warmup_mode(options) -> bool:
+    """Check if running in warmup mode."""
+    warmup_mode = getattr(options, "warmup_mode", "false")
+    return str(warmup_mode).lower() in ("true", "1", "yes")
+
+
 def _ensure_prompt_queue(environment, options, task_logger):
     """
     Ensure the Locust environment carries a prompt_queue.
     Returns the queue instance for chaining.
+    In warmup mode, skip dataset loading - use default prompt only.
     """
     if hasattr(environment, "prompt_queue"):
+        return environment.prompt_queue
+
+    # In warmup mode, skip dataset loading to use original payload
+    if _is_warmup_mode(options):
+        task_logger.info(
+            "Warmup mode: skipping dataset loading, using original payload"
+        )
+        environment.prompt_queue = queue.Queue()
         return environment.prompt_queue
 
     try:
@@ -233,6 +249,12 @@ def init_parser(parser):
         default=60,
         help="Test duration in seconds (used as fallback when start_time is unavailable)",
     )
+    parser.add_argument(
+        "--warmup_mode",
+        type=str,
+        default="false",
+        help="Whether this is a warmup run (no stats collection)",
+    )
 
 
 @events.init.add_listener
@@ -269,8 +291,13 @@ def on_locust_init(environment, **kwargs):
         _ensure_prompt_queue(environment, options, task_logger)
 
         environment.global_config = config
+        environment.warmup_mode = _is_warmup_mode(options)
         masked_config = mask_sensitive_data(config.__dict__)
         task_logger.info(f"Loaded task configuration: {masked_config}")
+        if environment.warmup_mode:
+            task_logger.info(
+                "Running in warmup mode - token stats will not be collected"
+            )
         global_state.start_time = time.time()
 
         # Register message handlers
@@ -290,6 +317,11 @@ def on_test_stop(environment, **kwargs):
         task_logger = global_state.get_task_logger(global_state.config.task_id)
         runner = environment.runner
 
+        # Skip stats collection in warmup mode
+        if getattr(environment, "warmup_mode", False):
+            task_logger.info("Warmup mode completed - skipping stats collection")
+            return
+
         # Only Master and LocalRunner need to output report
         if not isinstance(runner, (MasterRunner, LocalRunner)):
             return
@@ -301,16 +333,18 @@ def on_test_stop(environment, **kwargs):
             wait_time = wait_time_for_stats_sync(runner, int(concurrent_users))
             time.sleep(wait_time)
 
-        final_stats = stats_manager.get_final_stats()
         task_id = global_state.config.task_id
 
-        # Get Locust standard stats
+        # Get Locust standard stats first (needed for TTFT extraction)
         try:
             locust_stats = stats_manager.get_locust_stats(task_id, environment.stats)
             task_logger.info(f"Locust stats: {locust_stats}")
         except Exception as e:
             task_logger.warning(f"Failed to get Locust stats: {e}")
             locust_stats = {}
+
+        # Get final stats with environment.stats for TTFT calculation
+        final_stats = stats_manager.get_final_stats(environment.stats)
 
         _write_result_file(task_id, final_stats, locust_stats, task_logger)
         task_logger.info(f"Final statistics: {final_stats}")
@@ -391,7 +425,11 @@ class LLMTestUser(HttpUser):
         content: str,
         usage: Optional[Dict[str, Optional[int]]] = None,
     ) -> None:
-        """Record token counts"""
+        """Record token counts. Skip in warmup mode."""
+        # Skip token stats collection in warmup mode
+        if getattr(self.environment, "warmup_mode", False):
+            return
+
         try:
             model_name = self.config.model_name or ""
             user_prompt = user_prompt or ""
@@ -422,9 +460,17 @@ class LLMTestUser(HttpUser):
                 # Ensure total_tokens consistency
                 if total_tokens == 0:
                     total_tokens = input_tokens + completion_tokens
+                logger.debug(f"usage: {usage}")
+            # If usage provides total+input but not completion, derive completion to avoid extra tokenization
+            if completion_tokens == 0 and total_tokens > 0 and input_tokens > 0:
+                completion_tokens = max(total_tokens - input_tokens, 0)
 
-            # If completion_tokens is 0 and there is content to calculate, fallback to manual calculation
-            if completion_tokens == 0 and (content or reasoning_content):
+            # Only fallback to manual tokenization when usage does not provide totals
+            if (
+                completion_tokens == 0
+                and total_tokens == 0
+                and (content or reasoning_content)
+            ):
                 input_tokens = (
                     count_tokens(str(user_prompt), model_name) if user_prompt else 0
                 )
@@ -440,6 +486,13 @@ class LLMTestUser(HttpUser):
                 total_tokens = input_tokens + completion_tokens
 
             if completion_tokens > 0 or total_tokens > 0:
+                # Register token counts in Locust metrics for percentile stats
+                if input_tokens > 0:
+                    EventManager.fire_metric_event("Input_tokens", int(input_tokens), 0)
+                if completion_tokens > 0:
+                    EventManager.fire_metric_event(
+                        "Completion_tokens", int(completion_tokens), 0
+                    )
                 # Select statistics based on runner type
                 runner = self.environment.runner
                 try:

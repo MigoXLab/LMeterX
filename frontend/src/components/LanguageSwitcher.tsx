@@ -63,14 +63,6 @@ const LanguageSwitcher: React.FC = () => {
     },
   ];
 
-  const getCurrentLanguageLabel = () => {
-    return currentLanguage === 'zh' ? '中文' : 'English';
-  };
-
-  // const getCurrentFlag = () => {
-  //   return currentLanguage === 'zh' ? '🇨🇳' : '🇺🇸';
-  // };
-
   return (
     <Dropdown
       menu={{ items }}
@@ -88,9 +80,10 @@ const LanguageSwitcher: React.FC = () => {
           border: 'none',
           background: 'transparent',
           color: '#333',
-          borderRadius: '6px',
-          padding: '6px 12px',
+          borderRadius: '8px',
+          padding: 0,
           height: '36px',
+          width: '36px',
           lineHeight: '1',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           fontWeight: 500,
@@ -100,23 +93,11 @@ const LanguageSwitcher: React.FC = () => {
       >
         <GlobalOutlined
           style={{
-            marginRight: '6px',
-            fontSize: '14px',
+            fontSize: '16px',
             display: 'flex',
             alignItems: 'center',
           }}
         />
-        <span
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            fontSize: '14px',
-            lineHeight: '1',
-            fontWeight: 500,
-          }}
-        >
-          {getCurrentLanguageLabel()}
-        </span>
       </Button>
     </Dropdown>
   );

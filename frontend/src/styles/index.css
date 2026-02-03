@@ -52,36 +52,108 @@ body {
    Modern UI Styles - Tech & Minimalist
    ======================================== */
 
+/* Header Layout */
+.header-shell {
+  width: 100%;
+}
+
+.header-inner {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0 80px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-menu-trigger {
+  border-radius: 8px !important;
+  border: none !important;
+  background: transparent !important;
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  line-height: 1 !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.user-menu-trigger::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 0, 0, 0.05),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.user-menu-trigger:hover::before {
+  left: 100%;
+}
+
+.user-menu-trigger:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #000 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+.user-menu-trigger:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
 /* Header Navigation Menu Styles */
 :global(.header-nav-menu) {
   background: transparent !important;
   border: none !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
 :global(.header-nav-menu .ant-menu-item) {
-  color: #333 !important;
-  border-radius: 0 !important;
-  margin: 0 8px !important;
+  color: #1f2937 !important;
+  border-radius: 10px !important;
+  margin: 12px 8px !important;
   transition: all 0.2s ease !important;
   border: none !important;
-  font-weight: 400 !important;
+  font-weight: 500 !important;
   font-size: 14px !important;
-  padding: 0 12px !important;
-  height: 64px !important;
-  line-height: 64px !important;
+  padding: 0 14px !important;
+  height: 40px !important;
+  line-height: 40px !important;
 }
 
 :global(.header-nav-menu .ant-menu-item:hover) {
-  background: transparent !important;
-  color: #333 !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: #0f172a !important;
 }
 
 :global(.header-nav-menu .ant-menu-item-selected) {
-  background: transparent !important;
-  color: #333 !important;
+  background: rgba(102, 126, 234, 0.12) !important;
+  color: #0f172a !important;
   border: none !important;
-  font-weight: 500 !important;
-  border-bottom: 2px solid #333 !important;
+  font-weight: 600 !important;
+  box-shadow: inset 0 0 0 1px rgba(102, 126, 234, 0.12);
 }
 
 :global(.header-nav-menu .ant-menu-item-selected::after) {
@@ -449,6 +521,7 @@ body {
 }
 
 :global(.jobs-content-wrapper .modern-table .ant-table-thead > tr > th) {
+  background: transparent !important;
   padding-left: 24px !important;
   padding-right: 24px !important;
 }
@@ -982,7 +1055,7 @@ body {
 }
 
 .page-container {
-  padding: 32px 160px;
+  padding: 32px 80px;
   background: #ffffff;
   min-height: calc(100vh - 64px);
   max-width: 100%;
@@ -1160,6 +1233,12 @@ body {
   padding: 0;
   background: transparent;
   overflow: auto;
+}
+
+.auth-content {
+  padding: 0;
+  margin: 0;
+  background: transparent;
 }
 
 .custom-sider {
@@ -2007,6 +2086,125 @@ body {
 
 .analysis-content .markdown-content table {
   min-width: 800px;
+}
+
+/* ========================================
+   Comparison Chart Styles
+   ======================================== */
+
+/* Chart container wrapper */
+.comparison-chart-wrapper {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.comparison-chart-wrapper:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Chart title with tooltip */
+.comparison-chart-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.comparison-chart-title span:first-child {
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+  letter-spacing: -0.01em;
+}
+
+/* G2 Chart overrides for better appearance */
+:global(.g2-tooltip) {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  padding: 12px 16px !important;
+  background: #ffffff !important;
+}
+
+:global(.g2-tooltip-title) {
+  font-weight: 600 !important;
+  color: #262626 !important;
+  margin-bottom: 8px !important;
+  font-size: 13px !important;
+}
+
+:global(.g2-tooltip-list-item) {
+  margin-bottom: 4px !important;
+}
+
+:global(.g2-tooltip-name) {
+  color: #595959 !important;
+  font-size: 12px !important;
+}
+
+:global(.g2-tooltip-value) {
+  font-weight: 600 !important;
+  color: #1a1a1a !important;
+  font-size: 13px !important;
+  margin-left: 12px !important;
+}
+
+/* Chart slider styles */
+:global(.g2-slider) {
+  margin-top: 16px !important;
+}
+
+:global(.g2-slider-foreground) {
+  fill: rgba(102, 126, 234, 0.15) !important;
+}
+
+:global(.g2-slider-handler) {
+  fill: #ffffff !important;
+  stroke: #d9d9d9 !important;
+  cursor: ew-resize !important;
+}
+
+:global(.g2-slider-handler:hover) {
+  stroke: #667eea !important;
+}
+
+/* Improve chart label visibility */
+:global(.g2-label-item) {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Chart grid refinement */
+:global(.g2-axis-grid-line) {
+  stroke: #f0f0f0 !important;
+}
+
+/* Active region highlight */
+:global(.g2-element-active) {
+  cursor: pointer;
+}
+
+/* Comparison metrics grid layout */
+.comparison-metrics-grid {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 1200px) {
+  .comparison-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 1199px) {
+  .comparison-metrics-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 响应式设计 */

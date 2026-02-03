@@ -367,16 +367,128 @@ docker stats $(docker-compose ps -q)
 
    # 修改应用密钥
    SECRET_KEY=your_random_secret_key
+   JWT_SECRET_KEY=your_random_jwt_secret_key
    ```
 
-2. **限制网络访问**：
+2. **启用 LDAP/AD 认证**(推荐企业部署)：
+
+   LMeterX 支持企业级 LDAP/Active Directory 认证，实现统一用户管理和单点登录。
+
+   **步骤 1: 配置后端 LDAP 设置**
+
+   在 `docker-compose.yml` 的 `backend` 服务中添加以下环境变量：
+
+   ```yaml
+   backend:
+     environment:
+       # 启用 LDAP 认证
+       - LDAP_ENABLED=on
+
+       # LDAP 服务器连接
+       - LDAP_SERVER=ldap://ldap.example.com
+       - LDAP_PORT=389
+       - LDAP_USE_SSL=false          # LDAPS 使用 true
+       - LDAP_TIMEOUT=5
+
+       # LDAP 搜索配置
+       - LDAP_SEARCH_BASE=dc=example,dc=com
+       - LDAP_SEARCH_FILTER=(sAMAccountName={username})
+
+       # 选择一种认证方式:
+       # 方式 1: 直接绑定(简单 LDAP)
+       - LDAP_USER_DN_TEMPLATE=cn={username},ou=users,dc=example,dc=com
+
+       # 方式 2: 服务账号绑定(Active Directory)
+       - LDAP_BIND_DN=cn=service,ou=users,dc=example,dc=com
+       - LDAP_BIND_PASSWORD=service_password
+
+       # JWT 配置
+       - JWT_SECRET_KEY=请修改为随机字符串
+       - JWT_EXPIRE_MINUTES=480      # 8小时
+   ```
+
+   **步骤 2: 启用前端登录界面**
+
+   在 `frontend` 服务中添加以下环境变量：
+
+   ```yaml
+   frontend:
+     environment:
+       - VITE_LDAP_ENABLED=on
+       - VITE_PERSIST_ACCESS_TOKEN=true
+   ```
+
+   **步骤 3: 重启服务**
+
+   ```bash
+   docker-compose down
+   docker-compose up -d
+   ```
+
+   **常见 LDAP 配置示例:**
+
+   <details>
+   <summary>Active Directory (微软 AD)</summary>
+
+   ```bash
+   LDAP_ENABLED=on
+   LDAP_SERVER=ldap://ad.company.com
+   LDAP_PORT=389
+   LDAP_USE_SSL=false
+   LDAP_SEARCH_BASE=dc=company,dc=com
+   LDAP_SEARCH_FILTER=(sAMAccountName={username})
+   LDAP_BIND_DN=cn=ldapservice,ou=ServiceAccounts,dc=company,dc=com
+   LDAP_BIND_PASSWORD=您的服务密码
+   ```
+   </details>
+
+   <details>
+   <summary>OpenLDAP</summary>
+
+   ```bash
+   LDAP_ENABLED=on
+   LDAP_SERVER=ldap://ldap.example.com
+   LDAP_PORT=389
+   LDAP_USE_SSL=false
+   LDAP_SEARCH_BASE=ou=users,dc=example,dc=com
+   LDAP_USER_DN_TEMPLATE=uid={username},ou=users,dc=example,dc=com
+   ```
+   </details>
+
+   <details>
+   <summary>LDAPS (安全 LDAP)</summary>
+
+   ```bash
+   LDAP_ENABLED=on
+   LDAP_SERVER=ldaps://ldap.example.com
+   LDAP_PORT=636
+   LDAP_USE_SSL=true
+   LDAP_SEARCH_BASE=dc=example,dc=com
+   LDAP_BIND_DN=cn=admin,dc=example,dc=com
+   LDAP_BIND_PASSWORD=admin_password
+   ```
+   </details>
+
+   **测试 LDAP 连接:**
+
+   ```bash
+   # 查看后端日志中的 LDAP 连接状态
+   docker-compose logs backend | grep -i ldap
+
+   # 通过 API 测试登录
+   curl -X POST http://localhost:5001/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"testuser","password":"testpass"}'
+   ```
+
+3. **限制网络访问**：
    ```yaml
    # 仅暴露必要端口
    ports:
      - "127.0.0.1:80:80"
    ```
 
-3. **启用 HTTPS**：
+4. **启用 HTTPS**：
    ```nginx
    # 在 Nginx 配置中添加 SSL 配置
    server {

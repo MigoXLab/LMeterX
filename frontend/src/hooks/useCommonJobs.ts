@@ -6,8 +6,10 @@ import type { MessageInstance } from 'antd/es/message/interface';
 import axios from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getApiBaseUrl } from '../utils/runtimeConfig';
 
 import { Pagination as ApiPagination, CommonJob } from '../types/job';
+import { getToken } from '../utils/auth';
 
 interface AntdPagination {
   current: number;
@@ -15,7 +17,17 @@ interface AntdPagination {
   total: number;
 }
 
-const VITE_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const VITE_API_BASE_URL = getApiBaseUrl();
+
+const buildAuthHeaders = () => {
+  const token = getToken();
+  return token
+    ? {
+        // Use X-Authorization to avoid upstream filters blocking Authorization
+        'X-Authorization': `Bearer ${token}`,
+      }
+    : {};
+};
 
 export const useCommonJobs = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
@@ -37,6 +49,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const fetchingRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
+  const isManualRefreshRef = useRef(false);
 
   const lastRequestParamsRef = useRef<{
     page: number;
@@ -44,6 +57,24 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     status: string;
     search: string;
   } | null>(null);
+
+  // Use refs to access latest values without causing re-renders
+  const paginationRef = useRef(pagination);
+  const statusFilterRef = useRef(statusFilter);
+  const searchTextRef = useRef(searchText);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    paginationRef.current = pagination;
+  }, [pagination]);
+
+  useEffect(() => {
+    statusFilterRef.current = statusFilter;
+  }, [statusFilter]);
+
+  useEffect(() => {
+    searchTextRef.current = searchText;
+  }, [searchText]);
 
   const fetchJobs = useCallback(
     async (
@@ -55,11 +86,16 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         search: string;
       }>
     ) => {
+      // Mark as manual refresh to prevent useEffect from triggering
+      if (isManualRefresh) {
+        isManualRefreshRef.current = true;
+      }
+
       const currentParams = {
-        page: override?.page ?? pagination.current,
-        pageSize: override?.pageSize ?? pagination.pageSize,
-        status: override?.status ?? statusFilter,
-        search: override?.search ?? searchText,
+        page: override?.page ?? paginationRef.current.current,
+        pageSize: override?.pageSize ?? paginationRef.current.pageSize,
+        status: override?.status ?? statusFilterRef.current,
+        search: override?.search ?? searchTextRef.current,
       };
 
       // If a fetch is in-flight with identical params, skip; otherwise allow new fetch
@@ -72,6 +108,9 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         lastRequestParamsRef.current.status === currentParams.status &&
         lastRequestParamsRef.current.search === currentParams.search
       ) {
+        if (isManualRefresh) {
+          isManualRefreshRef.current = false;
+        }
         return;
       }
 
@@ -97,6 +136,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
             'Cache-Control': 'no-cache',
             Pragma: 'no-cache',
             Expires: '0',
+            ...buildAuthHeaders(),
           },
         });
 
@@ -133,9 +173,15 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         if (!initialLoadDoneRef.current) {
           initialLoadDoneRef.current = true;
         }
+        // Reset manual refresh flag after a short delay to allow state updates to complete
+        if (isManualRefresh) {
+          setTimeout(() => {
+            isManualRefreshRef.current = false;
+          }, 100);
+        }
       }
     },
-    [pagination.current, pagination.pageSize, statusFilter, searchText, t]
+    [t]
   );
 
   const fetchJobStatuses = useCallback(async () => {
@@ -161,6 +207,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         {
           signal: controller.signal,
           timeout: 30000,
+          headers: buildAuthHeaders(),
         }
       );
 
@@ -286,6 +333,10 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     if (!initialLoadDoneRef.current) {
       return;
     }
+    // Skip if this is triggered by a manual refresh
+    if (isManualRefreshRef.current) {
+      return;
+    }
     fetchJobs();
   }, [
     pagination.current,
@@ -337,7 +388,8 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         setLoading(true);
         const response = await axios.post(
           `${VITE_API_BASE_URL}/common-tasks`,
-          data
+          data,
+          { headers: buildAuthHeaders() }
         );
         if (response.status === 200 || response.status === 201) {
           messageApi.success(t('pages.jobs.createSuccess'));
@@ -362,7 +414,9 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     async (taskId: string) => {
       try {
         const response = await axios.post(
-          `${VITE_API_BASE_URL}/common-tasks/stop/${taskId}`
+          `${VITE_API_BASE_URL}/common-tasks/stop/${taskId}`,
+          null,
+          { headers: buildAuthHeaders() }
         );
         if (response.status === 200) {
           messageApi.success(t('pages.jobs.stopSuccess'));
@@ -381,6 +435,57 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     [fetchJobs, messageApi, t]
   );
 
+  const updateJobName = useCallback(
+    async (taskId: string, name: string) => {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        messageApi.error(t('pages.jobs.renameFailed'));
+        return false;
+      }
+      setLoading(true);
+      try {
+        await axios.put(
+          `${VITE_API_BASE_URL}/common-tasks/${taskId}`,
+          { name: trimmedName },
+          { headers: buildAuthHeaders() }
+        );
+        messageApi.success(t('pages.jobs.renameSuccess'));
+        await fetchJobs(true);
+        return true;
+      } catch (error: any) {
+        messageApi.error(
+          error?.response?.data?.error || t('pages.jobs.renameFailed')
+        );
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchJobs, messageApi, t]
+  );
+
+  const deleteJob = useCallback(
+    async (taskId: string) => {
+      setLoading(true);
+      try {
+        await axios.delete(`${VITE_API_BASE_URL}/common-tasks/${taskId}`, {
+          headers: buildAuthHeaders(),
+        });
+        messageApi.success(t('pages.jobs.deleteSuccess'));
+        await fetchJobs(true);
+        return true;
+      } catch (error: any) {
+        messageApi.error(
+          error?.response?.data?.error || t('pages.jobs.deleteFailed')
+        );
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchJobs, messageApi, t]
+  );
+
   return {
     filteredJobs: jobs,
     pagination,
@@ -393,6 +498,8 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     statusFilter,
     createJob,
     stopJob,
+    updateJobName,
+    deleteJob,
     manualRefresh: async (
       override?: Partial<{
         page: number;
@@ -402,6 +509,21 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
       }>
     ) => {
       setRefreshing(true);
+      isManualRefreshRef.current = true;
+      // Update pagination state before fetching if override is provided
+      if (override?.page !== undefined || override?.pageSize !== undefined) {
+        setPagination(prev => ({
+          ...prev,
+          current: override?.page ?? prev.current,
+          pageSize: override?.pageSize ?? prev.pageSize,
+        }));
+      }
+      if (override?.status !== undefined) {
+        setStatusFilter(override.status);
+      }
+      if (override?.search !== undefined) {
+        setSearchText(override.search);
+      }
       await fetchJobs(true, override);
       setRefreshing(false);
     },

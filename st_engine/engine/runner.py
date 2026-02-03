@@ -23,9 +23,7 @@ from config.multiprocess import (
 )
 from engine.process_manager import (
     allocate_master_port,
-    cleanup_all_locust_processes,
     cleanup_task_resources,
-    force_cleanup_orphaned_processes,
     register_locust_process_group,
     terminate_locust_process_group,
 )
@@ -40,6 +38,11 @@ class LocustRunner:
     """
 
     _process_dict: dict[str, subprocess.Popen] = {}
+    _stopped_task_ids: set[str] = (
+        set()
+    )  # Track task IDs that have been requested to stop
+    _WARMUP_DURATION_SECONDS = 120
+    _WARMUP_COOLDOWN_SECONDS = 3
 
     def __init__(self, base_dir: str):
         """Create a runner rooted at the given repository directory."""
@@ -49,6 +52,7 @@ class LocustRunner:
     def run_locust_process(self, task: Task) -> dict:
         """
         Run Locust test as a separate process with full lifecycle management.
+        For LLM API tasks, runs a warmup phase first to avoid cold start interference.
         """
         task_logger = logger.bind(task_id=task.id)
         task_logger.info(f"Starting Locust task {task.id}")
@@ -56,6 +60,9 @@ class LocustRunner:
         try:
             # Step 1: Prepare environment
             self._prepare_task(task, task_logger)
+
+            # Step 1.5: Run warmup phase for LLM API tasks
+            self._run_warmup_phase(task, task_logger)
 
             # Step 2: Build and start process
             cmd = self._build_locust_command(task, task_logger)
@@ -68,6 +75,16 @@ class LocustRunner:
             result = self._finalize_task(process, task, stdout, stderr, task_logger)
             return result
 
+        except InterruptedError as e:
+            # Task was stopped during warmup phase
+            task_logger.info(f"Task {task.id} was stopped during warmup: {e}")
+            return {
+                "status": "STOPPED",
+                "stdout": "",
+                "stderr": str(e),
+                "return_code": -15,  # SIGTERM
+                "locust_result": {},
+            }
         except Exception as e:
             task_logger.exception(f"Unhandled exception during Locust execution: {e}")
             return {
@@ -104,6 +121,239 @@ class LocustRunner:
         if not os.path.exists(self._locustfile_path):
             raise FileNotFoundError(f"Locustfile not found at {self._locustfile_path}")
 
+    def _validate_subprocess_command(self, cmd: List[str], context: str) -> None:
+        """Basic safety validation for subprocess command args."""
+        if not isinstance(cmd, list) or not cmd:
+            raise ValueError(f"{context} command must be a non-empty list")
+        if not all(isinstance(arg, str) and arg for arg in cmd):
+            raise ValueError(f"{context} command args must be non-empty strings")
+        if any("\x00" in arg for arg in cmd):
+            raise ValueError(f"{context} command contains null byte")
+
+    def _run_warmup_phase(self, task: Task, task_logger) -> None:
+        """
+        Run warmup phase before the actual test to avoid cold start interference.
+        Uses original payload (no dataset), same concurrency, runs for 2 minutes.
+        After warmup, waits 10 seconds to let KV Cache stabilize.
+        """
+        task_logger.info(
+            f"Starting warmup phase: {self._WARMUP_DURATION_SECONDS}s with {task.concurrent_users} users"
+        )
+
+        warmup_task_id = f"{task.id}_warmup"
+
+        # Build warmup command (no test_data, with warmup_mode flag)
+        warmup_cmd = self._build_warmup_command(task, task_logger)
+        self._validate_subprocess_command(warmup_cmd, "Warmup")
+        masked_cmd = mask_sensitive_command(warmup_cmd)
+        task_logger.info(f"Warmup command: {' '.join(masked_cmd)}")
+
+        env = os.environ.copy()
+        env["TASK_ID"] = warmup_task_id
+        env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            f"{self.base_dir}{os.pathsep}{existing_pythonpath}"
+            if existing_pythonpath
+            else self.base_dir
+        )
+
+        warmup_process = None
+        try:
+            warmup_process = subprocess.Popen(
+                warmup_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                env=env,
+                shell=False,  # nosec B603 - validated args, no shell
+            )
+            task_logger.info(f"Warmup process started with PID={warmup_process.pid}")
+
+            # Register warmup process in _process_dict for stop handling
+            # Use warmup_task_id as key so stop_task can find it
+            self._process_dict[warmup_task_id] = warmup_process
+
+            # Handle multiprocess registration for warmup
+            cpu_count = get_cpu_count()
+            concurrent_users = int(task.concurrent_users)
+            if should_enable_multiprocess(concurrent_users, cpu_count):
+                try:
+                    warmup_port = allocate_master_port(warmup_task_id)
+                    warmup_worker_pids = self._capture_worker_pids(
+                        warmup_process.pid, warmup_task_id, task_logger
+                    )
+                    if warmup_worker_pids:
+                        register_locust_process_group(
+                            warmup_task_id,
+                            warmup_process.pid,
+                            warmup_worker_pids,
+                            warmup_port,
+                        )
+                        task_logger.info(
+                            f"Registered warmup process group: master={warmup_process.pid}, workers={warmup_worker_pids}"
+                        )
+                except Exception as e:
+                    task_logger.warning(
+                        f"Failed to register warmup multiprocess group: {e}"
+                    )
+
+            # Read and log warmup output in real-time using threads
+            def read_warmup_stream(pipe, prefix):
+                try:
+                    for line in iter(pipe.readline, ""):
+                        if line.strip():
+                            task_logger.opt(raw=True).info(f"{line}")
+                    pipe.close()
+                except Exception as e:
+                    task_logger.debug(f"Error reading warmup {prefix}: {e}")
+
+            stdout_thread = threading.Thread(
+                target=read_warmup_stream, args=(warmup_process.stdout, "stdout")
+            )
+            stderr_thread = threading.Thread(
+                target=read_warmup_stream, args=(warmup_process.stderr, "stderr")
+            )
+            stdout_thread.daemon = True
+            stderr_thread.daemon = True
+            stdout_thread.start()
+            stderr_thread.start()
+
+            # Wait for warmup to complete with timeout buffer
+            warmup_timeout = self._WARMUP_DURATION_SECONDS + LOCUST_STOP_TIMEOUT
+            try:
+                warmup_process.wait(timeout=warmup_timeout)
+                stdout_thread.join(timeout=5)
+                stderr_thread.join(timeout=5)
+                task_logger.info(
+                    f"Warmup phase completed with exit code {warmup_process.returncode}"
+                )
+            except subprocess.TimeoutExpired:
+                task_logger.warning("Warmup process timed out, terminating...")
+                warmup_process.terminate()
+                try:
+                    warmup_process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    warmup_process.kill()
+                    warmup_process.wait()
+
+            # Check if warmup was stopped externally (user clicked stop)
+            # Check 1: Process was killed by signal (negative return code)
+            # Check 2: Task was marked as stopped via _stopped_task_ids
+            was_stopped = False
+            if warmup_process.returncode is not None and warmup_process.returncode < 0:
+                task_logger.info(
+                    f"Warmup was terminated by signal {-warmup_process.returncode}."
+                )
+                was_stopped = True
+            elif task.id in self._stopped_task_ids:
+                task_logger.info(
+                    f"Task {task.id} was marked as stopped during warmup phase."
+                )
+                was_stopped = True
+
+            if was_stopped:
+                # Raise an exception to abort the main test
+                raise InterruptedError("Task was stopped during warmup phase")
+
+        except InterruptedError:
+            # Re-raise to propagate stop signal
+            raise
+        except Exception as e:
+            task_logger.warning(f"Warmup phase failed: {e}, continuing with main test")
+        finally:
+            # Cleanup warmup process tracking
+            self._process_dict.pop(warmup_task_id, None)
+
+            # Terminate multiprocess group if applicable
+            if should_enable_multiprocess(int(task.concurrent_users)):
+                terminate_locust_process_group(warmup_task_id, timeout=10.0)
+
+            # Cleanup warmup task resources
+            cleanup_task_resources(warmup_task_id)
+
+            # Cleanup any remaining warmup processes
+            warmup_pids = self._find_remaining_locust_processes(warmup_task_id)
+            for pid in warmup_pids:
+                try:
+                    p = psutil.Process(pid)
+                    p.kill()
+                    task_logger.debug(f"Killed remaining warmup process {pid}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+        # Wait for KV Cache to stabilize
+        task_logger.info(
+            f"Warmup completed. Waiting {self._WARMUP_COOLDOWN_SECONDS}s for KV Cache to stabilize..."
+        )
+        time.sleep(self._WARMUP_COOLDOWN_SECONDS)
+        task_logger.info("Starting main test phase")
+
+    def _build_warmup_command(self, task: Task, task_logger) -> List[str]:
+        """Build Locust command for warmup phase (no dataset, warmup_mode enabled)."""
+        locust_bin = shutil.which("locust") or "locust"
+        cmd = [
+            locust_bin,
+            "-f",
+            self._locustfile_path,
+            "--host",
+            task.target_host,
+            "--users",
+            str(task.concurrent_users),
+            "--spawn-rate",
+            str(task.spawn_rate),
+            "--run-time",
+            f"{self._WARMUP_DURATION_SECONDS}s",
+            "--duration",
+            str(self._WARMUP_DURATION_SECONDS),
+            "--headless",
+            "--only-summary",
+            "--api_path",
+            task.api_path or "/chat/completions",
+            "--headers",
+            task.headers,
+            "--cookies",
+            task.cookies or "{}",
+            "--model_name",
+            task.model or "",
+            "--api_type",
+            getattr(task, "api_type", "openai-chat") or "openai-chat",
+            "--stream_mode",
+            task.stream_mode,
+            "--chat_type",
+            str(task.chat_type or 0),
+            "--task-id",
+            f"{task.id}_warmup",
+            "--warmup_mode",
+            "true",
+        ]
+
+        # Handle multiprocess for high concurrency warmup
+        cpu_count = get_cpu_count()
+        concurrent_users = int(task.concurrent_users)
+        process_count = get_process_count(concurrent_users, cpu_count)
+
+        if (
+            should_enable_multiprocess(concurrent_users, cpu_count)
+            and process_count > 1
+        ):
+            cmd.extend(["--processes", str(process_count)])
+            task_logger.info(f"Warmup multi-process enabled: {process_count} workers")
+
+        # Include request_payload and field_mapping for warmup
+        # but NOT test_data (to use original payload)
+        for key, value in [
+            ("request_payload", task.request_payload),
+            ("field_mapping", task.field_mapping),
+            ("cert_file", task.cert_file),
+            ("key_file", task.key_file),
+        ]:
+            if value:
+                cmd.extend([f"--{key}", value])
+
+        return cmd
+
     def _build_locust_command(self, task: Task, task_logger) -> List[str]:
         """Build Locust command based on task config."""
         locust_bin = shutil.which("locust") or "locust"
@@ -119,6 +369,8 @@ class LocustRunner:
             str(task.spawn_rate),
             "--run-time",
             f"{task.duration}s",
+            "--duration",
+            str(task.duration),
             "--headless",
             "--only-summary",
             "--api_path",
@@ -169,6 +421,7 @@ class LocustRunner:
         self, cmd: List[str], task: Task, task_logger
     ) -> subprocess.Popen:
         """Start Locust subprocess and register multiprocess group if needed."""
+        self._validate_subprocess_command(cmd, "Locust")
         masked_cmd = mask_sensitive_command(cmd)
         task_logger.info(f"Executing: {' '.join(masked_cmd)}")
 
@@ -319,6 +572,9 @@ class LocustRunner:
 
         # Remove from process dict (this is safe and should be done first)
         self._process_dict.pop(task_id, None)
+
+        # Remove from stopped task set to avoid memory leak
+        self._stopped_task_ids.discard(task_id)
 
         # Terminate multiprocess group if applicable
         if should_enable_multiprocess(int(task.concurrent_users)):

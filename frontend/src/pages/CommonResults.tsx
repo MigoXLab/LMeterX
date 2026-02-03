@@ -2,13 +2,18 @@
  * @file CommonResults.tsx
  * @description Results page for common API jobs
  */
-import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
+import {
+  DownloadOutlined,
+  FileTextOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
 import {
   Alert,
   Button,
   Col,
   Empty,
   Row,
+  Space,
   Statistic,
   Table,
   Tooltip,
@@ -88,6 +93,7 @@ const CommonResults: React.FC = () => {
       : 0;
   // Format to 2 decimal places to match table display
   const rps = Number(rawRps.toFixed(2));
+  const qpm = Number((rawRps * 60).toFixed(2));
   const avgTimeSec =
     totalRow?.avg_response_time != null
       ? Number((totalRow.avg_response_time / 1000).toFixed(3))
@@ -206,15 +212,29 @@ const CommonResults: React.FC = () => {
             icon={<FileTextOutlined />}
             level={3}
           />
-          <Button
-            type='primary'
-            icon={<DownloadOutlined />}
-            onClick={handleDownloadReport}
-            loading={isDownloading}
-            disabled={loading || !results || results.length === 0}
-          >
-            {t('pages.results.downloadReport')}
-          </Button>
+          <Space>
+            <Button
+              type='primary'
+              icon={<DownloadOutlined />}
+              onClick={handleDownloadReport}
+              loading={isDownloading}
+              disabled={loading || !results || results.length === 0}
+            >
+              {t('pages.results.downloadReport')}
+            </Button>
+            <Button
+              type='primary'
+              icon={<UnorderedListOutlined />}
+              onClick={() => {
+                if (id) {
+                  window.open(`/logs/task/${id}`, '_blank');
+                }
+              }}
+              disabled={!id}
+            >
+              {t('pages.results.viewLogs')}
+            </Button>
+          </Space>
         </div>
       </div>
 
@@ -227,12 +247,15 @@ const CommonResults: React.FC = () => {
           />
         </div>
       ) : !results || results.length === 0 ? (
-        <div className='flex justify-center p-24'>
+        <div
+          className='flex justify-center align-center'
+          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
+        >
           <Alert
             description={t('pages.results.noTestResultsAvailable')}
             type='info'
             showIcon
-            className='btn-transparent'
+            style={{ background: 'transparent', border: 'none' }}
           />
         </div>
       ) : (
@@ -338,8 +361,8 @@ const CommonResults: React.FC = () => {
                 </Col>
                 <Col span={6}>
                   <Statistic
-                    title='RPS'
-                    value={rps}
+                    title='QPM'
+                    value={qpm}
                     style={statisticWrapperStyle}
                     valueStyle={statisticValueStyle}
                   />

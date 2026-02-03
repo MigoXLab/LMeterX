@@ -4,15 +4,23 @@
  * @author Charm
  * @copyright 2025
  * */
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, {
+  AxiosHeaders,
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+} from 'axios';
+import { clearAuth, getToken } from '../utils/auth';
+import { getApiBaseUrl } from '../utils/runtimeConfig';
 
 // Define the base API URL
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const BASE_URL = getApiBaseUrl();
 
 // Create an axios instance - Use a consistent BASE_URL
 const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 300000, // Increase to 300 seconds (5 minutes) to match backend AI service timeout
+  withCredentials: true, // ensure HttpOnly auth cookies are sent
   headers: {
     'Content-Type': 'application/json',
   },
@@ -70,6 +78,20 @@ const handleRequest = async <T>(
   }
 };
 
+// Attach auth header when token exists
+apiClient.interceptors.request.use(config => {
+  const token = getToken();
+  if (token) {
+    const headers = config.headers
+      ? new AxiosHeaders(config.headers)
+      : new AxiosHeaders();
+    // Use X-Authorization to avoid upstream filters blocking Authorization
+    headers.set('X-Authorization', `Bearer ${token}`);
+    config.headers = headers;
+  }
+  return config;
+});
+
 // Add a response interceptor
 apiClient.interceptors.response.use(
   response => {
@@ -87,6 +109,13 @@ apiClient.interceptors.response.use(
         headers: error.response.headers,
         config: error.config,
       };
+    }
+
+    if (error.response && error.response.status === 401) {
+      clearAuth();
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
     }
 
     // Reject other errors normally
@@ -152,9 +181,18 @@ export const uploadFiles = async (
     url += `&cert_type=${encodeURIComponent(certType)}`;
   }
 
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) {
+    // Use X-Authorization to avoid upstream filters blocking Authorization
+    headers['X-Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     body: files,
+    headers,
+    credentials: 'include',
     // Do not set Content-Type, let the browser automatically set multipart/form-data with a boundary
   });
 

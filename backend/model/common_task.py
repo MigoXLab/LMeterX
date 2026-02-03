@@ -274,6 +274,7 @@ class CommonTask(Base):
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     status = Column(String(32), nullable=False)
+    created_by = Column(String(100), nullable=True)
     method = Column(String(16), nullable=False)
     target_url = Column(String(2000), nullable=False)
     # Stored for engine routing (not exposed separately)

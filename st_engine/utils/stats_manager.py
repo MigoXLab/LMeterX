@@ -43,8 +43,12 @@ class StatsManager:
         except Exception as e:
             self.task_logger.error(f"Failed to send stats to master: {e}")
 
-    def get_final_stats(self) -> Dict[str, Any]:
-        """Get final statistics"""
+    def get_final_stats(self, environment_stats=None) -> Dict[str, Any]:
+        """Get final statistics
+
+        Args:
+            environment_stats: Optional Locust environment stats to extract TTFT from
+        """
         stats = self.global_state.token_stats
         start_time = self.global_state.start_time
         end_time = time.time()
@@ -73,6 +77,51 @@ class StatsManager:
                     f"Failed to calculate execution_time: start_time is invalid and error getting task.duration: {e}"
                 )
 
+        # Extract TTFT (Time to First Token) from environment_stats
+        ttft = None
+        if environment_stats:
+            try:
+                for name, endpoint in environment_stats.entries.items():
+                    # Skip the aggregated entry
+                    if name == ("Aggregated", None) or (
+                        hasattr(name, "__iter__") and name[0] == "Aggregated"
+                    ):
+                        continue
+
+                    # Find Time_to_first_output_token metric
+                    if endpoint.name == "Time_to_first_output_token":
+                        if (
+                            endpoint.avg_response_time
+                            and endpoint.avg_response_time > 0
+                        ):
+                            # avg_response_time is in milliseconds, convert to seconds
+                            ttft = endpoint.avg_response_time / 1000.0
+                            break
+            except Exception as e:
+                self.task_logger.warning(
+                    f"Failed to extract TTFT from environment_stats: {e}"
+                )
+
+        # Calculate completion_tps with TTFT adjustment
+        # completion_tps = completion_tokens / (execution_time - ttft)
+        completion_tps = 0.0
+        if execution_time > 0:
+            if ttft is not None and ttft > 0:
+                # Use adjusted execution time (execution_time - ttft)
+                completion_time = execution_time - ttft
+                if completion_time > 0:
+                    completion_tps = stats.completion_tokens / completion_time
+                else:
+                    # Fallback to original calculation if adjusted time is invalid
+                    completion_tps = (
+                        stats.completion_tokens / execution_time
+                        if execution_time > 0
+                        else 0
+                    )
+            else:
+                # Fallback to original calculation if TTFT is not available
+                completion_tps = stats.completion_tokens / execution_time
+
         return {
             "reqs_count": stats.reqs_count,
             "completion_tokens": stats.completion_tokens,
@@ -80,9 +129,7 @@ class StatsManager:
             "req_throughput": (
                 stats.reqs_count / execution_time if execution_time > 0 else 0
             ),
-            "completion_tps": (
-                stats.completion_tokens / execution_time if execution_time > 0 else 0
-            ),
+            "completion_tps": completion_tps,
             "total_tps": (
                 stats.total_tokens / execution_time if execution_time > 0 else 0
             ),

@@ -20,6 +20,7 @@ from model.task import (
 from service.task_service import (
     compare_performance_svc,
     create_task_svc,
+    delete_task_svc,
     get_model_tasks_for_comparison_svc,
     get_task_result_svc,
     get_task_status_svc,
@@ -28,6 +29,7 @@ from service.task_service import (
     get_tasks_svc,
     stop_task_svc,
     test_llm_api_svc,
+    update_task_svc,
 )
 
 # Create an API router for task-related endpoints
@@ -116,6 +118,22 @@ async def get_task_result(request: Request, task_id: str):
         TaskResultRsp: A response object containing the task results.
     """
     return await get_task_result_svc(request, task_id)
+
+
+@router.put("/{task_id}")
+async def update_task(request: Request, task_id: str, payload: Dict[str, Any]):
+    """
+    Update mutable fields for a task (e.g., rename). Only creator can update.
+    """
+    return await update_task_svc(request, task_id, payload)
+
+
+@router.delete("/{task_id}")
+async def delete_task(request: Request, task_id: str):
+    """
+    Delete a task. Only creator can delete.
+    """
+    return await delete_task_svc(request, task_id)
 
 
 @router.get("/{task_id}", response_model=Dict[str, Any])

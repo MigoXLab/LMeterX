@@ -41,6 +41,18 @@ export const safeJsonStringify = (obj: any, space: number = 0): string => {
 };
 
 /**
+ * Decode unicode escape sequences like \\u4e2d in a string.
+ * @param value - String to decode
+ * @returns Decoded string
+ */
+export const decodeUnicodeEscapes = (value: string): string => {
+  if (!value) return value;
+  return value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+};
+
+/**
  * Deep clone an object (using JSON serialization)
  * @param obj - Object to clone
  * @returns Cloned object or null if failed
@@ -173,6 +185,7 @@ export const clamp = (value: number, min: number, max: number): number => {
 export default {
   safeJsonParse,
   safeJsonStringify,
+  decodeUnicodeEscapes,
   deepClone,
   isEmpty,
   removeEmptyValues,

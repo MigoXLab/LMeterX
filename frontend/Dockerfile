@@ -4,6 +4,14 @@ FROM node:18-slim AS builder
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV CYPRESS_INSTALL_BINARY=0
 
+# Build-time Vite envs (must be set before npm run build)
+ARG VITE_API_BASE_URL=/api
+ARG VITE_LDAP_ENABLED=on
+ARG VITE_PERSIST_ACCESS_TOKEN=true
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_LDAP_ENABLED=${VITE_LDAP_ENABLED}
+ENV VITE_PERSIST_ACCESS_TOKEN=${VITE_PERSIST_ACCESS_TOKEN}
+
 WORKDIR /app
 
 # Configure npm for better reliability
@@ -37,8 +45,11 @@ RUN npm run build
 # Run stage
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY entrypoint.sh /entrypoint.sh
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY default.conf /etc/nginx/conf.d/default.conf
 
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/entrypoint.sh"]

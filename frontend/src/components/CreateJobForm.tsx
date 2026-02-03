@@ -9,6 +9,7 @@ import {
   BugOutlined,
   CloudOutlined,
   DatabaseOutlined,
+  FireOutlined,
   InfoCircleOutlined,
   LeftOutlined,
   MinusCircleOutlined,
@@ -22,6 +23,7 @@ import {
   App,
   Button,
   Card,
+  CardProps,
   Col,
   Collapse,
   Form,
@@ -60,6 +62,7 @@ interface CreateJobFormProps {
   onCancel: () => void;
   loading?: boolean;
   initialData?: Partial<Job> | null;
+  suppressCopyWarning?: boolean;
 }
 
 const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
@@ -67,6 +70,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   onCancel,
   loading,
   initialData,
+  suppressCopyWarning,
 }) => {
   const { message } = App.useApp();
   const { t } = useI18n();
@@ -218,6 +222,14 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           2
         );
     }
+  };
+
+  const normalizeRequestPayloadString = (payload: string): string => {
+    const parsed = safeJsonParse<any>(payload, null);
+    if (parsed && typeof parsed === 'object') {
+      return JSON.stringify(parsed, null, 2);
+    }
+    return payload;
   };
 
   // Tab navigation functions
@@ -490,6 +502,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         ? JSON.parse(JSON.stringify(dataToFill.field_mapping))
         : {};
       const originalRequestPayload = dataToFill.request_payload;
+      const normalizedRequestPayload =
+        typeof originalRequestPayload === 'string'
+          ? normalizeRequestPayloadString(originalRequestPayload)
+          : originalRequestPayload;
 
       // Always preserve original values when copying
       dataToFill.field_mapping = originalFieldMapping || {
@@ -505,7 +521,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         end_field: '',
         stop_flag: '[DONE]',
       };
-      dataToFill.request_payload = originalRequestPayload;
+      dataToFill.request_payload = normalizedRequestPayload;
 
       // clean fields that should not be copied directly or provided by the user
       delete dataToFill.id;
@@ -541,7 +557,9 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const hasCertConfig = !!(initialData as any).cert_config;
 
       if (hasCustomHeaders || hasCookies || hasCertConfig) {
-        message.warning(t('components.createJobForm.taskTemplateCopied'), 5);
+        if (!suppressCopyWarning) {
+          message.warning(t('components.createJobForm.taskTemplateCopied'), 5);
+        }
       }
     } else if (!isCopyMode) {
       setIsCopyMode(false);
@@ -714,8 +732,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       // Validate only the required fields for testing
       await form.validateFields(requiredFields);
 
-      // Get all form values after validation
-      const values = form.getFieldsValue();
+      // Get all form values after validation (include unmounted fields)
+      const values = form.getFieldsValue(true);
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
 
@@ -777,6 +795,13 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           message.error(errorMessage);
           return;
         }
+      }
+
+      // Ensure default headers when none are provided
+      if (!values.headers || values.headers.length === 0) {
+        values.headers = [
+          { key: 'Content-Type', value: 'application/json', fixed: true },
+        ];
       }
 
       // Prepare test data - provide default values for missing fields
@@ -1794,6 +1819,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               ),
               children: advancedPanelContent,
               styles: { header: { paddingLeft: 0 } },
+              forceRender: true,
             },
           ]}
         />
@@ -1835,8 +1861,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           };
 
           const cardBodyStyle = { padding: '16px 20px' };
-          const cardProps = {
-            bordered: false,
+          const cardProps: CardProps = {
+            variant: 'borderless',
             style: cardStyle,
             bodyStyle: cardBodyStyle,
           };
@@ -2192,6 +2218,66 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               style={{ width: '100%' }}
               placeholder='1'
               onChange={handleSpawnRateChange}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      {/* Section 5: Warmup Configuration */}
+      <div
+        style={{
+          margin: '32px 0 16px',
+          fontWeight: 'bold',
+          fontSize: '18px',
+          paddingBottom: '8px',
+        }}
+      >
+        <Space>
+          <FireOutlined />
+          <span>{t('components.createJobForm.warmupConfiguration')}</span>
+        </Space>
+      </div>
+
+      <Row gutter={24} align='middle'>
+        <Col span={12}>
+          <Form.Item
+            label={
+              <span>
+                {t('components.createJobForm.warmupMode')}
+                <Tooltip
+                  title={t('components.createJobForm.warmupModeTooltip')}
+                >
+                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                </Tooltip>
+              </span>
+            }
+            style={{ marginBottom: 0 }}
+          >
+            <Space>
+              <Radio.Group value='enabled' disabled>
+                <Radio value='enabled'>
+                  {t('components.createJobForm.warmupEnabled')}
+                </Radio>
+                <Radio value='disabled'>
+                  {t('components.createJobForm.warmupDisabled')}
+                </Radio>
+              </Radio.Group>
+            </Space>
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            label={t('components.createJobForm.warmupDuration')}
+            style={{ marginBottom: 0 }}
+          >
+            <InputNumber
+              value={120}
+              disabled
+              style={{
+                width: '120px',
+                backgroundColor: token.colorBgContainerDisabled,
+              }}
+              addonAfter='s'
             />
           </Form.Item>
         </Col>

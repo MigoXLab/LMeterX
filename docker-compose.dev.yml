@@ -34,6 +34,24 @@ services:
       - DB_USER=root
       - DB_PASSWORD=lmeterx123
       - DB_NAME=lmeterx
+      # ================= LDAP Authentication Configuration =================
+      # Set to 'on' to enable LDAP authentication
+      - LDAP_ENABLED=off
+      # Uncomment and configure the following when LDAP is enabled:
+      # - LDAP_SERVER=ldap://ldap.example.com
+      # - LDAP_PORT=389
+      # - LDAP_USE_SSL=false
+      # - LDAP_TIMEOUT=5
+      # - LDAP_SEARCH_BASE=dc=example,dc=com
+      # - LDAP_SEARCH_FILTER=(sAMAccountName={username})
+      # Method 1: Direct bind (simple LDAP)
+      # - LDAP_USER_DN_TEMPLATE=cn={username},ou=users,dc=example,dc=com
+      # Method 2: Service account bind (Active Directory)
+      # - LDAP_BIND_DN=cn=service,ou=users,dc=example,dc=com
+      # - LDAP_BIND_PASSWORD=service_password
+      # JWT configuration
+      # - JWT_SECRET_KEY=change-me-to-a-random-string
+      # - JWT_EXPIRE_MINUTES=480
     volumes:
       - ./logs:/app/logs
       - ./upload_files:/app/upload_files
@@ -107,6 +125,9 @@ services:
       - "8080:80"
     environment:
       - VITE_API_BASE_URL=/api
+      # Set to 'on' to enable LDAP login UI (must match backend LDAP_ENABLED)
+      - VITE_LDAP_ENABLED=off
+      - VITE_PERSIST_ACCESS_TOKEN=true
     healthcheck:
       test: [ "CMD", "curl", "-s", "-f", "http://localhost:80" ]
       interval: 10s

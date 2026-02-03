@@ -71,12 +71,12 @@ per-file-ignores =
     # __init__.py files can have unused imports and be empty
     __init__.py:F401,D104,W391,E261,
     # Test files can have unused imports and long lines
-    test_*.py:F401,E501,D100,D103,
-    *_test.py:F401,E501,D100,D103,
+    test_*.py:F401,E501,D100,D102,D103,
+    *_test.py:F401,E501,D100,D102,D103,
     # Engine files can use star imports and function calls in defaults
-    engine/*.py:F403,F405,B008,C901,
-    # Service files can use star imports
-    service/*.py:F403,F405,
+    engine/*.py:F403,F405,B008,C901,D102,D103,D107,
+    # Service files can use star imports and skip verbose docstrings
+    service/*.py:F403,F405,D102,D103,D107,
     # Utils files can be complex
     utils/*.py:C901,
     # Locustfile needs imports after sys.path modification

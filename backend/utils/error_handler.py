@@ -30,6 +30,8 @@ class ErrorMessages:
     HEADERS_LIMIT_EXCEEDED = "Header count exceeds the allowed maximum"
     COOKIES_LIMIT_EXCEEDED = "Cookie count exceeds the allowed maximum"
     REQUEST_PAYLOAD_INVALID = "Request payload is invalid"
+    TASK_NAME_REQUIRED = "Task name cannot be empty"
+    TASK_NAME_LENGTH_INVALID = "Task name length should be between 1-100 characters"
 
     # File related errors
     FILE_UPLOAD_FAILED = "File upload failed"
@@ -54,7 +56,10 @@ class ErrorMessages:
 
     # Authentication related errors
     UNAUTHORIZED = "Unauthorized access"
-    INVALID_CREDENTIALS = "Invalid credentials"
+    INVALID_CREDENTIALS = "Username or password incorrect"
+    LDAP_CONNECTION_FAILED = "LDAP connection failed"
+    LDAP_DISABLED = "LDAP authentication is disabled"
+    LDAP_CONFIG_INCOMPLETE = "LDAP configuration is incomplete"
     TOKEN_EXPIRED = "Token expired"  # nosec
     INSUFFICIENT_PERMISSIONS = "Insufficient permissions"
 

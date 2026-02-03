@@ -2,6 +2,7 @@ ANALYSIS_PROMPT_EN = """
     Analyze the performance results: {model_info}, then produce a concise, technical evaluation focused on the metrics below.
 
     Rules:
+    - If a specific metric is not present in the provided {model_info}, skip its assessment and mark as N/A in the table.
     - First_token_latency assessment: For text dataset: Good (<1s), Moderate (1–3s), Poor (>3s); For multimodal dataset: Good (<3s), Moderate (3–5s), Poor (>5s).
     - Total_time assessment: Depends on the output length, the longer the output length, the longer the Total_time. Generally, if the average output token number per request is less than 1000, the Total_time is good (<30s), moderate (30–120s), poor (>120s); if the average output token number per request is greater than 1000, the Total_time is good (<120s), moderate (120–360s), poor (>360s).
     - RPS assessment: Good (>10), Moderate (<10). If RPS is Moderate, please pay attention to whether the average input and output token number per request is large and the Total_time is poor.
@@ -9,28 +10,11 @@ ANALYSIS_PROMPT_EN = """
     - Total_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
     - Avg_completion_tokens/req assessment: Concise (>1000), Verbose (<1000).
     - failure_request: If there is a failed request, please indicate it in the `Identified Issues` and direct the user to check the task log for the specific error information.
-    - If a metric is missing, display N/A (do not infer).
     - Keep output under 300 words, technical, and prioritize the most severe issues.
 
     Required Output Format:
     ### Performance Summary
     [1–3 sentence overall assessment, including UX judgment and the dominant bottleneck(s).]
-
-    ### Key Metrics
-    | Metric | Description |Value| Conclusion |
-    |---|---|---|---|
-    | Concurrent_users |Number of simultaneous users accessing the system	| N | — |
-    | Duration |Duration of the test| X.XX | — |
-    | Stream_mode |Whether the test is in streaming mode| streaming/non-streaming | — |
-    | Dataset_type |Type of dataset used in the test| text/text-image | — |
-    | First_token_latency(s) |Time taken to receive the first token| X.XX | Good/Moderate/Poor |
-    | Total_time(s) |Total time taken to complete request| X.XX | Good/Moderate/Poor |
-    | RPS |Requests processed per second | X.XX | Good/Poor |
-    | Completion_tps |Tokens generated per second for completion only| X.XX | Good/Moderate/Poor |
-    | Total_tps|Total tokens processed per second (including prompt and completion)| X.XX | Good/Moderate/Poor |
-    | Avg_completion_tokens/req |Average number of completion tokens per request| X.XX | Concise/Verbose |
-    | Avg_total_tokens/req |Average total tokens (prompt + completion) per request| X.XX | — |
-    | Failure_request|Number of failed requests| N | — |
 
     ### Identified Issues
     1. [Most critical issue with metric value and impact, if any]
@@ -41,35 +25,19 @@ ANALYSIS_PROMPT_CN = """
     请分析 LLM 压测性能结果：{model_info}，然后针对以下指标和要求生成一份简明的技术评估报告。
 
     规则：
-    - 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），中等（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），中等（3-5 秒），较差（>5 秒）。
-    - 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），中等（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），中等（120-360 秒），较差（>360 秒）。
+    - 如果提供的 {model_info} 中不存在某个指标，请跳过该指标的评估，并在表格中标记为 N/A。
+    - 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），一般（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），一般（3-5 秒），较差（>5 秒）。
+    - 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），一般（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），一般（120-360 秒），较差（>360 秒）。
     - 每秒处理的请求数 评估：良好（>10），一般（<10）。如果 每秒处理的请求数 为“一般”，请重点关注是不是由 每个请求的平均输入和输出token总数 较大 以及 端到端总时延 较差导致的。
-    - 每秒输出的token数 评估：良好（>1000），中等（<10-1000），较差（<10）。
-    - 每秒输入和输出token总数 评估：良好（>1000），中等（<10-1000），较差（<10）。
+    - 每秒输出的token数 评估：良好（>1000），一般（<10-1000），较差（<10）。
+    - 每秒输入和输出token总数 评估：良好（>1000），一般（<10-1000），较差（<10）。
     - 每个请求的平均输出token数 评估：精简（<1000），冗长（>1000）。
     - 失败请求数：如果存在失败的请求，请在“已识别问题”中指出。
-    - 如果缺少某个指标，则显示 N/A（不推断）。
     - 输出内容应控制在 300 字以内，技术性强，并优先处理最严重的问题。
 
     输出格式要求：
     ### 性能总结
     [1-3 句总体评估，包括用户体验判断和主要瓶颈。]
-
-    ### 关键指标
-    | 指标 | 值 | 结论 |
-    |---|---|---|
-    | 并发用户数 | N | — |
-    | 压测时长 | X.XX | — |
-    | 流式模式 | 流式/非流式 | — |
-    | 数据集类型 | 纯文本/多模态 | — |
-    | 首Token时延(s) | X.XX | 良好/中等/较差 |
-    | 端到端总时延(s) | X.XX | 良好/中等/较差 |
-    | 每秒处理的请求数 | X.XX | 良好/较低 |
-    | 每秒输出的token数 | X.XX | 良好/中等/较差 |
-    | 每秒输入和输出token总数| X.XX | 良好/中等/较差 |
-    | 每个请求平均输出token数 | X.XX | 精简/冗长 |
-    | 每个请求的平均输入和输出token总数 | X.XX | — |
-    | 失败请求数 | N | — |
 
     ### 问题总结
     1. [具有指标值和影响的最关键问题（如果有）]
@@ -82,14 +50,14 @@ Analyze the performance results of multiple tasks, then generate a concise perfo
 Performance results: {model_info}
 
 Rules:
+- If a specific metric is not present in the provided {model_info}, skip its assessment and mark as N/A in the table.
 - First_token_latency assessment: For text dataset: Good (<1s), Moderate (1–3s), Poor (>3s); For multimodal dataset: Good (<3s), Moderate (3–5s), Poor (>5s).
 - Total_time assessment: Depends on the output length, the longer the output length, the longer the Total_time. Generally, if the average output token number per request is less than 1000, the Total_time is good (<30s), moderate (30–120s), poor (>120s); if the average output token number per request is greater than 1000, the Total_time is good (<120s), moderate (120–360s), poor (>360s).
 - RPS assessment: Good (>10), Moderate (<10). If RPS is Moderate, please pay attention to whether the average input and output token number per request is large and the Total_time is poor.
 - Completion_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
 - Total_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
 - Avg_completion_tokens/req assessment: Concise (>1000), Verbose (<1000).
-- failure_request: If there is a failed request, please indicate it in the
-- If a metric is missing, display N/A (do not infer).
+- failure_request: If there is a failed request, please indicate it in the report.
 
 Required Output Format:
 ### Performance Summary
@@ -189,14 +157,14 @@ COMPARISON_PROMPT_CN = """
 性能结果：{model_info}
 
 指标评估规则：
-- 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），中等（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），中等（3-5 秒），较差（>5 秒）。
-- 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），中等（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），中等（120-360 秒），较差（>360 秒）。
+- 如果提供的性能结果中不存在某个指标，请跳过该指标的评估，并在表格中标记为 N/A。
+- 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），一般（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），一般（3-5 秒），较差（>5 秒）。
+- 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），一般（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），一般（120-360 秒），较差（>360 秒）。
 - 每秒处理的请求数 评估：良好（>10），一般（<10）。如果 每秒处理的请求数 为“一般”，请重点关注是不是由 每个请求的平均输入和输出token总数 较大 以及 端到端总时延 较差导致的。
-- 每秒输出的token数 评估：良好（>1000），中等（<10-1000），较差（<10）。
-- 每秒输入和输出token总数 评估：良好（>1000），中等（<10-1000），较差（<10）。
+- 每秒输出的token数 评估：良好（>1000），一般（<10-1000），较差（<10）。
+- 每秒输入和输出token总数 评估：良好（>1000），一般（<10-1000），较差（<10）。
 - 每个请求的平均输出token数 评估：精简（<1000），冗长（>1000）。
 - 失败请求数：如果存在失败的请求，请在“已识别问题”中指出。
-- 如果缺少任何指标，则显示 N/A（不推断）
 
 输出格式要求：
 ### 性能结论
@@ -210,11 +178,11 @@ COMPARISON_PROMPT_CN = """
 | 压测时长 | X.XX | X.XX | — |
 | 流式模式 | 流式/非流式 | 流式/非流式 | — |
 | 数据集类型 | 纯文本/多模态 | 纯文本/多模态 | — |
-| 首Token时延(s) | X.XX | X.XX | 良好/中等/较差 |
-| 端到端总时延(s) | X.XX | X.XX | 良好/中等/较差 |
+| 首Token时延(s) | X.XX | X.XX | 良好/一般/较差 |
+| 端到端总时延(s) | X.XX | X.XX | 良好/一般/较差 |
 | 每秒处理的请求数 | X.XX | X.XX | 良好/较低 |
-| 每秒输出的token数 | X.XX | X.XX | 良好/中等/较差 |
-| 每秒输入和输出token总数| X.XX | X.XX | 良好/中等/较差 |
+| 每秒输出的token数 | X.XX | X.XX | 良好/一般/较差 |
+| 每秒输入和输出token总数| X.XX | X.XX | 良好/一般/较差 |
 | 每个请求平均输出token数 | X.XX | X.XX | 精简/冗长 |
 | 每个请求的平均输入和输出token总数 | X.XX | X.XX | — |
 | 失败请求数 | N | N | — |
@@ -279,10 +247,10 @@ COMPARISON_PROMPT_CN = """
 | 流式模式 | 流式 | 流式 | — |
 | 数据集类型 | 纯文本 | 纯文本 | — |
 | 首Token时延(s) | 4.21 | 8.67 | 均较差 |
-| 端到端总时延(s) | 74.94 | 10.50 | migo-intern 中等，puyu-intern 良好 |
+| 端到端总时延(s) | 74.94 | 10.50 | migo-intern 一般，puyu-intern 良好 |
 | 每秒处理的请求数 | 0.46 | 2.44 | 均较低 |
-| 每秒输出的token数 | 792.81 | 480.53 | 均中等 |
-| 每秒输入和输出token总数| 821.28 | 503.64 | 均中等 |
+| 每秒输出的token数 | 792.81 | 480.53 | 均一般 |
+| 每秒输入和输出token总数| 821.28 | 503.64 | 均一般 |
 | 每个请求平均输出token数 | 1,958.35 | 1474.68 | 均冗长 |
 | 每个请求的平均输入和输出token总数 | 2,028.67 | 1545.60 | — |
 | 失败请求数 | 0 | 0 | 均无失败请求 |

@@ -8,7 +8,7 @@ import json
 import ssl
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import urlsplit
 
 import httpx
@@ -17,6 +17,8 @@ __all__ = [
     "get_common_tasks_svc",
     "get_common_tasks_status_svc",
     "create_common_task_svc",
+    "update_common_task_svc",
+    "delete_common_task_svc",
     "test_common_api_svc",
     "stop_common_task_svc",
     "get_common_task_result_svc",
@@ -27,7 +29,7 @@ __all__ = [
 ]
 
 from fastapi import Query, Request
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import delete, func, or_, select, text
 
 from model.common_task import (
     CommonComparisonMetrics,
@@ -44,9 +46,13 @@ from model.common_task import (
     CommonTaskResultRsp,
     CommonTaskStatusRsp,
 )
+from utils.auth import get_current_user
+from utils.auth_settings import get_auth_settings
 from utils.converters import kv_items_to_dict, safe_isoformat
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
+
+settings = get_auth_settings()
 
 
 def _split_url(target_url: str) -> tuple[str, str]:
@@ -64,6 +70,7 @@ def _build_task_summary(task: CommonTask) -> Dict[str, Any]:
         "id": task.id,
         "name": task.name,
         "status": task.status,
+        "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "method": task.method,
         "target_url": task.target_url,
         "concurrent_users": task.concurrent_users,
@@ -108,6 +115,20 @@ def _prepare_request_body(
         return None, body
 
 
+def _get_username_from_request(request: Request) -> str:
+    """Extract username from auth payload; returns empty string when unavailable."""
+    user = get_current_user(request)
+    if isinstance(user, dict):
+        return str(user.get("username") or user.get("sub") or "").strip()
+    return ""
+
+
+def _resolve_created_by(value: Optional[str]) -> Optional[str]:
+    if settings.LDAP_ENABLED:
+        return value
+    return value or "-"
+
+
 async def _is_task_exist(request: Request, task_id: str) -> bool:
     try:
         db = request.state.db
@@ -145,6 +166,7 @@ async def get_common_tasks_svc(
                     CommonTask.name.ilike(f"%{search}%"),
                     CommonTask.id.ilike(f"%{search}%"),
                     CommonTask.target_url.ilike(f"%{search}%"),
+                    CommonTask.created_by.ilike(f"%{search}%"),
                 )
             )
 
@@ -217,10 +239,20 @@ async def create_common_task_svc(
 
     db = request.state.db
     try:
+        user = get_current_user(request)
+        created_by: Optional[str] = None
+        if isinstance(user, dict):
+            username = str(user.get("username") or user.get("sub") or "").strip()
+            if username:
+                created_by = username[:100]
+        if not settings.LDAP_ENABLED:
+            created_by = created_by or "-"
+
         new_task = CommonTask(
             id=task_id,
             name=body.name,
             status="created",
+            created_by=created_by,
             method=body.method.upper(),
             target_url=body.target_url,
             target_host=target_host,
@@ -249,6 +281,85 @@ async def create_common_task_svc(
         raise ErrorResponse.internal_server_error("Failed to create common task")
 
 
+async def update_common_task_svc(
+    request: Request, task_id: str, payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Update mutable fields of a common task (currently supports renaming).
+    Only the creator can perform this operation when recorded.
+    """
+    if not task_id:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
+
+    new_name = str(payload.get("name") or "").strip()
+    if not new_name:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_NAME_REQUIRED)
+    if len(new_name) > 100:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_NAME_LENGTH_INVALID)
+
+    db = request.state.db
+    try:
+        task = await db.get(CommonTask, task_id)
+        if not task:
+            raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+
+        if settings.LDAP_ENABLED:
+            username = _get_username_from_request(request)
+            # forbidden to update task without created_by
+            if not task.created_by:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            if task.created_by != username:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+
+        task.name = new_name
+        await db.commit()
+        await db.refresh(task)
+        return {"status": "success", "task_id": task_id, "name": task.name}
+    except ErrorResponse:
+        await db.rollback()
+        raise
+    except Exception as e:  # pragma: no cover - defensive logging
+        await db.rollback()
+        logger.error("Failed to update common task {}: {}", task_id, e, exc_info=True)
+        raise ErrorResponse.internal_server_error(ErrorMessages.TASK_UPDATE_FAILED)
+
+
+async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
+    """
+    Delete a common API task and its related results. Only the creator can delete.
+    """
+    if not task_id:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
+
+    db = request.state.db
+    try:
+        task = await db.get(CommonTask, task_id)
+        if not task:
+            raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+
+        if settings.LDAP_ENABLED:
+            username = _get_username_from_request(request)
+            # forbidden to delete task without created_by
+            if not task.created_by:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            if task.created_by != username:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+
+        await db.execute(
+            delete(CommonTaskResult).where(CommonTaskResult.task_id == task_id)
+        )
+        await db.delete(task)
+        await db.commit()
+        return {"status": "success", "task_id": task_id, "message": "Task deleted"}
+    except ErrorResponse:
+        await db.rollback()
+        raise
+    except Exception as e:  # pragma: no cover - defensive logging
+        await db.rollback()
+        logger.error("Failed to delete common task {}: {}", task_id, e, exc_info=True)
+        raise ErrorResponse.internal_server_error(ErrorMessages.TASK_DELETION_FAILED)
+
+
 async def test_common_api_svc(
     request: Request, body: CommonTaskCreateReq
 ) -> Dict[str, Any]:
@@ -274,9 +385,10 @@ async def test_common_api_svc(
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
 
     # If dataset_file provided, pick the first non-empty record for testing
-    if body.dataset_file:
+    dataset_path = body.dataset_file if isinstance(body.dataset_file, str) else None
+    if dataset_path:
         try:
-            with open(body.dataset_file, "r", encoding="utf-8") as f:
+            with open(dataset_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -371,6 +483,12 @@ async def stop_common_task_svc(request: Request, task_id: str) -> CommonTaskCrea
             return CommonTaskCreateRsp(
                 status="unknown", task_id=task_id, message="Task not found"
             )
+
+        if settings.LDAP_ENABLED:
+            username = _get_username_from_request(request)
+            # forbid stopping task without creator info or by non-creator
+            if not task.created_by or task.created_by != username:
+                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
 
         if task.status != "running":
             return CommonTaskCreateRsp(

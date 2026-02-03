@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 
 import { commonJobApi, uploadDatasetFile } from '@/api/services';
 import { CommonJob } from '@/types/job';
+import parseCurlCommand from '@/utils/curl';
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -35,19 +36,6 @@ interface Props {
   initialData?: Partial<CommonJob> | null;
 }
 
-interface ParsedCurlResult {
-  method?: string;
-  url?: string;
-  headers?: { key: string; value: string }[];
-  body?: string;
-}
-
-const curlHeaderRegex = /-H\s+["']?([^:"']+):\s*([^"']+)["']?/gi;
-// Support --data/--data-raw/-d with single or double quotes and tolerate spaces/newlines
-// Capture data payload with balanced quotes; supports -d '...' or -d "..." or unquoted token
-const curlDataRegex =
-  /(?:--data(?:-raw)?|-d)\s+(?:(["'])([\s\S]*?)\1|([^\s"']+))/i;
-
 const HTTP_METHOD_OPTIONS = [
   'GET',
   'POST',
@@ -57,41 +45,6 @@ const HTTP_METHOD_OPTIONS = [
   // 'HEAD',
   // 'OPTIONS',
 ];
-
-const parseCurlCommand = (curl: string): ParsedCurlResult => {
-  const result: ParsedCurlResult = {};
-  if (!curl) return result;
-  curlHeaderRegex.lastIndex = 0;
-  const methodMatch = curl.match(/-X\s+([A-Za-z]+)/i);
-  if (methodMatch) {
-    const [, method] = methodMatch;
-    result.method = method.toUpperCase();
-  }
-  // Pick the first http/https URL appearing in the command
-  const urlMatch = curl.match(/https?:\/\/[^\s'"]+/i);
-  if (urlMatch) {
-    const [url] = urlMatch;
-    result.url = url;
-  }
-  const headerMatches = [...curl.matchAll(curlHeaderRegex)];
-  if (headerMatches.length) {
-    result.headers = headerMatches.map(([, key, value]) => ({
-      key: key.trim(),
-      value: value.trim(),
-    }));
-  }
-  const dataMatch = curl.match(curlDataRegex);
-  if (dataMatch) {
-    result.body = dataMatch[2] || dataMatch[3] || '';
-    if (!result.method) {
-      result.method = 'POST';
-    }
-  }
-  if (!result.method) {
-    result.method = 'GET';
-  }
-  return result;
-};
 
 const CreateCommonJobForm: React.FC<Props> = ({
   onSubmit,
@@ -144,20 +97,19 @@ const CreateCommonJobForm: React.FC<Props> = ({
   const initialValues = useMemo(() => {
     if (initialData) {
       // When copying template, copy the headers value from the template
-      // let headersValue = 'Content-Type: application/json';
-      // const { headers } = initialData;
-      // if (headers) {
-      //   if (typeof headers === 'string') {
-      //     const trimmed = (headers as string).trim();
-      //     headersValue = trimmed ? headers : 'Content-Type: application/json';
-      //   } else if (Array.isArray(headers) && headers.length > 0) {
-      //     // Convert array format to string format
-      //     headersValue = (headers as Array<{ key: string; value: string }>)
-      //       .map(h => `${h.key}: ${h.value}`)
-      //       .join('\n');
-      //   }
-      // }
-      const headersValue = 'Content-Type: application/json';
+      let headersValue = 'Content-Type: application/json';
+      const { headers } = initialData;
+      if (headers) {
+        if (typeof headers === 'string') {
+          const trimmed = (headers as string).trim();
+          headersValue = trimmed ? headers : 'Content-Type: application/json';
+        } else if (Array.isArray(headers) && headers.length > 0) {
+          // Convert array format to string format
+          headersValue = (headers as Array<{ key: string; value: string }>)
+            .map(h => `${h.key}: ${h.value}`)
+            .join('\n');
+        }
+      }
 
       // When copying template, ensure request_body is properly handled
       let requestBodyValue = '';
@@ -173,6 +125,10 @@ const CreateCommonJobForm: React.FC<Props> = ({
         ...initialData,
         headers: headersValue,
         request_body: requestBodyValue,
+        dataset_source:
+          (initialData as any).dataset_source ?? defaultValues.dataset_source,
+        dataset_file:
+          (initialData as any).dataset_file ?? defaultValues.dataset_file,
         temp_task_id: tempTaskId, // Always use new tempTaskId
       };
     }
@@ -184,7 +140,6 @@ const CreateCommonJobForm: React.FC<Props> = ({
     if (!initialData) {
       form.setFieldsValue(defaultValues);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reset form when initialData changes (especially when it becomes null)
@@ -192,9 +147,17 @@ const CreateCommonJobForm: React.FC<Props> = ({
     if (initialData) {
       // Set form values when copying template
       form.setFieldsValue(initialValues);
-      // Clear dataset file name when copying template (file needs to be re-uploaded)
-      setDatasetFileName('');
-      form.setFieldsValue({ dataset_file: undefined });
+      // Preserve uploaded dataset path and show filename for clarity
+      const datasetPath = (initialValues as any).dataset_file;
+      if (datasetPath) {
+        const guessedName =
+          typeof datasetPath === 'string'
+            ? datasetPath.split('/').pop() || datasetPath
+            : '';
+        setDatasetFileName(guessedName);
+      } else {
+        setDatasetFileName('');
+      }
     } else {
       // When creating new task (initialData is null), generate new tempTaskId and reset form completely
       const newTempTaskId = `temp-${Date.now()}`;
@@ -209,7 +172,6 @@ const CreateCommonJobForm: React.FC<Props> = ({
       setTestModalVisible(false);
       setTestResult(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
   const buildPayload = (values: any, includeTempId: boolean = false) => {
@@ -385,7 +347,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
   };
 
   return (
-    <Card bordered={false}>
+    <Card variant='borderless'>
       <Form
         key={tempTaskId}
         layout='vertical'
@@ -701,7 +663,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
           </Button>,
         ]}
         width={760}
-        destroyOnClose
+        destroyOnHidden
         centered={false}
         mask={false}
         maskClosable={false}

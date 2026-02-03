@@ -465,6 +465,16 @@ const ResultComparison: React.FC = () => {
     selectedModel,
   ]);
 
+  const sortedAvailableTasks = useMemo(() => {
+    const tasks = [...filteredAvailableTasks];
+    tasks.sort((a, b) => {
+      const timeA = new Date(a.created_at).getTime();
+      const timeB = new Date(b.created_at).getTime();
+      return timeB - timeA;
+    });
+    return tasks;
+  }, [filteredAvailableTasks]);
+
   // Get unique model names for filtering
   const uniqueModels = useMemo(() => {
     if (comparisonMode !== 'model') return [];
@@ -525,7 +535,7 @@ const ResultComparison: React.FC = () => {
           {
             title: t('pages.resultComparison.select'),
             key: 'select',
-            width: 60,
+            width: 56,
             align: 'center',
             render: (_, record: ModelTaskInfo) => (
               <Checkbox
@@ -552,7 +562,7 @@ const ResultComparison: React.FC = () => {
             title: t('pages.resultComparison.modelName'),
             dataIndex: 'model_name',
             key: 'model_name',
-            width: 200,
+            width: 160,
             ellipsis: true,
             render: (model: string) => (
               <Tooltip title={model} placement='topLeft'>
@@ -574,20 +584,16 @@ const ResultComparison: React.FC = () => {
             title: t('pages.resultComparison.concurrentUsers'),
             dataIndex: 'concurrent_users',
             key: 'concurrent_users',
+            width: 90,
             align: 'center',
           },
           {
             title: t('pages.resultComparison.testDuration'),
             dataIndex: 'duration',
             key: 'duration',
+            width: 100,
             align: 'center',
             render: (duration: number) => `${duration || 0}s`,
-          },
-          {
-            title: t('pages.resultComparison.createdTime'),
-            dataIndex: 'created_at',
-            key: 'created_at',
-            render: (date: string) => formatDate(date),
           },
         ];
       }
@@ -596,7 +602,7 @@ const ResultComparison: React.FC = () => {
         {
           title: t('pages.resultComparison.select'),
           key: 'select',
-          width: 60,
+          width: 56,
           align: 'center',
           render: (_, record: CommonTaskInfo) => (
             <Checkbox
@@ -620,34 +626,19 @@ const ResultComparison: React.FC = () => {
           ellipsis: true,
         },
         {
-          title: t('pages.resultComparison.targetUrl', 'Target URL'),
-          dataIndex: 'target_url',
-          key: 'target_url',
-          ellipsis: true,
-          render: (url: string) => (
-            <Tooltip title={url} placement='topLeft'>
-              <span>{url}</span>
-            </Tooltip>
-          ),
-        },
-        {
           title: t('pages.resultComparison.concurrentUsers'),
           dataIndex: 'concurrent_users',
           key: 'concurrent_users',
+          width: 90,
           align: 'center',
         },
         {
           title: t('pages.resultComparison.testDuration'),
           dataIndex: 'duration',
           key: 'duration',
+          width: 100,
           align: 'center',
           render: (duration: number) => `${duration || 0}s`,
-        },
-        {
-          title: t('pages.resultComparison.createdTime'),
-          dataIndex: 'created_at',
-          key: 'created_at',
-          render: (date: string) => formatDate(date),
         },
       ];
     }, [comparisonMode, t, tempSelectedTasks]);
@@ -760,7 +751,7 @@ const ResultComparison: React.FC = () => {
     }, [comparisonMode, t]);
 
   // Helper function to wrap text for x-axis labels
-  const wrapTaskName = (text: string, maxCharsPerLine: number = 20) => {
+  const wrapTaskName = (text: string, maxCharsPerLine: number = 18) => {
     if (text.length <= maxCharsPerLine) {
       return text;
     }
@@ -795,7 +786,33 @@ const ResultComparison: React.FC = () => {
       lines.push(currentLine);
     }
 
+    // Limit to max 2 lines with ellipsis
+    if (lines.length > 2) {
+      return `${lines.slice(0, 2).join('\n')}...`;
+    }
+
     return lines.join('\n');
+  };
+
+  // Generate unique display label for x-axis when task names are duplicated
+  const generateUniqueLabel = (
+    taskName: string,
+    taskId: string,
+    index: number,
+    allResults: typeof activeComparisonResults
+  ) => {
+    // Check if there are duplicate task names
+    const duplicateCount = allResults.filter(
+      r => r.task_name === taskName
+    ).length;
+
+    if (duplicateCount > 1) {
+      // Add short task ID suffix to differentiate
+      const shortId = taskId.slice(0, 6);
+      return `${wrapTaskName(taskName)}\n(${shortId})`;
+    }
+
+    return wrapTaskName(taskName);
   };
 
   const formatMetricValue = (
@@ -829,13 +846,43 @@ const ResultComparison: React.FC = () => {
     decimals = 2,
     unit,
   }: MetricCardConfig | CommonMetricCardConfig) => {
-    const data = activeComparisonResults.map((result, index) => ({
-      task: wrapTaskName(result.task_name),
-      rawTaskName: result.task_name,
-      value: Number((result as any)[metricKey]) || 0,
-      taskId: result.task_id,
-      index,
-    }));
+    const normalizedTaskNames = activeComparisonResults.map(
+      result => result.task_name?.trim() || ''
+    );
+    const hasAllDistinctTaskNames =
+      normalizedTaskNames.length > 0 &&
+      normalizedTaskNames.every(name => name !== '') &&
+      new Set(normalizedTaskNames).size === normalizedTaskNames.length;
+
+    // Only use task name as x-axis label when all task names are unique
+    const data = activeComparisonResults.map((result, index) => {
+      const rawTaskName = result.task_name?.trim() || '';
+      const labelBase = rawTaskName || result.model_name || result.task_id;
+      const taskKey =
+        hasAllDistinctTaskNames && rawTaskName
+          ? rawTaskName
+          : `${result.task_id}`;
+      const taskLabel =
+        hasAllDistinctTaskNames && rawTaskName
+          ? wrapTaskName(rawTaskName)
+          : generateUniqueLabel(
+              labelBase,
+              result.task_id,
+              index,
+              activeComparisonResults
+            );
+
+      return {
+        // Use task name as key when distinct, otherwise task_id to avoid stacking
+        taskKey,
+        // Display label with unique suffix only when task names are duplicated
+        task: taskLabel,
+        rawTaskName: labelBase,
+        value: Number((result as any)[metricKey]) || 0,
+        taskId: result.task_id,
+        index,
+      };
+    });
 
     const showLabels = data.length <= 8;
     const slider =
@@ -848,40 +895,54 @@ const ResultComparison: React.FC = () => {
 
     return {
       data,
-      xField: 'task',
+      xField: 'taskKey', // Use unique taskKey instead of task name
       yField: 'value',
       colorField: 'taskId',
-      height: 360,
-      maxColumnWidth: 46,
-      columnWidthRatio: 0.55,
-      appendPadding: [24, 16, slider ? 64 : 48, 16],
+      height: 380,
+      maxColumnWidth: 56,
+      columnWidthRatio: 0.6,
+      appendPadding: [28, 20, slider ? 72 : 56, 20],
       color: (datum: { taskId: string; index: number }) =>
         getTaskColor(datum.taskId) ||
         TASK_COLORS[datum.index % TASK_COLORS.length],
       columnStyle: {
-        radius: [8, 8, 0, 0],
-        fillOpacity: 0.92,
-        shadowColor: 'rgba(0, 0, 0, 0.08)',
-        shadowBlur: 6,
+        radius: [6, 6, 0, 0],
+        fillOpacity: 0.95,
+        shadowColor: 'rgba(0, 0, 0, 0.06)',
+        shadowBlur: 4,
+        shadowOffsetY: 2,
       },
       tooltip: {
         showMarkers: false,
         shared: true,
-        formatter: (datum: { value: number }) => ({
-          name: chartTitle,
-          value: formatMetricValue(datum.value, decimals, unit),
-        }),
+        domStyles: {
+          'g2-tooltip': {
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+            padding: '12px 16px',
+          },
+        },
+        formatter: (datum: any) => {
+          const value = datum?.value ?? datum;
+          return {
+            name: datum?.rawTaskName || chartTitle,
+            value: formatMetricValue(value, decimals, unit),
+          };
+        },
       },
       label: showLabels
         ? {
             position: 'top' as const,
             style: {
-              fill: '#262626',
+              fill: '#1a1a1a',
               fontSize: 12,
-              fontWeight: 500,
+              fontWeight: 600,
+              textShadow: '0 1px 2px rgba(255,255,255,0.8)',
             },
-            formatter: (datum: { value: number }) =>
-              formatMetricValue(datum.value, decimals, unit),
+            formatter: (_value: any, datum: any) => {
+              const val = datum?.value ?? _value ?? 0;
+              return formatMetricValue(val, decimals, unit);
+            },
           }
         : undefined,
       legend: false,
@@ -889,19 +950,39 @@ const ResultComparison: React.FC = () => {
         value: {
           alias: chartTitle,
         },
+        taskKey: {
+          // Custom formatter to show task display name instead of taskKey
+          formatter: (val: string) => {
+            const item = data.find(d => d.taskKey === val);
+            return item?.task || val;
+          },
+        },
       },
       xAxis: {
         label: {
           autoRotate: false,
           autoHide: false,
           autoEllipsis: false,
+          formatter: (val: string) => {
+            // Find the corresponding task data and return display label
+            const item = data.find(d => d.taskKey === val);
+            return item?.task || val;
+          },
           style: {
             fontSize: 11,
             textAlign: 'center',
             lineHeight: 16,
-            fill: '#666',
+            fill: '#595959',
+            fontWeight: 500,
           },
         },
+        line: {
+          style: {
+            stroke: '#e8e8e8',
+            lineWidth: 1,
+          },
+        },
+        tickLine: null,
       },
       yAxis: {
         nice: true,
@@ -910,32 +991,59 @@ const ResultComparison: React.FC = () => {
             formatMetricValue(Number(val), decimals, unit),
           style: {
             fontSize: 11,
-            fill: '#666',
+            fill: '#8c8c8c',
           },
         },
         grid: {
           line: {
             style: {
-              stroke: 'rgba(0,0,0,0.15)',
+              stroke: '#f0f0f0',
               lineDash: [4, 4],
             },
           },
         },
+        line: null,
       },
       interactions: [{ type: 'active-region' }, { type: 'element-active' }],
-      slider,
+      slider: slider
+        ? {
+            ...slider,
+            height: 24,
+            trendCfg: {
+              backgroundStyle: {
+                fill: '#f5f5f5',
+              },
+            },
+            backgroundStyle: {
+              fill: '#f5f5f5',
+            },
+            foregroundStyle: {
+              fill: 'rgba(0, 0, 0, 0.1)',
+            },
+            handlerStyle: {
+              width: 20,
+              height: 20,
+              fill: '#fff',
+              stroke: '#d9d9d9',
+              radius: 10,
+            },
+          }
+        : undefined,
       animation: {
         appear: {
           animation: 'scale-in-y',
-          duration: 400,
+          duration: 500,
+          easing: 'ease-out',
         },
       },
       state: {
         active: {
           style: {
             fillOpacity: 1,
-            shadowColor: 'rgba(0,0,0,0.2)',
-            shadowBlur: 8,
+            shadowColor: 'rgba(0, 0, 0, 0.15)',
+            shadowBlur: 10,
+            stroke: 'rgba(255, 255, 255, 0.5)',
+            lineWidth: 1,
           },
         },
       },
@@ -1416,12 +1524,24 @@ const ResultComparison: React.FC = () => {
           </span>
           <Space>
             <Button
-              type='primary'
-              className='btn-success'
+              type='default'
               icon={<RobotOutlined />}
               onClick={handleAnalyzeComparison}
               loading={isAnalyzing}
               disabled={comparisonMode !== 'model' || !hasSelectedTasks}
+              style={{
+                backgroundColor: '#52c41a',
+                borderColor: '#52c41a',
+                color: '#ffffff',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.backgroundColor = '#73d13d';
+                e.currentTarget.style.borderColor = '#73d13d';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.backgroundColor = '#52c41a';
+                e.currentTarget.style.borderColor = '#52c41a';
+              }}
             >
               {t('pages.resultComparison.aiAnalysis')}
             </Button>
@@ -1484,11 +1604,11 @@ const ResultComparison: React.FC = () => {
 
           <div className='section-content'>
             {visibleMetricCardConfigs.length > 0 ? (
-              <Row gutter={[16, 16]}>
+              <Row gutter={[24, 24]}>
                 {visibleMetricCardConfigs.map(config => (
                   <Col span={12} key={config.metricKey}>
-                    <div style={{ marginBottom: 24 }}>
-                      <div style={{ marginBottom: 16 }}>
+                    <div className='comparison-chart-wrapper'>
+                      <div className='comparison-chart-title'>
                         {createCardTitle(config.title, config.description)}
                       </div>
                       <Column {...createChartConfig(config)} />
@@ -1601,7 +1721,7 @@ const ResultComparison: React.FC = () => {
                 />
                 <Table
                   columns={availableTasksColumns}
-                  dataSource={filteredAvailableTasks}
+                  dataSource={sortedAvailableTasks}
                   rowKey='task_id'
                   pagination={{ pageSize: 10 }}
                   size='small'

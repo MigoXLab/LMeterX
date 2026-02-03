@@ -13,3 +13,5 @@ httpx
 python-magic
 requests
 aiofiles
+ldap3
+PyJWT

@@ -54,3 +54,7 @@ class CommonLocustRunner(LocustRunner):
         if getattr(task, "dataset_file", None):
             cmd.extend(["--dataset_file", task.dataset_file])
         return cmd
+
+    def _run_warmup_phase(self, task: CommonTask, task_logger) -> None:
+        """Common API tasks do not require LLM warmup; skip to avoid missing fields."""
+        task_logger.info("Skipping warmup phase for common API task.")

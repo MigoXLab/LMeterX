@@ -455,6 +455,12 @@ class TaskService:
                     f"Task {task.id} was stopped during execution. Marking as '{TASK_STATUS_STOPPED}'."
                 )
                 self.update_task_status(session, task, TASK_STATUS_STOPPED)
+            elif run_status == "STOPPED":
+                # Task was stopped during warmup or main test phase
+                task_logger.info(
+                    f"Task {task.id} was stopped (possibly during warmup). Marking as '{TASK_STATUS_STOPPED}'."
+                )
+                self.update_task_status(session, task, TASK_STATUS_STOPPED)
             elif run_status == "COMPLETED":
                 task_logger.info(
                     f"Runner completed successfully. Processing results..."
@@ -579,6 +585,7 @@ class TaskService:
     def stop_task(self, task_id: str) -> bool:
         """
         Stops a running task by delegating the termination to the LocustRunner.
+        This method handles both warmup and main test phases for LLM API tasks.
         This method is designed to be called from the API or UI.
         Args:
             task_id (str): The ID of the task to stop.
@@ -590,56 +597,132 @@ class TaskService:
         try:
             task_logger.info(f"Received stop request for task {task_id}.")
 
-            process = self.runner._process_dict.get(task_id)
-            if not process:
-                task_logger.warning(
-                    f"Task {task_id}: Process not found in runner's dictionary. "
-                    f"It might have finished, be on another node, or not started yet."
-                )
-                return True
+            # Mark this task as stopped so warmup phase can detect it
+            # This is critical for stopping tasks during warmup before main test starts
+            self.runner._stopped_task_ids.add(task_id)
+            task_logger.debug(f"Marked task {task_id} in _stopped_task_ids.")
 
-            if process.poll() is not None:
-                task_logger.info(
-                    f"Task {task_id}: Process with PID {process.pid} has already terminated. Cleaning up local reference."
-                )
-                self.runner._process_dict.pop(task_id, None)
-                cleanup_task_resources(task_id)
-                return True
+            # Stop both warmup and main test processes
+            # Warmup process uses {task_id}_warmup as key
+            warmup_task_id = f"{task_id}_warmup"
+            process_ids_to_stop = [warmup_task_id, task_id]
+            any_process_found = False
+            all_stopped_successfully = True
 
-            group_info = get_task_process_status(task_id)
-            group_terminated = False
-
-            if group_info:
-                task_logger.info(
-                    f"Task {task_id}: Terminating registered multiprocess group."
-                )
-                group_terminated = terminate_locust_process_group(task_id, timeout=15.0)
-                if not group_terminated:
-                    task_logger.warning(
-                        f"Task {task_id}: Multiprocess group termination reported failure. Falling back to direct termination."
+            for proc_id in process_ids_to_stop:
+                process = self.runner._process_dict.get(proc_id)
+                if not process:
+                    task_logger.debug(
+                        f"Process for '{proc_id}' not found in runner's dictionary."
                     )
-            else:
-                task_logger.debug(
-                    f"Task {task_id}: No registered multiprocess group found. Falling back to direct termination."
-                )
+                    continue
 
-            if process.poll() is None:
-                if not self._terminate_local_process(process, task_id, task_logger):
-                    return False
-            else:
-                task_logger.info(
-                    f"Task {task_id}: Process exited after multiprocess termination."
-                )
+                any_process_found = True
+                task_logger.info(f"Found process for '{proc_id}', attempting to stop.")
 
-            self.runner._process_dict.pop(task_id, None)
-            cleanup_task_resources(task_id)
-            return True
+                if process.poll() is not None:
+                    task_logger.info(
+                        f"Process '{proc_id}' with PID {process.pid} has already terminated. Cleaning up."
+                    )
+                    self.runner._process_dict.pop(proc_id, None)
+                    cleanup_task_resources(proc_id)
+                    continue
+
+                # Check for multiprocess group
+                group_info = get_task_process_status(proc_id)
+                if group_info:
+                    task_logger.info(
+                        f"Terminating registered multiprocess group for '{proc_id}'."
+                    )
+                    group_terminated = terminate_locust_process_group(
+                        proc_id, timeout=15.0
+                    )
+                    if not group_terminated:
+                        task_logger.warning(
+                            f"Multiprocess group termination for '{proc_id}' reported failure. "
+                            "Falling back to direct termination."
+                        )
+                else:
+                    task_logger.debug(
+                        f"No registered multiprocess group for '{proc_id}'. "
+                        "Using direct termination."
+                    )
+
+                # Terminate local process if still running
+                if process.poll() is None:
+                    if not self._terminate_local_process(process, proc_id, task_logger):
+                        all_stopped_successfully = False
+                else:
+                    task_logger.info(
+                        f"Process '{proc_id}' exited after multiprocess termination."
+                    )
+
+                self.runner._process_dict.pop(proc_id, None)
+                cleanup_task_resources(proc_id)
+
+            if not any_process_found:
+                task_logger.warning(
+                    f"Task {task_id}: No processes found in runner's dictionary. "
+                    f"It might have finished, be on another node, or not started yet. "
+                    f"Attempting to find and kill any orphaned locust processes."
+                )
+                # Try to find and kill any orphaned processes by task_id
+                self._kill_orphaned_processes(task_id, task_logger)
+                return True
+
+            return all_stopped_successfully
 
         except Exception as e:
             task_logger.exception(
                 f"An unexpected error occurred while stopping task {task_id}: {e}"
             )
             return False
+
+    def _kill_orphaned_processes(self, task_id: str, task_logger) -> None:
+        """
+        Kill any orphaned locust processes associated with a task.
+        This is a fallback when processes are not found in _process_dict.
+
+        Args:
+            task_id (str): The ID of the task.
+            task_logger: Structured logger bound to the task.
+        """
+        try:
+            import psutil
+
+            # Find processes matching this task_id (including warmup)
+            killed_count = 0
+            for proc in psutil.process_iter(["pid", "cmdline"]):
+                try:
+                    cmdline = proc.info.get("cmdline") or []
+                    if not isinstance(cmdline, list):
+                        continue
+                    cmdline_str = " ".join(str(arg) for arg in cmdline)
+
+                    # Match both main task and warmup task
+                    if "locust" in cmdline_str.lower() and (
+                        f"--task-id {task_id}" in cmdline_str
+                        or f"--task-id {task_id}_warmup" in cmdline_str
+                    ):
+                        task_logger.info(
+                            f"Found orphaned locust process PID={proc.pid}, terminating."
+                        )
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=10)
+                        except psutil.TimeoutExpired:
+                            proc.kill()
+                            proc.wait(timeout=5)
+                        killed_count += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+            if killed_count > 0:
+                task_logger.info(
+                    f"Killed {killed_count} orphaned locust process(es) for task {task_id}."
+                )
+        except Exception as e:
+            task_logger.warning(f"Error while killing orphaned processes: {e}")
 
     def _terminate_local_process(
         self,

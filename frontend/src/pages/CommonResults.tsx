@@ -93,6 +93,7 @@ const CommonResults: React.FC = () => {
       : 0;
   // Format to 2 decimal places to match table display
   const rps = Number(rawRps.toFixed(2));
+  const qpm = Number((rawRps * 60).toFixed(2));
   const avgTimeSec =
     totalRow?.avg_response_time != null
       ? Number((totalRow.avg_response_time / 1000).toFixed(3))
@@ -360,8 +361,8 @@ const CommonResults: React.FC = () => {
                 </Col>
                 <Col span={6}>
                   <Statistic
-                    title='RPS'
-                    value={rps}
+                    title='QPM'
+                    value={qpm}
                     style={statisticWrapperStyle}
                     valueStyle={statisticValueStyle}
                   />

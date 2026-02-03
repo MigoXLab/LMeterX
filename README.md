@@ -53,15 +53,16 @@ LMeterX is a professional large language model performance testing platform that
 
 ## ✨ Core Features
 
-- **Universal Framework Support** - Compatible with mainstream inference frameworks (vLLM, LiteLLM, TensorRT-LLM) and cloud services (Azure, AWS, Google Cloud)
-- **Full Model Compatibility** - Supports mainstream LLMs like GPT, Claude, and Llama, also supports large document parsing models such as [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr).
-- **General API Load Testing** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports load testing for any business service HTTP APIs, with one-click curl command parsing and custom dataset batch testing
-- **High-Load Stress Testing** - Simulates high-concurrency requests to accurately detect model performance limits
-- **Multi-Scenario Coverage** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports streaming/non-streaming, supports text/multimodal/custom datasets
-- **Professional Metrics**  - Core performance metrics including first token latency, throughput(RPS、TPS), and success rate
-- **AI Smart Reports** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - AI-powered performance analysis, multi-dimensional model comparison and visualization
-- **Web Console** - One-stop management for task creation, stopping, status tracking, and full-chain log monitoring
-- **Enterprise-level Deployment** - Docker containerization with elastic scaling and distributed deployment support, &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> Built-in LDAP/AD integration for enterprise user authentication and SSO
+- **Broad Framework Compatibility** - Supports mainstream inference frameworks (vLLM, LiteLLM, TRT-LLM) and cloud platforms, ensuring seamless environment migration.
+- **Full Modality & Scenarios** - Supports GPT, Claude, Llama to document parsing models like [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr), covering text, multimodal, and streaming.
+- **Hybrid Protocol Testing** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports standard Chat APIs and business HTTP interfaces, enabling full-stack load testing from base models to upper-level services.
+- **Extreme High-Concurrency** - Leverages multi-process architecture to simulate high-load concurrency, accurately detecting system performance limits and stability.
+- **Built-in Dual-Mode Datasets** - Pre-configured with high-quality self-built datasets and ShareGPT standard sets, supporting one-click invocation to lower data preparation barriers.
+- **Automated Warm-up Mechanism** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports automatic model service warm-up to eliminate cold-start effects, ensuring the accuracy of test data.
+- **Fine-grained Multi-dimensional Metrics** - Real-time collection of TTFT, RPS, TPS, and throughput distribution, providing comprehensive performance measurement.
+- **AI-Driven Data Insights** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - AI-powered analysis reports with multi-model comparison, intuitively identifying optimization directions.
+- **One-stop Web Console** - Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
+- **Enterprise-Grade Security & Scaling** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports distributed elastic deployment and LDAP/AD integration for high availability and secure enterprise authentication.
 
 ### Feature Comparison
 | Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |

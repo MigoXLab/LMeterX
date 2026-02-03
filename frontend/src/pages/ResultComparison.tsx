@@ -465,6 +465,16 @@ const ResultComparison: React.FC = () => {
     selectedModel,
   ]);
 
+  const sortedAvailableTasks = useMemo(() => {
+    const tasks = [...filteredAvailableTasks];
+    tasks.sort((a, b) => {
+      const timeA = new Date(a.created_at).getTime();
+      const timeB = new Date(b.created_at).getTime();
+      return timeB - timeA;
+    });
+    return tasks;
+  }, [filteredAvailableTasks]);
+
   // Get unique model names for filtering
   const uniqueModels = useMemo(() => {
     if (comparisonMode !== 'model') return [];
@@ -525,7 +535,7 @@ const ResultComparison: React.FC = () => {
           {
             title: t('pages.resultComparison.select'),
             key: 'select',
-            width: 60,
+            width: 56,
             align: 'center',
             render: (_, record: ModelTaskInfo) => (
               <Checkbox
@@ -552,7 +562,7 @@ const ResultComparison: React.FC = () => {
             title: t('pages.resultComparison.modelName'),
             dataIndex: 'model_name',
             key: 'model_name',
-            width: 200,
+            width: 160,
             ellipsis: true,
             render: (model: string) => (
               <Tooltip title={model} placement='topLeft'>
@@ -574,20 +584,16 @@ const ResultComparison: React.FC = () => {
             title: t('pages.resultComparison.concurrentUsers'),
             dataIndex: 'concurrent_users',
             key: 'concurrent_users',
+            width: 90,
             align: 'center',
           },
           {
             title: t('pages.resultComparison.testDuration'),
             dataIndex: 'duration',
             key: 'duration',
+            width: 100,
             align: 'center',
             render: (duration: number) => `${duration || 0}s`,
-          },
-          {
-            title: t('pages.resultComparison.createdTime'),
-            dataIndex: 'created_at',
-            key: 'created_at',
-            render: (date: string) => formatDate(date),
           },
         ];
       }
@@ -596,7 +602,7 @@ const ResultComparison: React.FC = () => {
         {
           title: t('pages.resultComparison.select'),
           key: 'select',
-          width: 60,
+          width: 56,
           align: 'center',
           render: (_, record: CommonTaskInfo) => (
             <Checkbox
@@ -620,34 +626,19 @@ const ResultComparison: React.FC = () => {
           ellipsis: true,
         },
         {
-          title: t('pages.resultComparison.targetUrl', 'Target URL'),
-          dataIndex: 'target_url',
-          key: 'target_url',
-          ellipsis: true,
-          render: (url: string) => (
-            <Tooltip title={url} placement='topLeft'>
-              <span>{url}</span>
-            </Tooltip>
-          ),
-        },
-        {
           title: t('pages.resultComparison.concurrentUsers'),
           dataIndex: 'concurrent_users',
           key: 'concurrent_users',
+          width: 90,
           align: 'center',
         },
         {
           title: t('pages.resultComparison.testDuration'),
           dataIndex: 'duration',
           key: 'duration',
+          width: 100,
           align: 'center',
           render: (duration: number) => `${duration || 0}s`,
-        },
-        {
-          title: t('pages.resultComparison.createdTime'),
-          dataIndex: 'created_at',
-          key: 'created_at',
-          render: (date: string) => formatDate(date),
         },
       ];
     }, [comparisonMode, t, tempSelectedTasks]);
@@ -855,22 +846,43 @@ const ResultComparison: React.FC = () => {
     decimals = 2,
     unit,
   }: MetricCardConfig | CommonMetricCardConfig) => {
-    // Use unique key combining task_id to prevent stacking of same-named tasks
-    const data = activeComparisonResults.map((result, index) => ({
-      // Use unique identifier for x-axis to prevent stacking
-      taskKey: `${result.task_id}`,
-      // Display label with unique suffix for duplicate names
-      task: generateUniqueLabel(
-        result.task_name,
-        result.task_id,
+    const normalizedTaskNames = activeComparisonResults.map(
+      result => result.task_name?.trim() || ''
+    );
+    const hasAllDistinctTaskNames =
+      normalizedTaskNames.length > 0 &&
+      normalizedTaskNames.every(name => name !== '') &&
+      new Set(normalizedTaskNames).size === normalizedTaskNames.length;
+
+    // Only use task name as x-axis label when all task names are unique
+    const data = activeComparisonResults.map((result, index) => {
+      const rawTaskName = result.task_name?.trim() || '';
+      const labelBase = rawTaskName || result.model_name || result.task_id;
+      const taskKey =
+        hasAllDistinctTaskNames && rawTaskName
+          ? rawTaskName
+          : `${result.task_id}`;
+      const taskLabel =
+        hasAllDistinctTaskNames && rawTaskName
+          ? wrapTaskName(rawTaskName)
+          : generateUniqueLabel(
+              labelBase,
+              result.task_id,
+              index,
+              activeComparisonResults
+            );
+
+      return {
+        // Use task name as key when distinct, otherwise task_id to avoid stacking
+        taskKey,
+        // Display label with unique suffix only when task names are duplicated
+        task: taskLabel,
+        rawTaskName: labelBase,
+        value: Number((result as any)[metricKey]) || 0,
+        taskId: result.task_id,
         index,
-        activeComparisonResults
-      ),
-      rawTaskName: result.task_name,
-      value: Number((result as any)[metricKey]) || 0,
-      taskId: result.task_id,
-      index,
-    }));
+      };
+    });
 
     const showLabels = data.length <= 8;
     const slider =
@@ -1709,7 +1721,7 @@ const ResultComparison: React.FC = () => {
                 />
                 <Table
                   columns={availableTasksColumns}
-                  dataSource={filteredAvailableTasks}
+                  dataSource={sortedAvailableTasks}
                   rowKey='task_id'
                   pagination={{ pageSize: 10 }}
                   size='small'

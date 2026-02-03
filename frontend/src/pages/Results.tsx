@@ -506,6 +506,12 @@ const TaskResults: React.FC = () => {
       isMeaningfulValue(ttftDisplay) &&
       isMeaningfulValue(firstTokenResult?.avg_response_time);
 
+    const rpsValue = CompletionResult?.rps ?? firstTokenResult?.rps;
+    const qpmValue =
+      rpsValue !== null && rpsValue !== undefined
+        ? Number(rpsValue) * 60
+        : null;
+
     const firstRowMetrics: (OverviewMetric | null)[] = [
       {
         key: 'totalRequests',
@@ -519,12 +525,9 @@ const TaskResults: React.FC = () => {
         suffix: '%',
       },
       {
-        key: 'rps',
-        title: createTitleWithTooltip(t('pages.results.rps'), 'RPS'),
-        value: formatMetricValue(
-          CompletionResult?.rps ?? firstTokenResult?.rps,
-          2
-        ),
+        key: 'qpm',
+        title: 'QPM',
+        value: formatMetricValue(qpmValue, 2),
       },
     ];
 

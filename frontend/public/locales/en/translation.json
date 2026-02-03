@@ -15,7 +15,6 @@
     "login": {
       "title": "Welcome to LMeterX",
       "subtitle": "Sign in with your AD account",
-      "ldapHint": "If you cannot sign in, please check LDAP configuration",
       "usernameLabel": "Username",
       "usernamePlaceholder": "Username",
       "usernameRequired": "Please enter your username",

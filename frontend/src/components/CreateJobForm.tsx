@@ -224,6 +224,14 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
     }
   };
 
+  const normalizeRequestPayloadString = (payload: string): string => {
+    const parsed = safeJsonParse<any>(payload, null);
+    if (parsed && typeof parsed === 'object') {
+      return JSON.stringify(parsed, null, 2);
+    }
+    return payload;
+  };
+
   // Tab navigation functions
   const goToNextTab = () => {
     const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
@@ -494,6 +502,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         ? JSON.parse(JSON.stringify(dataToFill.field_mapping))
         : {};
       const originalRequestPayload = dataToFill.request_payload;
+      const normalizedRequestPayload =
+        typeof originalRequestPayload === 'string'
+          ? normalizeRequestPayloadString(originalRequestPayload)
+          : originalRequestPayload;
 
       // Always preserve original values when copying
       dataToFill.field_mapping = originalFieldMapping || {
@@ -509,7 +521,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         end_field: '',
         stop_flag: '[DONE]',
       };
-      dataToFill.request_payload = originalRequestPayload;
+      dataToFill.request_payload = normalizedRequestPayload;
 
       // clean fields that should not be copied directly or provided by the user
       delete dataToFill.id;

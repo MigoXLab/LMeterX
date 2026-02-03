@@ -398,7 +398,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
     test_data = body.test_data or ""
 
     request_payload_dict = _prepare_request_payload(body)
-    request_payload = json.dumps(request_payload_dict)
+    request_payload = json.dumps(request_payload_dict, ensure_ascii=False)
 
     db = request.state.db
     try:

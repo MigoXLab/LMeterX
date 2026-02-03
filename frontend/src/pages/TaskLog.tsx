@@ -34,6 +34,7 @@ import { jobApi, logApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingState';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Job } from '../types/job';
+import { decodeUnicodeEscapes } from '../utils/data';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -133,7 +134,9 @@ const TaskLogs: React.FC = () => {
       const contentResponse = await logApi.getTaskLogContent(id, 0, tailLines);
 
       if (contentResponse.data) {
-        const newLogs = contentResponse.data.content || '';
+        const newLogs = decodeUnicodeEscapes(
+          contentResponse.data.content || ''
+        );
         setLogs(newLogs);
 
         if (searchTerm.trim()) {

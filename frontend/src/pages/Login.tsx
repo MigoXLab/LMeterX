@@ -74,11 +74,6 @@ const Login: React.FC = () => {
           <Paragraph style={{ margin: 0, color: '#666' }}>
             {t('pages.login.subtitle')}
           </Paragraph>
-          {LDAP_ENABLED && (
-            <Paragraph style={{ margin: '8px 0 0', color: '#999' }}>
-              {t('pages.login.ldapHint')}
-            </Paragraph>
-          )}
         </div>
         <Form
           layout='vertical'

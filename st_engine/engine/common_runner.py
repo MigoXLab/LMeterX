@@ -46,15 +46,20 @@ class CommonLocustRunner(LocustRunner):
             task.headers or "{}",
             "--cookies",
             task.cookies or "{}",
-            "--request_body",
-            task.request_body or "",
             "--task-id",
             task.id,
         ]
+
+        # Only add request_body if it has a value
+        if task.request_body:
+            cmd.extend(["--request_body", task.request_body])
+
+        # Only add dataset_file if it has a value
         if getattr(task, "dataset_file", None):
             cmd.extend(["--dataset_file", task.dataset_file])
+
         return cmd
 
     def _run_warmup_phase(self, task: CommonTask, task_logger) -> None:
         """Common API tasks do not require LLM warmup; skip to avoid missing fields."""
-        task_logger.info("Skipping warmup phase for common API task.")
+        task_logger.debug("Skipping warmup phase for common API task.")

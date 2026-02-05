@@ -267,7 +267,8 @@ class LocustRunner:
             self._process_dict.pop(warmup_task_id, None)
 
             # Terminate multiprocess group if applicable
-            if should_enable_multiprocess(int(task.concurrent_users)):
+            cpu_count = get_cpu_count()
+            if should_enable_multiprocess(int(task.concurrent_users), cpu_count):
                 terminate_locust_process_group(warmup_task_id, timeout=10.0)
 
             # Cleanup warmup task resources

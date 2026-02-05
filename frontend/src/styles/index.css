@@ -2176,7 +2176,11 @@ body {
 
 /* Improve chart label visibility */
 :global(.g2-label-item) {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif !important;
 }
 
 /* Chart grid refinement */

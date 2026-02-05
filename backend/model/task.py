@@ -58,6 +58,19 @@ class TaskStatusRsp(BaseModel):
     status: str
 
 
+class ModelListResponse(BaseModel):
+    """
+    Response model for listing available model names.
+
+    Attributes:
+        data: A list of unique model names.
+        status: The status of the response (e.g., "success", "error").
+    """
+
+    data: List[str]
+    status: str
+
+
 class TaskCreateRsp(BaseModel):
     """
     Response model for a task creation request.

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Query, Request
 from model.task import (
     ComparisonRequest,
     ComparisonResponse,
+    ModelListResponse,
     ModelTasksResponse,
     TaskCreateReq,
     TaskCreateRsp,
@@ -80,7 +81,7 @@ async def get_tasks_status(request: Request, page_size: int = Query(50, ge=1, le
     return await get_tasks_status_svc(request, page_size)
 
 
-@router.get("/models", response_model=Dict[str, Any])
+@router.get("/models", response_model=ModelListResponse)
 async def get_all_models(request: Request):
     """
     Get all unique model names used in tasks.

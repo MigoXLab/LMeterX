@@ -285,9 +285,7 @@ async def get_tasks_svc(
             query = query.where(Task.created_by == creator)
         if model:
             model_list = [m.strip() for m in model.split(",") if m.strip()]
-            if len(model_list) == 1:
-                query = query.where(Task.model == model_list[0])
-            elif model_list:
+            if model_list:
                 query = query.where(Task.model.in_(model_list))
         if search:
             query = query.where(

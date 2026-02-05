@@ -128,6 +128,7 @@ class CommonTaskService:
             query = (
                 select(CommonTask)
                 .where(CommonTask.status == "created")
+                .where(CommonTask.is_deleted == 0)
                 .with_for_update()
                 .limit(1)
             )
@@ -200,9 +201,11 @@ class CommonTaskService:
         try:
             stale_tasks = (
                 session.execute(
-                    select(CommonTask).where(
+                    select(CommonTask)
+                    .where(
                         CommonTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
                     )
+                    .where(CommonTask.is_deleted == 0)
                 )
                 .scalars()
                 .all()

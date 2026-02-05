@@ -91,8 +91,6 @@ const CommonResults: React.FC = () => {
     totalRow?.rps != null && totalRow.rps !== undefined
       ? Number(totalRow.rps)
       : 0;
-  // Format to 2 decimal places to match table display
-  const rps = Number(rawRps.toFixed(2));
   const qpm = Number((rawRps * 60).toFixed(2));
   const avgTimeSec =
     totalRow?.avg_response_time != null
@@ -247,16 +245,78 @@ const CommonResults: React.FC = () => {
           />
         </div>
       ) : !results || results.length === 0 ? (
-        <div
-          className='flex justify-center align-center'
-          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
-        >
-          <Alert
-            description={t('pages.results.noTestResultsAvailable')}
-            type='info'
-            showIcon
-            style={{ background: 'transparent', border: 'none' }}
-          />
+        <div className='results-content'>
+          {/* Task Info */}
+          <div className='results-section unified-section' ref={taskRef}>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.taskInfo')}
+              </span>
+            </div>
+            <div className='section-content'>
+              {taskInfo ? (
+                <div className='info-grid'>
+                  <div className='info-grid-item'>
+                    <span className='info-label'>
+                      {t('pages.results.taskId')}
+                    </span>
+                    <span className='info-value'>{taskInfo.id}</span>
+                  </div>
+                  <div className='info-grid-item'>
+                    <span className='info-label'>
+                      {t('pages.results.taskName')}
+                    </span>
+                    <span className='info-value'>{taskInfo.name}</span>
+                  </div>
+                  <div className='info-grid-item'>
+                    <span className='info-label'>
+                      {t('pages.results.targetUrl')}
+                    </span>
+                    <Tooltip title={taskInfo.target_url}>
+                      <span className='info-value info-value-ellipsis'>
+                        {taskInfo.target_url}
+                      </span>
+                    </Tooltip>
+                  </div>
+                  <div className='info-grid-item'>
+                    <span className='info-label'>
+                      {t('pages.results.createdTime')}
+                    </span>
+                    <span className='info-value'>
+                      {formatDate(taskInfo.created_at)}
+                    </span>
+                  </div>
+                  <div className='info-grid-item'>
+                    <span className='info-label'>
+                      {t('pages.results.concurrentUsers')}
+                    </span>
+                    <span className='info-value'>
+                      {taskInfo.concurrent_users}
+                    </span>
+                  </div>
+                  <div className='info-grid-item'>
+                    <span className='info-label'>
+                      {t('pages.results.testDuration')}
+                    </span>
+                    <span className='info-value'>{taskInfo.duration} s</span>
+                  </div>
+                </div>
+              ) : (
+                <Empty />
+              )}
+            </div>
+          </div>
+          <div
+            className='flex justify-center align-center'
+            style={{ minHeight: '30vh', backgroundColor: '#ffffff' }}
+          >
+            <Alert
+              description={t('pages.results.noTestResultsAvailable')}
+              type='info'
+              showIcon
+              style={{ background: 'transparent', border: 'none' }}
+            />
+          </div>
         </div>
       ) : (
         <div className='results-content'>
@@ -287,16 +347,7 @@ const CommonResults: React.FC = () => {
                       {t('pages.results.targetUrl')}
                     </span>
                     <Tooltip title={taskInfo.target_url}>
-                      <span
-                        className='info-value'
-                        style={{
-                          display: 'inline-block',
-                          maxWidth: '100%',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
+                      <span className='info-value info-value-ellipsis'>
                         {taskInfo.target_url}
                       </span>
                     </Tooltip>

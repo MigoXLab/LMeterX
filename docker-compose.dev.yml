@@ -51,7 +51,7 @@ services:
       # - LDAP_BIND_PASSWORD=service_password
       # JWT configuration
       # - JWT_SECRET_KEY=change-me-to-a-random-string
-      # - JWT_EXPIRE_MINUTES=480
+      # - JWT_EXPIRE_MINUTES=10080
     volumes:
       - ./logs:/app/logs
       - ./upload_files:/app/upload_files

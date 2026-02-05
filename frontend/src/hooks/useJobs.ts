@@ -43,6 +43,9 @@ export const useJobs = (messageApi: MessageInstance) => {
   const [searchText, setSearchText] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [modelFilter, setModelFilter] = useState('');
+  const [creatorFilter, setCreatorFilter] = useState('');
+  const [allModels, setAllModels] = useState<string[]>([]);
 
   const pollingTimerRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -68,6 +71,8 @@ export const useJobs = (messageApi: MessageInstance) => {
             pageSize: pagination.pageSize,
             ...(statusFilter && { status: statusFilter }),
             ...(searchText && { search: searchText }),
+            ...(modelFilter && { model: modelFilter }),
+            ...(creatorFilter && { creator: creatorFilter }),
             _t: Date.now(),
           },
           headers: {
@@ -113,7 +118,15 @@ export const useJobs = (messageApi: MessageInstance) => {
         }
       }
     },
-    [pagination.current, pagination.pageSize, statusFilter, searchText, t]
+    [
+      pagination.current,
+      pagination.pageSize,
+      statusFilter,
+      searchText,
+      modelFilter,
+      creatorFilter,
+      t,
+    ]
   );
 
   const fetchJobStatuses = useCallback(async () => {
@@ -264,8 +277,28 @@ export const useJobs = (messageApi: MessageInstance) => {
     pagination.pageSize,
     statusFilter,
     searchText,
+    modelFilter,
+    creatorFilter,
     fetchJobs,
   ]);
+
+  // Fetch all unique models for filter dropdown
+  useEffect(() => {
+    const fetchAllModels = async () => {
+      try {
+        const response = await axios.get<{ data: string[]; status: string }>(
+          `${VITE_API_BASE_URL}/tasks/models`,
+          { headers: buildAuthHeaders() }
+        );
+        if (response.data?.data) {
+          setAllModels(response.data.data);
+        }
+      } catch {
+        // Ignore errors, filter will just show current page models
+      }
+    };
+    fetchAllModels();
+  }, []);
 
   useEffect(() => {
     const hasRunningTasks = jobs.some(job =>
@@ -433,6 +466,32 @@ export const useJobs = (messageApi: MessageInstance) => {
     [statusFilter]
   );
 
+  const setModelFilterWithReset = useCallback(
+    (model: string) => {
+      setModelFilter(model);
+      if (model !== modelFilter) {
+        setPagination(prev => ({
+          ...prev,
+          current: 1,
+        }));
+      }
+    },
+    [modelFilter]
+  );
+
+  const setCreatorFilterWithReset = useCallback(
+    (creator: string) => {
+      setCreatorFilter(creator);
+      if (creator !== creatorFilter) {
+        setPagination(prev => ({
+          ...prev,
+          current: 1,
+        }));
+      }
+    },
+    [creatorFilter]
+  );
+
   return {
     jobs,
     filteredJobs: jobs,
@@ -445,6 +504,9 @@ export const useJobs = (messageApi: MessageInstance) => {
     searchText,
     searchInput,
     statusFilter,
+    modelFilter,
+    creatorFilter,
+    allModels,
     createJob,
     stopJob,
     updateJobName,
@@ -453,5 +515,7 @@ export const useJobs = (messageApi: MessageInstance) => {
     performSearch,
     updateSearchInput,
     setStatusFilter: setStatusFilterWithReset,
+    setModelFilter: setModelFilterWithReset,
+    setCreatorFilter: setCreatorFilterWithReset,
   };
 };

@@ -833,6 +833,95 @@ const TaskResults: React.FC = () => {
     }
   };
 
+  const renderTaskInfoSection = () => (
+    <div className='results-section unified-section' ref={configCardRef}>
+      <div className='section-header'>
+        <span className='section-title'>{t('pages.results.taskInfo')}</span>
+      </div>
+      <div className='section-content'>
+        <div className='info-grid'>
+          <div className='info-grid-item'>
+            <span className='info-label'>{t('pages.results.taskId')}</span>
+            <span className='info-value'>{taskInfo?.id || id}</span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>{t('pages.results.taskName')}</span>
+            <span className='info-value'>
+              {taskInfo?.name || t('pages.results.taskName')}
+            </span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>{t('pages.results.targetUrl')}</span>
+            <Tooltip
+              title={
+                taskInfo?.target_host && taskInfo?.api_path
+                  ? `${taskInfo.target_host}${taskInfo.api_path}`
+                  : taskInfo?.target_host || 'N/A'
+              }
+            >
+              <span className='info-value info-value-ellipsis'>
+                {taskInfo?.target_host && taskInfo?.api_path
+                  ? `${taskInfo.target_host}${taskInfo.api_path}`
+                  : taskInfo?.target_host || 'N/A'}
+              </span>
+            </Tooltip>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>{t('pages.results.createdTime')}</span>
+            <span className='info-value'>
+              {taskInfo?.created_at ? formatDate(taskInfo.created_at) : 'N/A'}
+            </span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>
+              {t('pages.results.datasetSource')}
+            </span>
+            <span className='info-value'>
+              {(() => {
+                if (taskInfo?.test_data === 'default') {
+                  return t('pages.results.builtInDataset');
+                }
+                if (taskInfo?.test_data && taskInfo.test_data !== 'default') {
+                  return t('pages.results.customDataset');
+                }
+                return '-';
+              })()}
+            </span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>{t('pages.results.datasetType')}</span>
+            <span className='info-value'>
+              {(() => {
+                if (taskInfo?.test_data === 'default') {
+                  return getBuiltInDatasetLabel(taskInfo?.chat_type);
+                }
+                return '-';
+              })()}
+            </span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>{t('pages.results.modelName')}</span>
+            <span className='info-value'>{taskInfo?.model || 'none'}</span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>
+              {t('pages.results.concurrentUsers')}
+            </span>
+            <span className='info-value'>
+              {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
+            </span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>
+              {t('pages.results.testDuration')}
+            </span>
+            <span className='info-value'>{taskInfo?.duration || 0} s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className='page-container results-page'>
       <div className='page-header-wrapper'>
@@ -898,7 +987,7 @@ const TaskResults: React.FC = () => {
             className='text-center'
           />
         </div>
-      ) : error ? (
+      ) : error && !taskInfo ? (
         <div
           className='flex justify-center align-center'
           style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
@@ -911,16 +1000,19 @@ const TaskResults: React.FC = () => {
           />
         </div>
       ) : !results || results.length === 0 ? (
-        <div
-          className='flex justify-center align-center'
-          style={{ minHeight: '60vh', backgroundColor: '#ffffff' }}
-        >
-          <Alert
-            description={t('pages.results.noTestResultsAvailable')}
-            type='info'
-            showIcon
-            style={{ background: 'transparent', border: 'none' }}
-          />
+        <div className='results-content'>
+          {renderTaskInfoSection()}
+          <div
+            className='flex justify-center align-center'
+            style={{ minHeight: '30vh', backgroundColor: '#ffffff' }}
+          >
+            <Alert
+              description={error || t('pages.results.noTestResultsAvailable')}
+              type={error ? 'error' : 'info'}
+              showIcon
+              style={{ background: 'transparent', border: 'none' }}
+            />
+          </div>
         </div>
       ) : (
         <div className='results-content'>
@@ -964,124 +1056,7 @@ const TaskResults: React.FC = () => {
           )}
 
           {/* Task Info - Converted to table format */}
-          <div className='results-section unified-section' ref={configCardRef}>
-            <div className='section-header'>
-              <span className='section-title'>
-                {t('pages.results.taskInfo')}
-              </span>
-            </div>
-            <div className='section-content'>
-              <div className='info-grid'>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.taskId')}
-                  </span>
-                  <span className='info-value'>{taskInfo?.id || id}</span>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.taskName')}
-                  </span>
-                  <span className='info-value'>
-                    {taskInfo?.name || t('pages.results.taskName')}
-                  </span>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.targetUrl')}
-                  </span>
-                  <Tooltip
-                    title={
-                      taskInfo?.target_host && taskInfo?.api_path
-                        ? `${taskInfo.target_host}${taskInfo.api_path}`
-                        : taskInfo?.target_host || 'N/A'
-                    }
-                  >
-                    <span
-                      className='info-value'
-                      style={{
-                        display: 'inline-block',
-                        maxWidth: '100%',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {taskInfo?.target_host && taskInfo?.api_path
-                        ? `${taskInfo.target_host}${taskInfo.api_path}`
-                        : taskInfo?.target_host || 'N/A'}
-                    </span>
-                  </Tooltip>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.createdTime')}
-                  </span>
-                  <span className='info-value'>
-                    {taskInfo?.created_at
-                      ? formatDate(taskInfo.created_at)
-                      : 'N/A'}
-                  </span>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.datasetSource')}
-                  </span>
-                  <span className='info-value'>
-                    {(() => {
-                      if (taskInfo?.test_data === 'default') {
-                        return t('pages.results.builtInDataset');
-                      }
-                      if (
-                        taskInfo?.test_data &&
-                        taskInfo.test_data !== 'default'
-                      ) {
-                        return t('pages.results.customDataset');
-                      }
-                      return '-';
-                    })()}
-                  </span>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.datasetType')}
-                  </span>
-                  <span className='info-value'>
-                    {(() => {
-                      if (taskInfo?.test_data === 'default') {
-                        return getBuiltInDatasetLabel(taskInfo?.chat_type);
-                      }
-                      return '-';
-                    })()}
-                  </span>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.modelName')}
-                  </span>
-                  <span className='info-value'>
-                    {taskInfo?.model || 'none'}
-                  </span>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.concurrentUsers')}
-                  </span>
-                  <span className='info-value'>
-                    {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
-                  </span>
-                </div>
-                <div className='info-grid-item'>
-                  <span className='info-label'>
-                    {t('pages.results.testDuration')}
-                  </span>
-                  <span className='info-value'>
-                    {taskInfo?.duration || 0} s
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {renderTaskInfoSection()}
 
           {/* Results Overview */}
           <div

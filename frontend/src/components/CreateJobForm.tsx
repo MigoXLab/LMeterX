@@ -736,6 +736,17 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const values = form.getFieldsValue(true);
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
+      const defaultWarmupDuration = 120;
+      if (
+        values.warmup_duration === undefined ||
+        values.warmup_duration === null
+      ) {
+        values.warmup_duration = defaultWarmupDuration;
+      }
+      if (values.warmup_enabled === false) {
+        values.warmup_duration =
+          values.warmup_duration || defaultWarmupDuration;
+      }
 
       // Ensure request_payload is available - auto-generate if empty
       if (!values.request_payload || !values.request_payload.trim()) {
@@ -865,6 +876,17 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const values = await form.validateFields();
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
+      const defaultWarmupDuration = 120;
+      if (
+        values.warmup_duration === undefined ||
+        values.warmup_duration === null
+      ) {
+        values.warmup_duration = defaultWarmupDuration;
+      }
+      if (values.warmup_enabled === false) {
+        values.warmup_duration =
+          values.warmup_duration || defaultWarmupDuration;
+      }
 
       // Normalize and validate field_mapping for non-standard APIs
       const apiType = values.api_type || 'openai-chat';
@@ -2241,6 +2263,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       <Row gutter={24} align='middle'>
         <Col span={12}>
           <Form.Item
+            name='warmup_enabled'
             label={
               <span>
                 {t('components.createJobForm.warmupMode')}
@@ -2251,34 +2274,63 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 </Tooltip>
               </span>
             }
-            style={{ marginBottom: 0 }}
+            rules={[
+              {
+                required: true,
+                message: t('components.createJobForm.pleaseSelectWarmupMode'),
+              },
+            ]}
           >
-            <Space>
-              <Radio.Group value='enabled' disabled>
-                <Radio value='enabled'>
-                  {t('components.createJobForm.warmupEnabled')}
-                </Radio>
-                <Radio value='disabled'>
-                  {t('components.createJobForm.warmupDisabled')}
-                </Radio>
-              </Radio.Group>
-            </Space>
+            <Radio.Group>
+              <Radio value>{t('components.createJobForm.warmupEnabled')}</Radio>
+              <Radio value={false}>
+                {t('components.createJobForm.warmupDisabled')}
+              </Radio>
+            </Radio.Group>
           </Form.Item>
         </Col>
         <Col span={12}>
-          <Form.Item
-            label={t('components.createJobForm.warmupDuration')}
-            style={{ marginBottom: 0 }}
-          >
-            <InputNumber
-              value={120}
-              disabled
-              style={{
-                width: '120px',
-                backgroundColor: token.colorBgContainerDisabled,
-              }}
-              addonAfter='s'
-            />
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => {
+              const warmupEnabled = getFieldValue('warmup_enabled');
+              return (
+                <Form.Item
+                  name='warmup_duration'
+                  label={t('components.createJobForm.warmupDuration')}
+                  rules={[
+                    {
+                      required: warmupEnabled === true,
+                      message: t(
+                        'components.createJobForm.pleaseEnterWarmupDuration'
+                      ),
+                    },
+                    {
+                      type: 'number',
+                      min: 10,
+                      max: 1800,
+                      message: t(
+                        'components.createJobForm.warmupDurationRangeLimit'
+                      ),
+                    },
+                  ]}
+                >
+                  <InputNumber
+                    min={10}
+                    max={1800}
+                    disabled={warmupEnabled === false}
+                    style={{
+                      width: '120px',
+                      backgroundColor:
+                        warmupEnabled === false
+                          ? token.colorBgContainerDisabled
+                          : undefined,
+                    }}
+                    addonAfter='s'
+                    placeholder='120'
+                  />
+                </Form.Item>
+              );
+            }}
           </Form.Item>
         </Col>
       </Row>
@@ -3074,6 +3126,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           model: '',
           request_payload: generateDefaultPayload('openai-chat', '', true),
           field_mapping: getDefaultFieldMapping('openai-chat'),
+          warmup_enabled: true,
+          warmup_duration: 120,
         }}
         onFinish={handleSubmit}
         onValuesChange={changedValues => {
@@ -3137,6 +3191,22 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 changedValues.stream_mode
               );
               form.setFieldsValue({ request_payload: newPayload });
+            }
+          }
+          if ('warmup_enabled' in changedValues) {
+            const warmupEnabled = changedValues.warmup_enabled;
+            const currentWarmupDuration = form.getFieldValue('warmup_duration');
+            if (warmupEnabled === false) {
+              form.setFieldsValue({
+                warmup_duration: currentWarmupDuration ?? 120,
+              });
+            } else if (warmupEnabled === true) {
+              if (
+                currentWarmupDuration === undefined ||
+                currentWarmupDuration === null
+              ) {
+                form.setFieldsValue({ warmup_duration: 120 });
+              }
             }
           }
           if ('concurrent_users' in changedValues) {

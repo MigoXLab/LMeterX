@@ -21,6 +21,7 @@ from service.task_service import (
     compare_performance_svc,
     create_task_svc,
     delete_task_svc,
+    get_all_models_svc,
     get_model_tasks_for_comparison_svc,
     get_task_result_svc,
     get_task_status_svc,
@@ -43,6 +44,8 @@ async def get_tasks(
     pageSize: int = Query(10, ge=1, le=100),
     status: Optional[str] = None,
     search: Optional[str] = None,
+    creator: Optional[str] = None,
+    model: Optional[str] = None,
 ):
     """
     Get a paginated and filtered list of tasks.
@@ -53,11 +56,13 @@ async def get_tasks(
         pageSize (int): The number of tasks per page.
         status (Optional[str]): Filter tasks by status.
         search (Optional[str]): Search tasks by a keyword.
+        creator (Optional[str]): Filter tasks by creator username.
+        model (Optional[str]): Filter tasks by model name.
 
     Returns:
         TaskResponse: A response object containing the list of tasks.
     """
-    return await get_tasks_svc(request, page, pageSize, status, search)
+    return await get_tasks_svc(request, page, pageSize, status, search, creator, model)
 
 
 @router.get("/status", response_model=TaskStatusRsp)
@@ -73,6 +78,20 @@ async def get_tasks_status(request: Request, page_size: int = Query(50, ge=1, le
         TaskStatusRsp: A response object containing the list of task statuses.
     """
     return await get_tasks_status_svc(request, page_size)
+
+
+@router.get("/models", response_model=Dict[str, Any])
+async def get_all_models(request: Request):
+    """
+    Get all unique model names used in tasks.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        Dict[str, Any]: A response containing the list of unique model names.
+    """
+    return await get_all_models_svc(request)
 
 
 @router.post("", response_model=TaskCreateRsp)

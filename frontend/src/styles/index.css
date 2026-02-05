@@ -1174,6 +1174,7 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .info-label {
@@ -1189,6 +1190,13 @@ body {
   color: #333;
   word-break: break-word;
   flex: 1;
+}
+
+.info-value-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* Unified Table Styles */

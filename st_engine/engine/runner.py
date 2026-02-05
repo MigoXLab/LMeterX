@@ -133,17 +133,33 @@ class LocustRunner:
     def _run_warmup_phase(self, task: Task, task_logger) -> None:
         """
         Run warmup phase before the actual test to avoid cold start interference.
-        Uses original payload (no dataset), same concurrency, runs for 2 minutes.
+        Uses original payload (no dataset), same concurrency.
         After warmup, waits 10 seconds to let KV Cache stabilize.
+
+        Warmup can be enabled/disabled and duration can be configured via task settings.
         """
+        # Check if warmup is enabled (handle both boolean and integer from database)
+        warmup_enabled = getattr(task, "warmup_enabled", 1)
+        # Convert to boolean: 0 or False means disabled
+        if warmup_enabled == 0 or warmup_enabled is False:
+            task_logger.info("Warmup phase is disabled, skipping")
+            return
+
+        # Get warmup duration from task settings (default to 120s if not set)
+        warmup_duration = getattr(
+            task, "warmup_duration", self._WARMUP_DURATION_SECONDS
+        )
+        if not isinstance(warmup_duration, int) or warmup_duration <= 0:
+            warmup_duration = self._WARMUP_DURATION_SECONDS
+
         task_logger.info(
-            f"Starting warmup phase: {self._WARMUP_DURATION_SECONDS}s with {task.concurrent_users} users"
+            f"Starting warmup phase: {warmup_duration}s with {task.concurrent_users} users"
         )
 
         warmup_task_id = f"{task.id}_warmup"
 
         # Build warmup command (no test_data, with warmup_mode flag)
-        warmup_cmd = self._build_warmup_command(task, task_logger)
+        warmup_cmd = self._build_warmup_command(task, task_logger, warmup_duration)
         self._validate_subprocess_command(warmup_cmd, "Warmup")
         masked_cmd = mask_sensitive_command(warmup_cmd)
         task_logger.info(f"Warmup command: {' '.join(masked_cmd)}")
@@ -221,7 +237,7 @@ class LocustRunner:
             stderr_thread.start()
 
             # Wait for warmup to complete with timeout buffer
-            warmup_timeout = self._WARMUP_DURATION_SECONDS + LOCUST_STOP_TIMEOUT
+            warmup_timeout = warmup_duration + LOCUST_STOP_TIMEOUT
             try:
                 warmup_process.wait(timeout=warmup_timeout)
                 stdout_thread.join(timeout=5)
@@ -291,8 +307,18 @@ class LocustRunner:
         time.sleep(self._WARMUP_COOLDOWN_SECONDS)
         task_logger.info("Starting main test phase")
 
-    def _build_warmup_command(self, task: Task, task_logger) -> List[str]:
+    def _build_warmup_command(
+        self, task: Task, task_logger, warmup_duration: int = None
+    ) -> List[str]:
         """Build Locust command for warmup phase (no dataset, warmup_mode enabled)."""
+        # Get warmup duration from parameter or task settings (default to class constant)
+        if warmup_duration is None:
+            warmup_duration = getattr(
+                task, "warmup_duration", self._WARMUP_DURATION_SECONDS
+            )
+        if not isinstance(warmup_duration, int) or warmup_duration <= 0:
+            warmup_duration = self._WARMUP_DURATION_SECONDS
+
         locust_bin = shutil.which("locust") or "locust"
         cmd = [
             locust_bin,
@@ -305,9 +331,9 @@ class LocustRunner:
             "--spawn-rate",
             str(task.spawn_rate),
             "--run-time",
-            f"{self._WARMUP_DURATION_SECONDS}s",
+            f"{warmup_duration}s",
             "--duration",
-            str(self._WARMUP_DURATION_SECONDS),
+            str(warmup_duration),
             "--headless",
             "--only-summary",
             "--api_path",

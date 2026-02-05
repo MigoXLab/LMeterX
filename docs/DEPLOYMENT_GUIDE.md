@@ -403,7 +403,7 @@ docker stats $(docker-compose ps -q)
 
        # JWT configuration
        - JWT_SECRET_KEY=change-me-to-a-random-string
-       - JWT_EXPIRE_MINUTES=480      # 8 hours
+       - JWT_EXPIRE_MINUTES=10080      # 7 days
    ```
 
    **Step 2: Enable Frontend Login UI**

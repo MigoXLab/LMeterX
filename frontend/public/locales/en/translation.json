@@ -72,7 +72,11 @@
       "renamePlaceholder": "Enter new task name",
       "renameSuccess": "Task name updated",
       "renameFailed": "Failed to update task name",
-      "ownerOnly": "Only the creator can perform this action"
+      "ownerOnly": "Only the creator can perform this action",
+      "filterMine": "Mine",
+      "filterAll": "All",
+      "deleteRunningBlocked": "Please stop the task and wait for it to finish before deleting.",
+      "copyError": "Failed to load task details"
     },
     "results": {
       "title": "Test Results",
@@ -552,6 +556,9 @@
       "durationRangeLimit": "Test duration must be between 1-172800 seconds",
       "concurrentUsersRangeLimit": "Concurrent users must be between 1-5000",
       "spawnRateRangeLimit": "User spawn rate must be between 1-100",
+      "pleaseSelectWarmupMode": "Please select a warmup mode",
+      "pleaseEnterWarmupDuration": "Please enter the warmup duration",
+      "warmupDurationRangeLimit": "Warmup duration must be between 10 and 1800 seconds",
       "headerNameRequired": "Header name is required",
       "headerNameLengthLimit": "Header name length should not exceed 100 characters",
       "headerValueLengthLimit": "Header value length should not exceed 1000 characters",

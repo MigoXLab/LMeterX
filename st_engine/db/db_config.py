@@ -78,7 +78,12 @@ class MySqlSettings(BaseSettings):
     DB_POOL_SIZE: int = 20
     DB_MAX_OVERFLOW: int = 10
     DB_POOL_TIMEOUT: int = 30
-    DB_POOL_RECYCLE: int = 1800  # Recycle connections after 30 minutes
+    # Recycle connections every 4 minutes (240s) to avoid idle timeout issues
+    # This is more aggressive than the previous 300s to handle:
+    # - Firewall/load balancer TCP timeouts (typically 60-300s)
+    # - Cloud database idle timeouts (e.g., Aliyun RDS)
+    # - Network device connection tracking timeouts
+    DB_POOL_RECYCLE: int = 240
 
     @model_validator(mode="before")
     @classmethod

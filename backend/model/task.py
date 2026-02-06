@@ -58,6 +58,19 @@ class TaskStatusRsp(BaseModel):
     status: str
 
 
+class ModelListResponse(BaseModel):
+    """
+    Response model for listing available model names.
+
+    Attributes:
+        data: A list of unique model names.
+        status: The status of the response (e.g., "success", "error").
+    """
+
+    data: List[str]
+    status: str
+
+
 class TaskCreateRsp(BaseModel):
     """
     Response model for a task creation request.
@@ -174,6 +187,15 @@ class TaskCreateReq(BaseModel):
             "1=ShareGPT partial, 2=vision self-built"
         ),
     )
+    warmup_enabled: bool = Field(
+        default=True, description="Whether to enable warmup mode"
+    )
+    warmup_duration: Optional[int] = Field(
+        default=120,
+        ge=10,
+        le=1800,
+        description="Warmup duration in seconds (10-1800)",
+    )
     stream_mode: bool = Field(
         default=True, description="Whether to use streaming response"
     )
@@ -238,6 +260,13 @@ class TaskCreateReq(BaseModel):
             raise ValueError("API path length cannot exceed 255 characters")
         if not v.startswith("/"):
             raise ValueError("API path must start with /")
+        return v
+
+    @validator("warmup_duration", pre=True, always=True)
+    def validate_warmup_duration(cls, v):
+        """Default warmup duration when missing; let range validation handle bounds."""
+        if v is None:
+            return 120
         return v
 
     @validator("model")
@@ -506,6 +535,8 @@ class Task(Base):
     spawn_rate = Column(Integer, nullable=False)
     duration = Column(Integer, nullable=False)
     chat_type = Column(Integer, nullable=True)
+    warmup_enabled = Column(Integer, nullable=True, default=1, server_default="1")
+    warmup_duration = Column(Integer, nullable=True, default=120, server_default="120")
     log_file = Column(Text, nullable=True)
     result_file = Column(Text, nullable=True)
     cert_file = Column(String(255), nullable=True)
@@ -518,6 +549,7 @@ class Task(Base):
     api_type = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
     test_data = Column(Text, nullable=True)
+    is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

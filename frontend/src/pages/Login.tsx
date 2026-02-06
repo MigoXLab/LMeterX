@@ -7,15 +7,16 @@ import { authApi } from '../api/services';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { LoginResponse } from '../types/auth';
 import { clearAuth, saveAuth } from '../utils/auth';
-import { getLdapEnabled } from '../utils/runtimeConfig';
 
 const { Title, Paragraph } = Typography;
 
 const cardStyle: React.CSSProperties = {
   maxWidth: 420,
   width: '100%',
-  boxShadow: '0 12px 40px rgba(0,0,0,0.08)',
+  boxShadow:
+    '0 16px 48px rgba(102, 126, 234, 0.12), 0 4px 16px rgba(118, 75, 162, 0.06)',
   borderRadius: 16,
+  border: '1px solid rgba(102, 126, 234, 0.08)',
 };
 
 const wrapperStyle: React.CSSProperties = {
@@ -25,11 +26,9 @@ const wrapperStyle: React.CSSProperties = {
   justifyContent: 'center',
   position: 'relative',
   background:
-    'radial-gradient(circle at 20% 20%, #eef2ff 0, transparent 25%), radial-gradient(circle at 80% 0, #f3e8ff 0, transparent 25%), #f8fafc',
+    'radial-gradient(ellipse at 20% 20%, rgba(102, 126, 234, 0.12) 0, transparent 50%), radial-gradient(ellipse at 80% 10%, rgba(118, 75, 162, 0.08) 0, transparent 50%), radial-gradient(ellipse at 50% 80%, rgba(102, 126, 234, 0.05) 0, transparent 50%), #f8f9ff',
   padding: '24px',
 };
-
-const LDAP_ENABLED = getLdapEnabled();
 
 const Login: React.FC = () => {
   const { t } = useTranslation();
@@ -67,11 +66,28 @@ const Login: React.FC = () => {
         <LanguageSwitcher />
       </div>
       <Card style={cardStyle} variant='borderless'>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Title level={3} style={{ marginBottom: 8 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div
+            style={{
+              fontSize: '28px',
+              fontWeight: 800,
+              letterSpacing: '0.06em',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              marginBottom: 12,
+              textTransform: 'uppercase' as const,
+              fontFamily:
+                "'Exo 2', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+            }}
+          >
+            LMeterX
+          </div>
+          <Title level={4} style={{ marginBottom: 8, color: '#282e58' }}>
             {t('pages.login.title')}
           </Title>
-          <Paragraph style={{ margin: 0, color: '#666' }}>
+          <Paragraph style={{ margin: 0, color: '#545983' }}>
             {t('pages.login.subtitle')}
           </Paragraph>
         </div>

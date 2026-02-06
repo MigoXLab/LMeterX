@@ -404,7 +404,7 @@ docker stats $(docker-compose ps -q)
 
        # JWT 配置
        - JWT_SECRET_KEY=请修改为随机字符串
-       - JWT_EXPIRE_MINUTES=480      # 8小时
+       - JWT_EXPIRE_MINUTES=10080      # 7天
    ```
 
    **步骤 2: 启用前端登录界面**

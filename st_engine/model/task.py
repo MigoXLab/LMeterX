@@ -141,6 +141,15 @@ class TaskCreateReq(BaseModel):
     concurrent_users: int = Field(..., ge=1, description="Number of concurrent users")
     spawn_rate: int = Field(ge=1, description="Number of users to spawn per second")
     chat_type: int = Field(ge=0, description="Type of chat interaction")
+    warmup_enabled: bool = Field(
+        default=True, description="Whether to enable warmup mode"
+    )
+    warmup_duration: Optional[int] = Field(
+        default=120,
+        ge=10,
+        le=1800,
+        description="Warmup duration in seconds (10-1800)",
+    )
     stream_mode: bool = Field(
         default=True, description="Whether to use streaming response"
     )
@@ -221,6 +230,8 @@ class Task(Base):
     spawn_rate = Column(Integer, nullable=False)
     duration = Column(Integer, nullable=False)
     chat_type = Column(Integer, nullable=True)
+    warmup_enabled = Column(Integer, nullable=True, default=1, server_default="1")
+    warmup_duration = Column(Integer, nullable=True, default=120, server_default="120")
     log_file = Column(Text, nullable=True)
     result_file = Column(Text, nullable=True)
     cert_file = Column(String(255), nullable=True)
@@ -232,6 +243,7 @@ class Task(Base):
     request_payload = Column(Text, nullable=True)
     field_mapping = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
+    is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     test_data = Column(Text, nullable=True)

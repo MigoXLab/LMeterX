@@ -44,6 +44,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
   const [searchText, setSearchText] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [creatorFilter, setCreatorFilter] = useState('');
 
   const pollingTimerRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -56,12 +57,14 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     pageSize: number;
     status: string;
     search: string;
+    creator: string;
   } | null>(null);
 
   // Use refs to access latest values without causing re-renders
   const paginationRef = useRef(pagination);
   const statusFilterRef = useRef(statusFilter);
   const searchTextRef = useRef(searchText);
+  const creatorFilterRef = useRef(creatorFilter);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -76,6 +79,10 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     searchTextRef.current = searchText;
   }, [searchText]);
 
+  useEffect(() => {
+    creatorFilterRef.current = creatorFilter;
+  }, [creatorFilter]);
+
   const fetchJobs = useCallback(
     async (
       isManualRefresh = false,
@@ -84,6 +91,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         pageSize: number;
         status: string;
         search: string;
+        creator: string;
       }>
     ) => {
       // Mark as manual refresh to prevent useEffect from triggering
@@ -96,6 +104,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         pageSize: override?.pageSize ?? paginationRef.current.pageSize,
         status: override?.status ?? statusFilterRef.current,
         search: override?.search ?? searchTextRef.current,
+        creator: override?.creator ?? creatorFilterRef.current,
       };
 
       // If a fetch is in-flight with identical params, skip; otherwise allow new fetch
@@ -106,7 +115,8 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         lastRequestParamsRef.current.page === currentParams.page &&
         lastRequestParamsRef.current.pageSize === currentParams.pageSize &&
         lastRequestParamsRef.current.status === currentParams.status &&
-        lastRequestParamsRef.current.search === currentParams.search
+        lastRequestParamsRef.current.search === currentParams.search &&
+        lastRequestParamsRef.current.creator === currentParams.creator
       ) {
         if (isManualRefresh) {
           isManualRefreshRef.current = false;
@@ -130,6 +140,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
             pageSize: currentParams.pageSize,
             ...(currentParams.status && { status: currentParams.status }),
             ...(currentParams.search && { search: currentParams.search }),
+            ...(currentParams.creator && { creator: currentParams.creator }),
             _t: Date.now(),
           },
           headers: {
@@ -343,6 +354,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     pagination.pageSize,
     statusFilter,
     searchText,
+    creatorFilter,
     fetchJobs,
   ]);
 
@@ -496,6 +508,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     lastRefreshTime,
     searchInput,
     statusFilter,
+    creatorFilter,
     createJob,
     stopJob,
     updateJobName,
@@ -506,6 +519,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
         pageSize: number;
         status: string;
         search: string;
+        creator: string;
       }>
     ) => {
       setRefreshing(true);
@@ -524,6 +538,9 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
       if (override?.search !== undefined) {
         setSearchText(override.search);
       }
+      if (override?.creator !== undefined) {
+        setCreatorFilter(override.creator);
+      }
       await fetchJobs(true, override);
       setRefreshing(false);
     },
@@ -537,6 +554,13 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     updateSearchInput: (value: string) => setSearchInput(value),
     setStatusFilter: (status: string) => {
       setStatusFilter(status);
+      setPagination(prev => ({
+        ...prev,
+        current: 1,
+      }));
+    },
+    setCreatorFilter: (creator: string) => {
+      setCreatorFilter(creator);
       setPagination(prev => ({
         ...prev,
         current: 1,

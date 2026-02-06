@@ -21,7 +21,7 @@ class AuthSettings(BaseSettings):
 
     JWT_SECRET_KEY: str = "change-me"
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 8 * 60
+    JWT_EXPIRE_MINUTES: int = 7 * 24 * 60
     JWT_ISSUER: str = "lmeterx"
 
     # Cookie-based auth toggles (used to deliver tokens as HttpOnly cookies)

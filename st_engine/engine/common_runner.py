@@ -50,13 +50,11 @@ class CommonLocustRunner(LocustRunner):
             task.id,
         ]
 
-        # Only add request_body if it has a value
-        if task.request_body:
-            cmd.extend(["--request_body", task.request_body])
-
-        # Only add dataset_file if it has a value
-        if getattr(task, "dataset_file", None):
-            cmd.extend(["--dataset_file", task.dataset_file])
+        # Optional args
+        for key in ["request_body", "dataset_file"]:
+            value = getattr(task, key, None)
+            if value:
+                cmd.extend([f"--{key}", value])
 
         return cmd
 

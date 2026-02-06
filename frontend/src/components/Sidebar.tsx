@@ -26,28 +26,28 @@ const Sidebar: React.FC = () => {
   const menuItems = [
     {
       key: '/jobs',
-      icon: <ExperimentOutlined style={{ color: '#1890ff' }} />,
+      icon: <ExperimentOutlined style={{ color: '#667eea' }} />,
       label: (
         <span className='text-bold text-xl'>{t('sidebar.testTasks')}</span>
       ),
     },
     {
       key: '/result-comparison',
-      icon: <BarChartOutlined style={{ color: '#52c41a' }} />,
+      icon: <BarChartOutlined style={{ color: '#764ba2' }} />,
       label: (
         <span className='text-bold text-xl'>{t('sidebar.perfCompare')}</span>
       ),
     },
     {
       key: '/system-monitor',
-      icon: <MonitorOutlined style={{ color: '#fa8c16' }} />,
+      icon: <MonitorOutlined style={{ color: '#8b5cf6' }} />,
       label: (
         <span className='text-bold text-xl'>{t('sidebar.monitorHub')}</span>
       ),
     },
     {
       key: '/system-config',
-      icon: <SettingOutlined style={{ color: '#722ed1' }} />,
+      icon: <SettingOutlined style={{ color: '#a78bfa' }} />,
       label: (
         <span className='text-bold text-xl'>{t('sidebar.systemConfig')}</span>
       ),
@@ -60,8 +60,8 @@ const Sidebar: React.FC = () => {
         theme={{
           components: {
             Menu: {
-              itemSelectedBg: '#fff',
-              itemSelectedColor: '#1890ff',
+              itemSelectedBg: 'rgba(102, 126, 234, 0.08)',
+              itemSelectedColor: '#667eea',
             },
           },
         }}

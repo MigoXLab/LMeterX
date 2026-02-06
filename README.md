@@ -184,7 +184,7 @@ LDAP_BIND_PASSWORD=service_password                   # Service account password
 
 # JWT configuration (optional)
 JWT_SECRET_KEY=your-secret-key-here    # JWT signing key (change in production)
-JWT_EXPIRE_MINUTES=480                 # Token expiration time in minutes (default: 8 hours)
+JWT_EXPIRE_MINUTES=10080                 # Token expiration time in minutes (default: 7 days)
 ```
 
 **Configuration Notes:**

@@ -222,7 +222,11 @@ class TaskService:
         try:
             # The transaction is handled by the get_db_session context manager
             query = (
-                select(Task).where(Task.status == "created").with_for_update().limit(1)
+                select(Task)
+                .where(Task.status == "created")
+                .where(Task.is_deleted == 0)
+                .with_for_update()
+                .limit(1)
             )
             task = session.execute(query).scalar_one_or_none()
             if task:
@@ -272,9 +276,9 @@ class TaskService:
             # during the last shutdown.
             stale_tasks = (
                 session.execute(
-                    select(Task).where(
-                        Task.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
-                    )
+                    select(Task)
+                    .where(Task.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED]))
+                    .where(Task.is_deleted == 0)
                 )
                 .scalars()
                 .all()

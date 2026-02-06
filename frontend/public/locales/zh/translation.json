@@ -72,7 +72,16 @@
       "renamePlaceholder": "请输入新的任务名称",
       "renameSuccess": "任务名称更新成功",
       "renameFailed": "任务名称更新失败",
-      "ownerOnly": "仅创建人可以执行此操作"
+      "ownerOnly": "仅创建人可以执行此操作",
+      "filterMine": "当前用户",
+      "filterAll": "全部",
+      "deleteRunningBlocked": "请先停止任务并等待任务完成后再删除",
+      "copyError": "加载任务详情失败",
+      "goToCompare": "去对比",
+      "selectedCount": "已选 {{count}} 个",
+      "selectMinForCompare": "请选择2-5个任务进行对比",
+      "selectMaxForCompare": "最多只能选择5个任务进行对比",
+      "clearSelection": "清除勾选"
     },
     "results": {
       "title": "测试结果",
@@ -553,6 +562,9 @@
       "durationRangeLimit": "测试持续时间必须在1-172800秒之间",
       "concurrentUsersRangeLimit": "并发用户数必须在1-5000之间",
       "spawnRateRangeLimit": "用户生成速率必须在1-100之间",
+      "pleaseSelectWarmupMode": "请选择预热模式",
+      "pleaseEnterWarmupDuration": "请输入预热时间",
+      "warmupDurationRangeLimit": "预热时间必须在10-1800秒之间",
       "headerNameRequired": "请求头名称必填",
       "headerNameLengthLimit": "请求头名称长度不能超过100个字符",
       "headerValueLengthLimit": "请求头值长度不能超过1000个字符",

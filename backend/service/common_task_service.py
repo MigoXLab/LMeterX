@@ -146,12 +146,14 @@ async def get_common_tasks_svc(
     page_size: int = Query(10, ge=1, le=100, alias="pageSize"),
     status: Optional[str] = None,
     search: Optional[str] = None,
+    creator: Optional[str] = None,
 ) -> CommonTaskResponse:
     tasks_data: List[Dict[str, Any]] = []
     pagination = CommonTaskPagination()
     try:
         db = request.state.db
-        query = select(CommonTask)
+        # Base query excluding soft-deleted tasks
+        query = select(CommonTask).where(CommonTask.is_deleted == 0)
 
         if status:
             status_list = [s.strip() for s in status.split(",") if s.strip()]
@@ -159,6 +161,9 @@ async def get_common_tasks_svc(
                 query = query.where(CommonTask.status == status_list[0])
             else:
                 query = query.where(CommonTask.status.in_(status_list))
+
+        if creator:
+            query = query.where(CommonTask.created_by == creator)
 
         if search:
             query = query.where(
@@ -203,6 +208,7 @@ async def get_common_tasks_status_svc(
         SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
         FROM common_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
+        AND is_deleted = 0
         ORDER BY created_at DESC
         LIMIT :limit
         """
@@ -300,7 +306,7 @@ async def update_common_task_svc(
     db = request.state.db
     try:
         task = await db.get(CommonTask, task_id)
-        if not task:
+        if not task or getattr(task, "is_deleted", 0) == 1:
             raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
 
         if settings.LDAP_ENABLED:
@@ -326,7 +332,8 @@ async def update_common_task_svc(
 
 async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
     """
-    Delete a common API task and its related results. Only the creator can delete.
+    Soft delete a common API task by marking it as deleted. Only the creator can delete.
+    The task and its related results will be hidden from queries but remain in the database.
     """
     if not task_id:
         raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
@@ -337,6 +344,10 @@ async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, An
         if not task:
             raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
 
+        # Check if task is already deleted
+        if getattr(task, "is_deleted", 0) == 1:
+            raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
             # forbidden to delete task without created_by
@@ -345,10 +356,8 @@ async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, An
             if task.created_by != username:
                 raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
 
-        await db.execute(
-            delete(CommonTaskResult).where(CommonTaskResult.task_id == task_id)
-        )
-        await db.delete(task)
+        # Soft delete: mark as deleted instead of physically removing
+        task.is_deleted = 1
         await db.commit()
         return {"status": "success", "task_id": task_id, "message": "Task deleted"}
     except ErrorResponse:
@@ -479,7 +488,7 @@ async def stop_common_task_svc(request: Request, task_id: str) -> CommonTaskCrea
     try:
         db = request.state.db
         task = await db.get(CommonTask, task_id)
-        if not task:
+        if not task or getattr(task, "is_deleted", 0) == 1:
             return CommonTaskCreateRsp(
                 status="unknown", task_id=task_id, message="Task not found"
             )
@@ -545,7 +554,7 @@ async def get_common_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
     db = request.state.db
     try:
         task = await db.get(CommonTask, task_id)
-        if not task:
+        if not task or getattr(task, "is_deleted", 0) == 1:
             raise ErrorResponse.not_found("Task not found")
         return _build_task_detail(task)
     except ErrorResponse:
@@ -560,13 +569,17 @@ async def get_common_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
 async def get_common_task_status_svc(request: Request, task_id: str) -> Dict[str, Any]:
     db = request.state.db
     try:
-        query = select(
-            CommonTask.id,
-            CommonTask.name,
-            CommonTask.status,
-            CommonTask.error_message,
-            CommonTask.updated_at,
-        ).where(CommonTask.id == task_id)
+        query = (
+            select(
+                CommonTask.id,
+                CommonTask.name,
+                CommonTask.status,
+                CommonTask.error_message,
+                CommonTask.updated_at,
+            )
+            .where(CommonTask.id == task_id)
+            .where(CommonTask.is_deleted == 0)
+        )
         result = await db.execute(query)
         task_data = result.first()
         if not task_data:
@@ -608,6 +621,7 @@ async def get_common_tasks_for_comparison_svc(
                 CommonTask.duration,
             )
             .where(CommonTask.status.in_(["completed", "failed_requests"]))
+            .where(CommonTask.is_deleted == 0)
             .join(CommonTaskResult, CommonTask.id == CommonTaskResult.task_id)
             .distinct()
             .order_by(CommonTask.created_at.desc(), CommonTask.concurrent_users)
@@ -646,7 +660,7 @@ async def _extract_common_task_metrics(
     try:
         if not task:
             task = await db.get(CommonTask, task_id)
-        if not task:
+        if not task or getattr(task, "is_deleted", 0) == 1:
             return None
 
         query = (
@@ -718,7 +732,11 @@ async def compare_common_performance_svc(
                 error="Maximum 10 tasks can be compared at once",
             )
 
-        task_query = select(CommonTask).where(CommonTask.id.in_(task_ids))
+        task_query = (
+            select(CommonTask)
+            .where(CommonTask.id.in_(task_ids))
+            .where(CommonTask.is_deleted == 0)
+        )
         task_result = await db.execute(task_query)
         tasks = {task.id: task for task in task_result.scalars().all()}
 

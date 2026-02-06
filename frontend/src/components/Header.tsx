@@ -32,7 +32,6 @@ const Header: React.FC = () => {
   const headerStyle: React.CSSProperties = {
     background: '#ffffff',
     padding: 0,
-    borderBottom: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -40,7 +39,6 @@ const Header: React.FC = () => {
     position: 'sticky',
     top: 0,
     zIndex: 1000,
-    boxShadow: 'none',
   };
 
   const headerContainerStyle: React.CSSProperties = {
@@ -57,16 +55,13 @@ const Header: React.FC = () => {
     fontSize: '22px',
     fontWeight: 700,
     cursor: 'pointer',
-    letterSpacing: '0.05em',
-    background:
-      'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%)',
-    backgroundSize: '200% 200%',
+    letterSpacing: '0.04em',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     backgroundClip: 'text',
     position: 'relative',
     transition: 'all 0.3s ease',
-    textShadow: '0 0 30px rgba(102, 126, 234, 0.3)',
   };
 
   const menuItems = [
@@ -93,7 +88,7 @@ const Header: React.FC = () => {
     border: 'none',
     flex: 1,
     justifyContent: 'center',
-    color: '#1f2937',
+    color: 'var(--color-text-secondary)',
     display: 'flex',
     alignItems: 'center',
   };
@@ -105,14 +100,12 @@ const Header: React.FC = () => {
     borderRadius: '8px',
     border: 'none',
     background: 'transparent',
-    color: '#333',
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    color: 'var(--color-text-secondary)',
+    transition: 'all 0.25s ease',
     height: '36px',
     width: '36px',
     padding: 0,
     fontWeight: 500,
-    position: 'relative',
-    overflow: 'hidden',
   };
 
   const rightActionsStyle: React.CSSProperties = {
@@ -133,9 +126,8 @@ const Header: React.FC = () => {
     fontWeight: 600,
     letterSpacing: '0.01em',
     lineHeight: 1,
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    position: 'relative',
-    overflow: 'hidden',
+    transition: 'all 0.25s ease',
+    color: 'var(--color-text)',
   };
 
   useEffect(() => {

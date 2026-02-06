@@ -6,9 +6,11 @@ Copyright (c) 2025, All Rights Reserved.
 from typing import Callable
 
 from fastapi import Request
+from sqlalchemy.exc import OperationalError, PendingRollbackError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from db.mysql import async_session_factory
+from utils.logger import logger
 
 
 class DBSessionMiddleware(BaseHTTPMiddleware):
@@ -46,14 +48,42 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
                 # Process the request and get the response.
                 response = await call_next(request)
                 # If the request was successful, commit the transaction.
-                await session.commit()
+                try:
+                    await session.commit()
+                except (OperationalError, PendingRollbackError) as e:
+                    # Handle database connection errors during commit gracefully
+                    logger.warning(f"Database error during commit: {e}")
+                    try:
+                        await session.rollback()
+                    except Exception as rollback_error:
+                        logger.debug(
+                            f"Failed to rollback session after commit error: {rollback_error}"
+                        )
                 return response
+            except (OperationalError, PendingRollbackError) as e:
+                # Handle database connection errors gracefully
+                logger.warning(f"Database connection error in middleware: {e}")
+                try:
+                    await session.rollback()
+                except Exception as rollback_error:
+                    logger.debug(
+                        f"Failed to rollback session after connection error: {rollback_error}"
+                    )
+                raise
             except Exception:
                 # If any exception occurs during request processing, roll back the transaction.
-                await session.rollback()
+                try:
+                    await session.rollback()
+                except Exception as rollback_error:
+                    # If rollback fails (e.g., connection is dead), log but don't mask original error
+                    logger.debug(f"Failed to rollback session: {rollback_error}")
                 # Re-raise the exception to be handled by FastAPI's exception handlers.
                 raise
             finally:
                 # Ensure the session is closed after the request is finished,
                 # returning it to the connection pool.
-                await session.close()
+                try:
+                    await session.close()
+                except Exception as close_error:
+                    # If close fails, the connection is likely already dead
+                    logger.debug(f"Failed to close session: {close_error}")

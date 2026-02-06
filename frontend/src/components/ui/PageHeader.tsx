@@ -39,32 +39,50 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <div className={className}>
       <div className='flex justify-between align-center'>
-        <div style={{ flex: 1 }}>
+        <div
+          style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 0 }}
+        >
           <Title
             level={level}
             style={{
-              marginBottom: description ? '8px' : 0,
-              fontSize: level === 3 ? '24px' : undefined,
+              marginBottom: 0,
+              fontSize: level === 3 ? '20px' : undefined,
               fontWeight: 600,
+              color: 'var(--color-text)',
+              lineHeight: 1.4,
             }}
           >
-            {icon && <span className='mr-8'>{icon}</span>}
+            {icon && (
+              <span
+                style={{
+                  marginRight: '10px',
+                  color: '#667eea',
+                  fontSize: '18px',
+                }}
+              >
+                {icon}
+              </span>
+            )}
             {title}
           </Title>
           {description && (
             <Text
-              type='secondary'
               style={{
-                fontSize: '14px',
-                color: '#666',
-                display: 'block',
+                fontSize: '13px',
+                color: 'var(--color-text-secondary)',
+                marginLeft: '12px',
+                whiteSpace: 'nowrap',
               }}
             >
               {description}
             </Text>
           )}
         </div>
-        {extra && <div>{extra}</div>}
+        {extra && (
+          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            {extra}
+          </div>
+        )}
       </div>
     </div>
   );

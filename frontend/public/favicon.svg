@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#667eea"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@700');
+    </style>
+  </defs>
+  <rect width="64" height="64" rx="14" ry="14" fill="url(#bg)"/>
+  <text x="32" y="44" text-anchor="middle" font-family="'Quicksand', 'Nunito', 'Varela Round', sans-serif" font-weight="700" font-size="30" fill="#ffffff" letter-spacing="-1">LM</text>
+</svg>

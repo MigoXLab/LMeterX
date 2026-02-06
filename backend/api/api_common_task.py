@@ -44,8 +44,9 @@ async def get_common_tasks(
     pageSize: int = Query(10, ge=1, le=100),
     status: Optional[str] = None,
     search: Optional[str] = None,
+    creator: Optional[str] = None,
 ):
-    return await get_common_tasks_svc(request, page, pageSize, status, search)
+    return await get_common_tasks_svc(request, page, pageSize, status, search, creator)
 
 
 @router.get("/comparison/available", response_model=CommonComparisonTasksResponse)

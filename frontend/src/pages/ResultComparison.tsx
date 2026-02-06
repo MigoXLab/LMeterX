@@ -15,7 +15,6 @@ import {
   RobotOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
-import { Column } from '@ant-design/plots';
 import {
   Alert,
   Button,
@@ -35,6 +34,7 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import ReactECharts from 'echarts-for-react';
 import html2canvas from 'html2canvas';
 import React, {
   useCallback,
@@ -44,6 +44,7 @@ import React, {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/apiClient';
 import { analysisApi } from '../api/services';
 import { CopyButton } from '../components/ui/CopyButton';
@@ -56,17 +57,13 @@ import { createFileTimestamp, formatDate } from '../utils/date';
 const { Text } = Typography;
 const { Option } = Select;
 
+// Macaron palette — soft, pastel tones derived from brand #667eea → #764ba2
 const TASK_COLORS = [
-  '#1890ff', // Blue
-  '#52c41a', // Green
-  '#fa8c16', // Orange
-  '#eb2f96', // Pink
-  '#722ed1', // Purple
-  '#13c2c2', // Cyan
-  '#f5222d', // Red
-  '#a0d911', // Lime
-  '#fa541c', // Dark Orange
-  '#2f54eb', // Dark Blue
+  '#8EA9F5', // Soft Periwinkle
+  '#B38CD9', // Lavender Macaron
+  '#A0B4F5', // Periwinkle Macaron
+  '#D4BEF0', // Lilac Macaron (lighter)
+  '#A8D8F8', // Sky Macaron (lighter)
 ];
 
 interface ModelTaskInfo {
@@ -186,7 +183,10 @@ const CHART_VISIBLE_COUNT = 6;
 const ResultComparison: React.FC = () => {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>(() => {
+    const urlMode = searchParams.get('mode');
+    if (urlMode === 'model' || urlMode === 'common') return urlMode;
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
     return stored === 'common' ? 'common' : 'model';
   });
@@ -225,6 +225,12 @@ const ResultComparison: React.FC = () => {
   const modelInfoRef = useRef<HTMLDivElement | null>(null);
   const comparisonResultsRef = useRef<HTMLDivElement | null>(null);
   const analysisModalContentRef = useRef<HTMLDivElement | null>(null);
+
+  // Ref for pending auto-compare from URL params
+  const pendingCompareRef = useRef<{
+    taskIds: string[];
+    mode: ComparisonMode;
+  } | null>(null);
 
   // Fetch available tasks for comparison
   const fetchAvailableTasks = useCallback(
@@ -366,6 +372,119 @@ const ResultComparison: React.FC = () => {
     messageApi,
     t,
   ]);
+
+  /**
+   * Compare directly with provided task IDs (used for auto-compare from URL params)
+   */
+  const compareDirectly = useCallback(
+    async (taskIds: string[], mode: ComparisonMode) => {
+      if (taskIds.length < 2 || taskIds.length > 5) return;
+
+      setComparing(true);
+      try {
+        if (mode === 'model') {
+          const response = await api.post<{
+            data: ComparisonMetrics[];
+            status: string;
+            error?: string;
+          }>('/tasks/comparison', {
+            selected_tasks: taskIds,
+          });
+
+          if (response.data.status === 'success') {
+            setComparisonResults(response.data.data);
+
+            const selectedTasksData = availableTasks
+              .filter(task => taskIds.includes(task.task_id))
+              .map(task => ({
+                task_id: task.task_id,
+                model_name: task.model_name,
+                concurrent_users: task.concurrent_users,
+                task_name: task.task_name,
+                created_at: task.created_at,
+                duration: task.duration,
+              }));
+
+            setSelectedTasks(selectedTasksData);
+            messageApi.success(t('pages.resultComparison.comparisonCompleted'));
+          } else {
+            messageApi.error(
+              response.data.error ||
+                t('pages.resultComparison.compareResultFailed')
+            );
+          }
+        } else {
+          const response = await api.post<{
+            data: CommonComparisonMetrics[];
+            status: string;
+            error?: string;
+          }>('/common-tasks/comparison', {
+            selected_tasks: taskIds,
+          });
+
+          if (response.data.status === 'success') {
+            setCommonComparisonResults(response.data.data);
+
+            const selectedTasksData = availableCommonTasks
+              .filter(task => taskIds.includes(task.task_id))
+              .map(task => ({
+                task_id: task.task_id,
+                task_name: task.task_name,
+                method: task.method,
+                target_url: task.target_url,
+                concurrent_users: task.concurrent_users,
+                created_at: task.created_at,
+                duration: task.duration,
+              }));
+
+            setSelectedCommonTasks(selectedTasksData);
+            messageApi.success(t('pages.resultComparison.comparisonCompleted'));
+          } else {
+            messageApi.error(
+              response.data.error ||
+                t('pages.resultComparison.compareResultFailed')
+            );
+          }
+        }
+      } catch (error) {
+        messageApi.error(t('pages.resultComparison.compareResultError'));
+      } finally {
+        setComparing(false);
+      }
+    },
+    [availableTasks, availableCommonTasks, messageApi, t]
+  );
+
+  // Read URL params on mount and set pending compare
+  useEffect(() => {
+    const tasksParam = searchParams.get('tasks');
+    const modeParam = searchParams.get('mode');
+    if (tasksParam) {
+      const taskIds = tasksParam.split(',').filter(Boolean);
+      if (taskIds.length >= 2 && taskIds.length <= 5) {
+        const mode: ComparisonMode =
+          modeParam === 'model' || modeParam === 'common' ? modeParam : 'model';
+        pendingCompareRef.current = { taskIds, mode };
+        setComparisonMode(mode);
+      }
+      // Clear URL params
+      setSearchParams({}, { replace: true });
+    }
+  }, []);
+
+  // Auto-compare when available tasks are loaded and there's a pending compare
+  useEffect(() => {
+    const pending = pendingCompareRef.current;
+    if (!pending) return;
+
+    if (pending.mode === 'model' && availableTasks.length > 0) {
+      pendingCompareRef.current = null;
+      compareDirectly(pending.taskIds, pending.mode);
+    } else if (pending.mode === 'common' && availableCommonTasks.length > 0) {
+      pendingCompareRef.current = null;
+      compareDirectly(pending.taskIds, pending.mode);
+    }
+  }, [availableTasks, availableCommonTasks, compareDirectly]);
 
   // Handle task selection in modal
   const handleTaskSelection = (taskId: string, checked: boolean) => {
@@ -750,71 +869,6 @@ const ResultComparison: React.FC = () => {
       ];
     }, [comparisonMode, t]);
 
-  // Helper function to wrap text for x-axis labels
-  const wrapTaskName = (text: string, maxCharsPerLine: number = 18) => {
-    if (text.length <= maxCharsPerLine) {
-      return text;
-    }
-
-    const lines: string[] = [];
-    let currentLine = '';
-
-    // split text by characters
-    const chars = text.split('');
-
-    chars.forEach((char, index) => {
-      if (currentLine.length >= maxCharsPerLine) {
-        // check if we can break the line at the separator
-        if (char === ' ' || char === '-' || char === '_') {
-          lines.push(currentLine);
-          currentLine = char === ' ' ? '' : char;
-        } else if (
-          currentLine.length === maxCharsPerLine ||
-          index === chars.length - 1
-        ) {
-          lines.push(currentLine);
-          currentLine = char;
-        } else {
-          currentLine += char;
-        }
-      } else {
-        currentLine += char;
-      }
-    });
-
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    // Limit to max 2 lines with ellipsis
-    if (lines.length > 2) {
-      return `${lines.slice(0, 2).join('\n')}...`;
-    }
-
-    return lines.join('\n');
-  };
-
-  // Generate unique display label for x-axis when task names are duplicated
-  const generateUniqueLabel = (
-    taskName: string,
-    taskId: string,
-    index: number,
-    allResults: typeof activeComparisonResults
-  ) => {
-    // Check if there are duplicate task names
-    const duplicateCount = allResults.filter(
-      r => r.task_name === taskName
-    ).length;
-
-    if (duplicateCount > 1) {
-      // Add short task ID suffix to differentiate
-      const shortId = taskId.slice(0, 6);
-      return `${wrapTaskName(taskName)}\n(${shortId})`;
-    }
-
-    return wrapTaskName(taskName);
-  };
-
   const formatMetricValue = (
     value: number | string,
     decimals: number = 2,
@@ -839,214 +893,316 @@ const ResultComparison: React.FC = () => {
     return unit ? `${fixed}${unit}` : fixed;
   };
 
-  // Chart configurations
-  const createChartConfig = ({
+  // Truncate long names for x-axis labels
+  const truncateName = (name: string, maxLen: number = 14) => {
+    if (name.length <= maxLen) return name;
+    return `${name.slice(0, maxLen)}…`;
+  };
+
+  // Determine whether to use horizontal bar chart (when > 3 tasks)
+  const useHorizontalBar = activeComparisonResults.length > 3;
+
+  // Calculate dynamic chart height for horizontal bar charts
+  const getChartHeight = () => {
+    if (!useHorizontalBar) return 380;
+    const count = activeComparisonResults.length;
+    // Each bar takes ~60px, plus padding
+    return Math.max(300, count * 60 + 80);
+  };
+
+  // Metrics that should display integers on axis
+  const integerAxisMetrics = new Set([
+    'total_tps',
+    'completion_tps',
+    'avg_total_tokens_per_req',
+    'avg_completion_tokens_per_req',
+  ]);
+
+  // ECharts chart configuration
+  const createEChartsOption = ({
     metricKey,
     chartTitle,
     decimals = 2,
     unit,
   }: MetricCardConfig | CommonMetricCardConfig) => {
-    const normalizedTaskNames = activeComparisonResults.map(
-      result => result.task_name?.trim() || ''
-    );
-    const hasAllDistinctTaskNames =
-      normalizedTaskNames.length > 0 &&
-      normalizedTaskNames.every(name => name !== '') &&
-      new Set(normalizedTaskNames).size === normalizedTaskNames.length;
-
-    // Only use task name as x-axis label when all task names are unique
     const data = activeComparisonResults.map((result, index) => {
-      const rawTaskName = result.task_name?.trim() || '';
-      const labelBase = rawTaskName || result.model_name || result.task_id;
-      const taskKey =
-        hasAllDistinctTaskNames && rawTaskName
-          ? rawTaskName
-          : `${result.task_id}`;
-      const taskLabel =
-        hasAllDistinctTaskNames && rawTaskName
-          ? wrapTaskName(rawTaskName)
-          : generateUniqueLabel(
-              labelBase,
-              result.task_id,
-              index,
-              activeComparisonResults
-            );
-
+      const rawName =
+        result.task_name?.trim() ||
+        ('model_name' in result ? (result as any).model_name : '') ||
+        result.task_id;
       return {
-        // Use task name as key when distinct, otherwise task_id to avoid stacking
-        taskKey,
-        // Display label with unique suffix only when task names are duplicated
-        task: taskLabel,
-        rawTaskName: labelBase,
+        fullName: rawName,
         value: Number((result as any)[metricKey]) || 0,
+        color: getTaskColor(result.task_id),
         taskId: result.task_id,
         index,
       };
     });
 
-    const showLabels = data.length <= 8;
-    const slider =
-      data.length > CHART_VISIBLE_COUNT
-        ? {
-            start: 0,
-            end: Math.min(1, CHART_VISIBLE_COUNT / data.length),
-          }
-        : undefined;
+    const isHorizontal = data.length > 3;
 
-    return {
-      data,
-      xField: 'taskKey', // Use unique taskKey instead of task name
-      yField: 'value',
-      colorField: 'taskId',
-      height: 380,
-      maxColumnWidth: 56,
-      columnWidthRatio: 0.6,
-      appendPadding: [28, 20, slider ? 72 : 56, 20],
-      color: (datum: { taskId: string; index: number }) =>
-        getTaskColor(datum.taskId) ||
-        TASK_COLORS[datum.index % TASK_COLORS.length],
-      columnStyle: {
-        radius: [6, 6, 0, 0],
-        fillOpacity: 0.95,
-        shadowColor: 'rgba(0, 0, 0, 0.06)',
-        shadowBlur: 4,
-        shadowOffsetY: 2,
-      },
-      tooltip: {
-        showMarkers: false,
-        shared: true,
-        domStyles: {
-          'g2-tooltip': {
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
-            padding: '12px 16px',
-          },
-        },
-        formatter: (datum: any) => {
-          const value = datum?.value ?? datum;
-          return {
-            name: datum?.rawTaskName || chartTitle,
-            value: formatMetricValue(value, decimals, unit),
-          };
-        },
-      },
-      label: showLabels
-        ? {
-            position: 'top' as const,
-            style: {
-              fill: '#1a1a1a',
-              fontSize: 12,
-              fontWeight: 600,
-              textShadow: '0 1px 2px rgba(255,255,255,0.8)',
+    // Axis labels: no unit, and use integers for specific metrics
+    const axisDecimals = integerAxisMetrics.has(metricKey) ? 0 : decimals;
+
+    // Dynamic category gap based on number of bars
+    const categoryGap =
+      data.length <= 2
+        ? '65%'
+        : data.length <= 3
+          ? '55%'
+          : data.length <= 4
+            ? '45%'
+            : '35%';
+
+    // DataZoom for scrolling when many items
+    const needsZoom = data.length > CHART_VISIBLE_COUNT;
+    const dataZoomConfig = needsZoom
+      ? [
+          {
+            type: 'slider' as const,
+            show: true,
+            yAxisIndex: isHorizontal ? 0 : undefined,
+            xAxisIndex: isHorizontal ? undefined : 0,
+            start: 0,
+            end: Math.round((CHART_VISIBLE_COUNT / data.length) * 100),
+            ...(isHorizontal
+              ? { width: 22, right: 4 }
+              : { height: 22, bottom: 4 }),
+            borderColor: 'rgba(102, 126, 234, 0.12)',
+            fillerColor: 'rgba(102, 126, 234, 0.08)',
+            backgroundColor: 'rgba(102, 126, 234, 0.03)',
+            handleStyle: {
+              color: '#fff',
+              borderColor: 'rgba(102, 126, 234, 0.35)',
+              borderWidth: 1,
             },
-            formatter: (_value: any, datum: any) => {
-              const val = datum?.value ?? _value ?? 0;
-              return formatMetricValue(val, decimals, unit);
+            textStyle: {
+              color: '#8c8ea6',
+              fontSize: 11,
             },
-          }
-        : undefined,
-      legend: false,
-      meta: {
-        value: {
-          alias: chartTitle,
-        },
-        taskKey: {
-          // Custom formatter to show task display name instead of taskKey
-          formatter: (val: string) => {
-            const item = data.find(d => d.taskKey === val);
-            return item?.task || val;
+            dataBackground: {
+              lineStyle: { color: 'rgba(102, 126, 234, 0.15)' },
+              areaStyle: { color: 'rgba(102, 126, 234, 0.05)' },
+            },
           },
+        ]
+      : undefined;
+
+    // Tooltip (shared between both orientations)
+    const tooltip = {
+      trigger: 'axis' as const,
+      axisPointer: {
+        type: 'shadow' as const,
+        shadowStyle: {
+          color: 'rgba(102, 126, 234, 0.04)',
         },
       },
-      xAxis: {
-        label: {
-          autoRotate: false,
-          autoHide: false,
-          autoEllipsis: false,
-          formatter: (val: string) => {
-            // Find the corresponding task data and return display label
-            const item = data.find(d => d.taskKey === val);
-            return item?.task || val;
-          },
-          style: {
+      backgroundColor: '#fff',
+      borderColor: 'rgba(102, 126, 234, 0.15)',
+      borderWidth: 1,
+      padding: [12, 16],
+      confine: true,
+      textStyle: {
+        color: '#333',
+        fontSize: 13,
+      },
+      extraCssText: 'max-width:320px;white-space:normal;',
+      formatter: (params: any) => {
+        const items = Array.isArray(params) ? params : [params];
+        const item = items[0];
+        if (!item) return '';
+        const dataItem = data[item.dataIndex];
+        if (!dataItem) return '';
+        const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dataItem.color};margin-right:6px;vertical-align:middle;"></span>`;
+        const displayName =
+          dataItem.fullName.length > 40
+            ? `${dataItem.fullName.slice(0, 40)}…`
+            : dataItem.fullName;
+        return `<div style="font-weight:600;margin-bottom:6px;font-size:13px;color:#282e58;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:288px;" title="${dataItem.fullName}">${displayName}</div>
+            <div style="display:flex;align-items:center">${colorDot}<span style="color:#545983">${chartTitle}:</span><b style="color:#282e58;margin-left:6px">${formatMetricValue(item.value, decimals, unit)}</b></div>`;
+      },
+    };
+
+    // Horizontal bar chart (data.length > 3)
+    if (isHorizontal) {
+      // Reverse data so that the first item appears at the top
+      const reversedData = [...data].reverse();
+
+      return {
+        grid: {
+          left: 16,
+          right: needsZoom ? 48 : 60,
+          top: 16,
+          bottom: 12,
+          containLabel: true,
+        },
+        tooltip,
+        xAxis: {
+          type: 'value' as const,
+          axisLabel: {
+            formatter: (val: number) => formatMetricValue(val, axisDecimals),
+            color: '#8c8ea6',
             fontSize: 11,
-            textAlign: 'center',
-            lineHeight: 16,
-            fill: '#595959',
+          },
+          splitLine: {
+            lineStyle: {
+              color: 'rgba(102, 126, 234, 0.06)',
+              type: 'dashed' as const,
+            },
+          },
+          axisLine: { show: false },
+          axisTick: { show: false },
+        },
+        yAxis: {
+          type: 'category' as const,
+          data: reversedData.map(d => d.fullName),
+          axisLabel: {
+            formatter: (val: string) => truncateName(val, 18),
+            color: '#545983',
+            fontSize: 11,
             fontWeight: 500,
           },
-        },
-        line: {
-          style: {
-            stroke: '#e8e8e8',
-            lineWidth: 1,
-          },
-        },
-        tickLine: null,
-      },
-      yAxis: {
-        nice: true,
-        label: {
-          formatter: (val: string) =>
-            formatMetricValue(Number(val), decimals, unit),
-          style: {
-            fontSize: 11,
-            fill: '#8c8c8c',
-          },
-        },
-        grid: {
-          line: {
-            style: {
-              stroke: '#f0f0f0',
-              lineDash: [4, 4],
+          axisLine: {
+            lineStyle: {
+              color: 'rgba(102, 126, 234, 0.15)',
             },
           },
+          axisTick: { show: false },
         },
-        line: null,
-      },
-      interactions: [{ type: 'active-region' }, { type: 'element-active' }],
-      slider: slider
-        ? {
-            ...slider,
-            height: 24,
-            trendCfg: {
-              backgroundStyle: {
-                fill: '#f5f5f5',
+        dataZoom: dataZoomConfig,
+        series: [
+          {
+            type: 'bar' as const,
+            data: reversedData.map(d => ({
+              value: d.value,
+              itemStyle: {
+                color: {
+                  type: 'linear' as const,
+                  x: 0,
+                  y: 0,
+                  x2: 1,
+                  y2: 0,
+                  colorStops: [
+                    { offset: 0, color: `${d.color}CC` },
+                    { offset: 1, color: d.color },
+                  ],
+                },
+                borderRadius: [0, 6, 6, 0],
+              },
+            })),
+            barMaxWidth: 36,
+            barCategoryGap: categoryGap,
+            label: {
+              show: data.length <= 8,
+              position: 'right' as const,
+              formatter: (params: any) =>
+                formatMetricValue(params.value, decimals, unit),
+              color: '#4a4a6a',
+              fontSize: 12,
+              fontWeight: 600,
+            },
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 12,
+                shadowColor: 'rgba(102, 126, 234, 0.25)',
+                shadowOffsetX: 2,
               },
             },
-            backgroundStyle: {
-              fill: '#f5f5f5',
-            },
-            foregroundStyle: {
-              fill: 'rgba(0, 0, 0, 0.1)',
-            },
-            handlerStyle: {
-              width: 20,
-              height: 20,
-              fill: '#fff',
-              stroke: '#d9d9d9',
-              radius: 10,
-            },
-          }
-        : undefined,
-      animation: {
-        appear: {
-          animation: 'scale-in-y',
-          duration: 500,
-          easing: 'ease-out',
-        },
+          },
+        ],
+        animation: true,
+        animationDuration: 600,
+        animationEasing: 'cubicOut',
+      };
+    }
+
+    // Vertical bar chart (data.length <= 3)
+    return {
+      grid: {
+        left: 16,
+        right: 16,
+        top: 36,
+        bottom: needsZoom ? 56 : 12,
+        containLabel: true,
       },
-      state: {
-        active: {
-          style: {
-            fillOpacity: 1,
-            shadowColor: 'rgba(0, 0, 0, 0.15)',
-            shadowBlur: 10,
-            stroke: 'rgba(255, 255, 255, 0.5)',
-            lineWidth: 1,
+      tooltip,
+      xAxis: {
+        type: 'category' as const,
+        data: data.map(d => d.fullName),
+        axisLabel: {
+          formatter: (val: string) => truncateName(val),
+          color: '#545983',
+          fontSize: 11,
+          fontWeight: 500,
+          interval: 0,
+        },
+        axisLine: {
+          lineStyle: {
+            color: 'rgba(102, 126, 234, 0.15)',
           },
         },
+        axisTick: { show: false },
       },
+      yAxis: {
+        type: 'value' as const,
+        axisLabel: {
+          formatter: (val: number) => formatMetricValue(val, axisDecimals),
+          color: '#8c8ea6',
+          fontSize: 11,
+        },
+        splitLine: {
+          lineStyle: {
+            color: 'rgba(102, 126, 234, 0.06)',
+            type: 'dashed' as const,
+          },
+        },
+        axisLine: { show: false },
+        axisTick: { show: false },
+      },
+      dataZoom: dataZoomConfig,
+      series: [
+        {
+          type: 'bar' as const,
+          data: data.map(d => ({
+            value: d.value,
+            itemStyle: {
+              color: {
+                type: 'linear' as const,
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: d.color },
+                  { offset: 1, color: `${d.color}CC` },
+                ],
+              },
+              borderRadius: [6, 6, 0, 0],
+            },
+          })),
+          barMaxWidth: 52,
+          barCategoryGap: categoryGap,
+          label: {
+            show: data.length <= 8,
+            position: 'top' as const,
+            formatter: (params: any) =>
+              formatMetricValue(params.value, decimals, unit),
+            color: '#4a4a6a',
+            fontSize: 12,
+            fontWeight: 600,
+          },
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 12,
+              shadowColor: 'rgba(102, 126, 234, 0.25)',
+              shadowOffsetY: 2,
+            },
+          },
+        },
+      ],
+      animation: true,
+      animationDuration: 600,
+      animationEasing: 'cubicOut',
     };
   };
 
@@ -1483,7 +1639,7 @@ const ResultComparison: React.FC = () => {
         />
       </div>
 
-      {/* Mode Switch */}
+      {/* Mode Switch + Action Buttons */}
       <Tabs
         activeKey={comparisonMode}
         onChange={key => {
@@ -1495,7 +1651,7 @@ const ResultComparison: React.FC = () => {
           {
             key: 'model',
             label: (
-              <span style={{ fontSize: 18, fontWeight: 600 }}>
+              <span className='tab-label'>
                 {t('pages.resultComparison.modelTasks') ||
                   t('pages.jobs.llmTab') ||
                   'LLM Tasks Comparison'}
@@ -1505,7 +1661,7 @@ const ResultComparison: React.FC = () => {
           {
             key: 'common',
             label: (
-              <span style={{ fontSize: 18, fontWeight: 600 }}>
+              <span className='tab-label'>
                 {t('pages.resultComparison.commonTasks') ||
                   t('pages.jobs.commonApiTab') ||
                   'Common Tasks Comparison'}
@@ -1513,74 +1669,76 @@ const ResultComparison: React.FC = () => {
             ),
           },
         ]}
-        className='modern-tabs'
+        className='unified-tabs'
+        tabBarExtraContent={
+          hasSelectedTasks ? (
+            <Space size={8}>
+              <Button
+                icon={<RobotOutlined />}
+                onClick={handleAnalyzeComparison}
+                loading={isAnalyzing}
+                disabled={comparisonMode !== 'model'}
+                className='modern-button-ai-summary'
+              >
+                {t('pages.resultComparison.aiAnalysis')}
+              </Button>
+              <Button
+                type='primary'
+                icon={<DownloadOutlined />}
+                onClick={handleDownloadComparison}
+                loading={isDownloading}
+                disabled={!hasComparisonResults}
+                className='modern-button-primary-light'
+              >
+                {t('pages.resultComparison.download')}
+              </Button>
+              <Button
+                type='primary'
+                icon={<PlusOutlined />}
+                onClick={handleModalOpen}
+              >
+                {t('pages.resultComparison.selectTask')}
+              </Button>
+              <Button
+                icon={<ClearOutlined />}
+                onClick={clearAllTasks}
+                style={{
+                  color: '#8c8ea6',
+                  borderColor: 'rgba(140, 142, 166, 0.35)',
+                }}
+              >
+                {t('pages.resultComparison.clearAll')}
+              </Button>
+            </Space>
+          ) : undefined
+        }
       />
 
       {/* Model Info Section */}
       <div ref={modelInfoRef} className='mb-24'>
-        <div className='section-header' style={{ borderBottom: 'none' }}>
-          <span className='section-title'>
-            {t('pages.resultComparison.taskInfo', 'Task Info')}
-          </span>
-          <Space>
-            <Button
-              type='default'
-              icon={<RobotOutlined />}
-              onClick={handleAnalyzeComparison}
-              loading={isAnalyzing}
-              disabled={comparisonMode !== 'model' || !hasSelectedTasks}
-              style={{
-                backgroundColor: '#52c41a',
-                borderColor: '#52c41a',
-                color: '#ffffff',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.backgroundColor = '#73d13d';
-                e.currentTarget.style.borderColor = '#73d13d';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.backgroundColor = '#52c41a';
-                e.currentTarget.style.borderColor = '#52c41a';
-              }}
-            >
-              {t('pages.resultComparison.aiAnalysis')}
-            </Button>
-            <Button
-              type='primary'
-              icon={<DownloadOutlined />}
-              onClick={handleDownloadComparison}
-              loading={isDownloading}
-              disabled={!hasComparisonResults}
-            >
-              {t('pages.resultComparison.download')}
-            </Button>
-            <Button
-              type='primary'
-              className='btn-warning'
-              icon={<PlusOutlined />}
-              onClick={handleModalOpen}
-            >
-              {t('pages.resultComparison.selectTask')}
-            </Button>
-            {hasSelectedTasks && (
-              <Button
-                type='primary'
-                danger
-                icon={<ClearOutlined />}
-                onClick={clearAllTasks}
-              >
-                {t('pages.resultComparison.clearAll')}
-              </Button>
-            )}
-          </Space>
-        </div>
+        {hasSelectedTasks && (
+          <div className='section-header' style={{ borderBottom: 'none' }}>
+            <span className='section-title'>
+              {t('pages.resultComparison.taskInfo', 'Task Info')}
+            </span>
+          </div>
+        )}
 
         <div className='section-content'>
           {activeSelectedTasks.length === 0 ? (
             <Empty
               description={t('pages.resultComparison.pleaseSelectTask')}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-            />
+            >
+              <Button
+                type='primary'
+                icon={<PlusOutlined />}
+                onClick={handleModalOpen}
+                size='large'
+              >
+                {t('pages.resultComparison.selectTask')}
+              </Button>
+            </Empty>
           ) : (
             <Table
               columns={selectedTasksColumns}
@@ -1606,12 +1764,22 @@ const ResultComparison: React.FC = () => {
             {visibleMetricCardConfigs.length > 0 ? (
               <Row gutter={[24, 24]}>
                 {visibleMetricCardConfigs.map(config => (
-                  <Col span={12} key={config.metricKey}>
+                  <Col
+                    xs={24}
+                    md={12}
+                    lg={8}
+                    xl={visibleMetricCardConfigs.length <= 6 ? 8 : 6}
+                    key={config.metricKey}
+                  >
                     <div className='comparison-chart-wrapper'>
                       <div className='comparison-chart-title'>
                         {createCardTitle(config.title, config.description)}
                       </div>
-                      <Column {...createChartConfig(config)} />
+                      <ReactECharts
+                        option={createEChartsOption(config)}
+                        style={{ height: getChartHeight() }}
+                        notMerge
+                      />
                     </div>
                   </Col>
                 ))}

@@ -5,13 +5,19 @@
  * @copyright 2025
  * */
 import {
+  BarChartOutlined,
   ClockCircleOutlined,
+  CopyOutlined,
+  DeleteOutlined,
   EditOutlined,
   ExclamationCircleOutlined,
   ExperimentOutlined,
+  FileTextOutlined,
+  LineChartOutlined,
   MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import {
   App,
@@ -30,6 +36,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 
 import { commonJobApi, jobApi } from '../api/services';
 import CreateCommonJobForm from '../components/CreateCommonJobForm';
@@ -54,6 +61,7 @@ const LDAP_ENABLED = getLdapEnabled();
 
 const JobsPage: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   // State managed by the component
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [taskToCopy, setTaskToCopy] = useState<Partial<Job> | null>(null);
@@ -71,6 +79,7 @@ const JobsPage: React.FC = () => {
   } | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   // Get message instance from App context
   const { message: messageApi, modal } = App.useApp();
@@ -98,6 +107,9 @@ const JobsPage: React.FC = () => {
     lastRefreshTime,
     searchInput,
     statusFilter,
+    modelFilter,
+    creatorFilter,
+    allModels,
     createJob,
     stopJob,
     updateJobName,
@@ -106,6 +118,8 @@ const JobsPage: React.FC = () => {
     performSearch,
     updateSearchInput,
     setStatusFilter,
+    setModelFilter,
+    setCreatorFilter,
   } = useJobs(messageApi);
   const {
     filteredJobs: commonFilteredJobs,
@@ -116,6 +130,7 @@ const JobsPage: React.FC = () => {
     lastRefreshTime: commonLastRefresh,
     searchInput: commonSearchInput,
     statusFilter: commonStatusFilter,
+    creatorFilter: commonCreatorFilter,
     createJob: createCommonJob,
     stopJob: stopCommonJob,
     updateJobName: updateCommonJobName,
@@ -124,6 +139,7 @@ const JobsPage: React.FC = () => {
     performSearch: commonPerformSearch,
     updateSearchInput: updateCommonSearchInput,
     setStatusFilter: setCommonStatusFilter,
+    setCreatorFilter: setCommonCreatorFilter,
   } = useCommonJobs(messageApi);
 
   /**
@@ -398,10 +414,18 @@ const JobsPage: React.FC = () => {
       title: t('pages.jobs.createdBy'),
       dataIndex: 'created_by',
       key: 'created_by',
-      width: 120,
-      minWidth: 100,
+      width: 160,
+      minWidth: 120,
       ellipsis: true,
       render: (creator?: string) => creator || '-',
+      filters: [
+        { text: t('pages.jobs.filterMine'), value: 'mine' },
+        // { text: t('pages.jobs.filterAll'), value: 'all' },
+      ],
+      // Use 'mine' as filteredValue when creatorFilter matches currentUsername
+      // This ensures Ant Design Table maintains the filter state during pagination
+      filteredValue: creatorFilter ? ['mine'] : null,
+      filterMultiple: false,
     };
 
     const tableColumns: ColumnsType<Job> = [
@@ -409,6 +433,8 @@ const JobsPage: React.FC = () => {
         title: t('pages.jobs.taskId'),
         dataIndex: 'id',
         key: 'id',
+        width: 220,
+        minWidth: 160,
         ellipsis: {
           showTitle: false,
         },
@@ -433,6 +459,7 @@ const JobsPage: React.FC = () => {
         title: t('pages.jobs.taskName'),
         dataIndex: 'name',
         key: 'name',
+        width: 600,
         ellipsis: true,
         render: (name: string, record: Job) => (
           <div className='table-cell-with-copy'>
@@ -458,42 +485,68 @@ const JobsPage: React.FC = () => {
           </div>
         ),
       },
-      {
-        title: t('pages.jobs.targetUrl'),
-        dataIndex: 'target_host',
-        key: 'target_host',
-        ellipsis: true,
-        render: (target_host: string, record: Job) => {
-          const apiPath = record.api_path || '/chat/completions';
-          const fullUrl = target_host + apiPath;
-          return (
-            <div className='table-cell-with-copy'>
-              <Tooltip title={fullUrl} placement='topLeft'>
-                <Text className='table-cell-text' ellipsis>
-                  {fullUrl}
-                </Text>
-              </Tooltip>
-              <div className='table-cell-action'>
-                <CopyButton text={fullUrl} />
-              </div>
-            </div>
-          );
-        },
-      },
+      // Commented out: API URL column - temporarily hidden
+      // {
+      //   title: t('pages.jobs.targetUrl'),
+      //   dataIndex: 'target_host',
+      //   key: 'target_host',
+      //   ellipsis: true,
+      //   render: (target_host: string, record: Job) => {
+      //     const apiPath = record.api_path || '/chat/completions';
+      //     const fullUrl = target_host + apiPath;
+      //     return (
+      //       <div className='table-cell-with-copy'>
+      //         <Tooltip title={fullUrl} placement='topLeft'>
+      //           <Text className='table-cell-text' ellipsis>
+      //             {fullUrl}
+      //           </Text>
+      //         </Tooltip>
+      //         <div className='table-cell-action'>
+      //           <CopyButton text={fullUrl} />
+      //         </div>
+      //       </div>
+      //     );
+      //   },
+      // },
       {
         title: t('pages.jobs.model'),
         dataIndex: 'model',
         key: 'model',
+        width: 280,
         ellipsis: true,
+        filters: allModels.map(model => ({
+          text: model,
+          value: model,
+        })),
+        filteredValue: modelFilter ? modelFilter.split(',') : null,
+        filterSearch: true,
+        filterMultiple: true,
       },
       {
         title: t('pages.jobs.loadConfig'),
         key: 'load_config',
-        render: (_, record) =>
-          renderLoadConfig(
-            record.concurrent_users ?? record.concurrency,
-            record.duration
-          ),
+        width: 200,
+        minWidth: 160,
+        ellipsis: {
+          showTitle: false,
+        },
+        render: (_, record) => {
+          const users = record.concurrent_users ?? record.concurrency ?? 0;
+          const seconds = record.duration ?? 0;
+          const configText = `${t('pages.jobs.concurrentUsers')}: ${users} / ${t('pages.jobs.duration')}: ${seconds}`;
+          return (
+            <Tooltip title={configText} placement='topLeft'>
+              <Space direction='vertical' size={0} style={{ width: '100%' }}>
+                <Text ellipsis>
+                  {t('pages.jobs.concurrentUsers')}: {users}
+                </Text>
+                <Text ellipsis>
+                  {t('pages.jobs.duration')}: {seconds}
+                </Text>
+              </Space>
+            </Tooltip>
+          );
+        },
       },
       // {
       //   title: t('pages.jobs.concurrentUsers'),
@@ -527,8 +580,8 @@ const JobsPage: React.FC = () => {
         title: t('pages.jobs.createdTime'),
         dataIndex: 'created_at',
         key: 'created_at',
-        width: 180,
-        minWidth: 100,
+        width: 200,
+        minWidth: 160,
         sorter: (a, b) =>
           getTimestamp(a.created_at) - getTimestamp(b.created_at),
         render: (time: string) => formatDate(time),
@@ -536,32 +589,25 @@ const JobsPage: React.FC = () => {
       {
         title: t('pages.jobs.actions'),
         key: 'action',
-        width: 240,
-        minWidth: 100,
+        width: 200,
+        minWidth: 120,
         render: (_, record) => {
-          const menuItems = [];
           const statusLower = record.status?.toLowerCase();
+          const moreMenuItems: any[] = [];
 
           if (
             canManage(record.created_by) &&
-            ['running', 'queued'].includes(record.status?.toLowerCase())
+            ['running', 'queued'].includes(statusLower)
           ) {
-            menuItems.push({
+            moreMenuItems.push({
               key: 'stop',
-              label: (
-                <Button
-                  type='text'
-                  danger
-                  size='small'
-                  className='table-action-button'
-                  onClick={e => {
-                    e.stopPropagation();
-                    showStopConfirm(record.id, record.name);
-                  }}
-                >
-                  {t('pages.jobs.stop')}
-                </Button>
-              ),
+              icon: <StopOutlined />,
+              label: t('pages.jobs.stop'),
+              danger: true,
+              onClick: (info: any) => {
+                info.domEvent.stopPropagation();
+                showStopConfirm(record.id, record.name);
+              },
             });
           }
 
@@ -570,63 +616,68 @@ const JobsPage: React.FC = () => {
             statusLower !== 'running' &&
             statusLower !== 'stopping'
           ) {
-            menuItems.push({
+            moreMenuItems.push({
               key: 'delete',
-              label: (
-                <Button
-                  type='text'
-                  danger
-                  size='small'
-                  className='table-action-button'
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleDeleteTask(record, 'llm');
-                  }}
-                >
-                  {t('pages.jobs.delete')}
-                </Button>
-              ),
+              icon: <DeleteOutlined />,
+              label: t('pages.jobs.delete'),
+              danger: true,
+              onClick: (info: any) => {
+                info.domEvent.stopPropagation();
+                handleDeleteTask(record, 'llm');
+              },
             });
           }
 
           return (
-            <Space size='small' wrap>
-              <Button
-                size='small'
-                type='primary'
-                onClick={e => {
-                  e.stopPropagation();
-                  window.open(`/results/${record.id}`, '_blank');
-                }}
-              >
-                {t('pages.jobs.results')}
-              </Button>
-              <Button
-                size='small'
-                type='primary'
-                onClick={e => {
-                  e.stopPropagation();
-                  window.open(`/logs/task/${record.id}`, '_blank');
-                }}
-              >
-                {t('pages.jobs.logs')}
-              </Button>
-              {canManage(record.created_by) && (
+            <Space size={4}>
+              <Tooltip title={t('pages.jobs.results')}>
                 <Button
+                  type='text'
                   size='small'
-                  type='primary'
+                  className='action-icon-btn'
+                  icon={<LineChartOutlined />}
                   onClick={e => {
                     e.stopPropagation();
-                    handleCopyJob(record);
+                    window.open(`/results/${record.id}`, '_blank');
                   }}
-                >
-                  {t('pages.jobs.copyTemplate')}
-                </Button>
-              )}
-              {menuItems.length > 0 && (
-                <Dropdown menu={{ items: menuItems }} trigger={['click']}>
+                />
+              </Tooltip>
+              <Tooltip title={t('pages.jobs.logs')}>
+                <Button
+                  type='text'
+                  size='small'
+                  className='action-icon-btn'
+                  icon={<FileTextOutlined />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(`/logs/task/${record.id}`, '_blank');
+                  }}
+                />
+              </Tooltip>
+              {canManage(record.created_by) && (
+                <Tooltip title={t('pages.jobs.copyTemplate')}>
                   <Button
                     type='text'
+                    size='small'
+                    className='action-icon-btn'
+                    icon={<CopyOutlined />}
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleCopyJob(record);
+                    }}
+                  />
+                </Tooltip>
+              )}
+              {moreMenuItems.length > 0 && (
+                <Dropdown
+                  menu={{ items: moreMenuItems }}
+                  trigger={['click']}
+                  placement='bottomRight'
+                >
+                  <Button
+                    type='text'
+                    size='small'
+                    className='action-icon-btn'
                     icon={<MoreOutlined />}
                     onClick={e => e.stopPropagation()}
                   />
@@ -640,12 +691,17 @@ const JobsPage: React.FC = () => {
 
     return tableColumns;
   }, [
+    allModels,
     canManage,
+    creatorFilter,
+    currentUsername,
     handleCopyJob,
     handleDeleteTask,
+    modelFilter,
     openRenameModal,
     renderLoadConfig,
     showStopConfirm,
+    statusFilter,
     t,
   ]);
 
@@ -654,10 +710,18 @@ const JobsPage: React.FC = () => {
       title: t('pages.jobs.createdBy'),
       dataIndex: 'created_by',
       key: 'created_by',
-      width: 120,
-      minWidth: 100,
+      width: 160,
+      minWidth: 120,
       ellipsis: true,
       render: (creator?: string) => creator || '-',
+      filters: [
+        { text: t('pages.jobs.filterMine'), value: 'mine' },
+        // { text: t('pages.jobs.filterAll'), value: 'all' },
+      ],
+      // Use 'mine' as filteredValue when commonCreatorFilter matches currentUsername
+      // This ensures Ant Design Table maintains the filter state during pagination
+      filteredValue: commonCreatorFilter ? ['mine'] : null,
+      filterMultiple: false,
     };
 
     const tableColumns: ColumnsType<CommonJob> = [
@@ -665,6 +729,8 @@ const JobsPage: React.FC = () => {
         title: t('pages.jobs.taskId'),
         dataIndex: 'id',
         key: 'id',
+        width: 220,
+        minWidth: 160,
         ellipsis: {
           showTitle: false,
         },
@@ -689,6 +755,7 @@ const JobsPage: React.FC = () => {
         title: t('pages.jobs.taskName'),
         dataIndex: 'name',
         key: 'name',
+        width: 600,
         ellipsis: true,
         render: (name: string, record: CommonJob) => (
           <div className='table-cell-with-copy'>
@@ -714,24 +781,25 @@ const JobsPage: React.FC = () => {
           </div>
         ),
       },
-      {
-        title: t('pages.jobs.targetUrl'),
-        dataIndex: 'target_url',
-        key: 'target_url',
-        ellipsis: true,
-        render: (target_url: string) => (
-          <div className='table-cell-with-copy'>
-            <Tooltip title={target_url} placement='topLeft'>
-              <Text className='table-cell-text' ellipsis>
-                {target_url}
-              </Text>
-            </Tooltip>
-            <div className='table-cell-action'>
-              <CopyButton text={target_url} />
-            </div>
-          </div>
-        ),
-      },
+      // Commented out: API URL column - temporarily hidden
+      // {
+      //   title: t('pages.jobs.targetUrl'),
+      //   dataIndex: 'target_url',
+      //   key: 'target_url',
+      //   ellipsis: true,
+      //   render: (target_url: string) => (
+      //     <div className='table-cell-with-copy'>
+      //       <Tooltip title={target_url} placement='topLeft'>
+      //         <Text className='table-cell-text' ellipsis>
+      //           {target_url}
+      //         </Text>
+      //       </Tooltip>
+      //       <div className='table-cell-action'>
+      //         <CopyButton text={target_url} />
+      //       </div>
+      //     </div>
+      //   ),
+      // },
       // {
       //   title: t('pages.jobs.method'),
       //   dataIndex: 'method',
@@ -752,6 +820,32 @@ const JobsPage: React.FC = () => {
       //   render: (duration: number) => `${duration || 0}s`,
       // },
       {
+        title: t('pages.jobs.loadConfig'),
+        key: 'load_config',
+        width: 200,
+        minWidth: 160,
+        ellipsis: {
+          showTitle: false,
+        },
+        render: (_, record) => {
+          const users = record.concurrent_users ?? 0;
+          const seconds = record.duration ?? 0;
+          const configText = `${t('pages.jobs.concurrentUsers')}: ${users} / ${t('pages.jobs.duration')}: ${seconds}`;
+          return (
+            <Tooltip title={configText} placement='topLeft'>
+              <Space direction='vertical' size={0} style={{ width: '100%' }}>
+                <Text ellipsis>
+                  {t('pages.jobs.concurrentUsers')}: {users}
+                </Text>
+                <Text ellipsis>
+                  {t('pages.jobs.duration')}: {seconds}
+                </Text>
+              </Space>
+            </Tooltip>
+          );
+        },
+      },
+      {
         title: t('pages.jobs.status'),
         dataIndex: 'status',
         key: 'status',
@@ -768,17 +862,11 @@ const JobsPage: React.FC = () => {
       },
       ...(LDAP_ENABLED ? [createdByColumn] : []),
       {
-        title: t('pages.jobs.loadConfig'),
-        key: 'load_config',
-        render: (_, record) =>
-          renderLoadConfig(record.concurrent_users, record.duration),
-      },
-      {
         title: t('pages.jobs.createdTime'),
         dataIndex: 'created_at',
         key: 'created_at',
-        width: 180,
-        minWidth: 100,
+        width: 200,
+        minWidth: 160,
         sorter: (a, b) =>
           getTimestamp(a.created_at) - getTimestamp(b.created_at),
         render: (time: string) => formatDate(time),
@@ -786,93 +874,92 @@ const JobsPage: React.FC = () => {
       {
         title: t('pages.jobs.actions'),
         key: 'action',
-        width: 240,
+        width: 200,
         minWidth: 100,
         render: (_, record) => {
-          const menuItems = [];
           const statusLower = record.status?.toLowerCase();
+          const moreMenuItems: any[] = [];
+
           if (
             canManage(record.created_by) &&
-            ['running', 'queued'].includes(record.status?.toLowerCase())
+            ['running', 'queued'].includes(statusLower)
           ) {
-            menuItems.push({
+            moreMenuItems.push({
               key: 'stop',
-              label: (
-                <Button
-                  type='text'
-                  danger
-                  size='small'
-                  className='table-action-button'
-                  onClick={e => {
-                    e.stopPropagation();
-                    showStopConfirm(record.id, record.name);
-                  }}
-                >
-                  {t('pages.jobs.stop')}
-                </Button>
-              ),
+              icon: <StopOutlined />,
+              label: t('pages.jobs.stop'),
+              danger: true,
+              onClick: (info: any) => {
+                info.domEvent.stopPropagation();
+                showStopConfirm(record.id, record.name);
+              },
             });
           }
+
           if (canManage(record.created_by)) {
-            menuItems.push({
+            moreMenuItems.push({
               key: 'delete',
-              label: (
-                <Button
-                  type='text'
-                  danger
-                  size='small'
-                  className='table-action-button'
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleDeleteTask(record, 'common');
-                  }}
-                  disabled={
-                    statusLower === 'running' || statusLower === 'stopping'
-                  }
-                >
-                  {t('pages.jobs.delete')}
-                </Button>
-              ),
+              icon: <DeleteOutlined />,
+              label: t('pages.jobs.delete'),
+              danger: true,
+              disabled: statusLower === 'running' || statusLower === 'stopping',
+              onClick: (info: any) => {
+                info.domEvent.stopPropagation();
+                handleDeleteTask(record, 'common');
+              },
             });
           }
+
           return (
-            <Space size='small' wrap>
-              <Button
-                size='small'
-                type='primary'
-                onClick={e => {
-                  e.stopPropagation();
-                  window.open(`/common-results/${record.id}`, '_blank');
-                }}
-              >
-                {t('pages.jobs.results')}
-              </Button>
-              <Button
-                size='small'
-                type='primary'
-                onClick={e => {
-                  e.stopPropagation();
-                  window.open(`/logs/task/${record.id}`, '_blank');
-                }}
-              >
-                {t('pages.jobs.logs')}
-              </Button>
-              {canManage(record.created_by) && (
+            <Space size={4}>
+              <Tooltip title={t('pages.jobs.results')}>
                 <Button
+                  type='text'
                   size='small'
-                  type='primary'
+                  className='action-icon-btn'
+                  icon={<LineChartOutlined />}
                   onClick={e => {
                     e.stopPropagation();
-                    handleCopyCommonJob(record);
+                    window.open(`/common-results/${record.id}`, '_blank');
                   }}
-                >
-                  {t('pages.jobs.copyTemplate')}
-                </Button>
-              )}
-              {menuItems.length > 0 && (
-                <Dropdown menu={{ items: menuItems }} trigger={['click']}>
+                />
+              </Tooltip>
+              <Tooltip title={t('pages.jobs.logs')}>
+                <Button
+                  type='text'
+                  size='small'
+                  className='action-icon-btn'
+                  icon={<FileTextOutlined />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(`/logs/task/${record.id}`, '_blank');
+                  }}
+                />
+              </Tooltip>
+              {canManage(record.created_by) && (
+                <Tooltip title={t('pages.jobs.copyTemplate')}>
                   <Button
                     type='text'
+                    size='small'
+                    className='action-icon-btn'
+                    icon={<CopyOutlined />}
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleCopyCommonJob(record);
+                    }}
+                  />
+                </Tooltip>
+              )}
+              {moreMenuItems.length > 0 && (
+                <Dropdown
+                  menu={{ items: moreMenuItems }}
+                  trigger={['click']}
+                  placement='bottomRight'
+                >
+                  <Button
+                    type='text'
+                    size='small'
+                    className='action-icon-btn'
                     icon={<MoreOutlined />}
                     onClick={e => e.stopPropagation()}
                   />
@@ -887,7 +974,9 @@ const JobsPage: React.FC = () => {
     return tableColumns;
   }, [
     canManage,
+    commonCreatorFilter,
     commonStatusFilter,
+    currentUsername,
     handleCopyCommonJob,
     handleDeleteTask,
     openRenameModal,
@@ -920,9 +1009,29 @@ const JobsPage: React.FC = () => {
     (newPagination: any, filters: any) => {
       // Handle status filter change from table
       const newStatusFilter = filters?.status ? filters.status.join(',') : '';
+
+      // Handle model filter change (only for LLM mode)
+      const newModelFilter =
+        filters?.model && filters.model.length > 0
+          ? filters.model.map((value: unknown) => String(value)).join(',')
+          : '';
+
+      // Handle creator filter change - convert 'mine' to current username
+      let newCreatorFilter = '';
+      if (filters?.created_by && filters.created_by.length > 0) {
+        const filterValue = filters.created_by[0];
+        newCreatorFilter = filterValue === 'mine' ? currentUsername : '';
+      }
+
       const useCommon = activeMode === 'common';
       const prevStatus = useCommon ? commonStatusFilter : statusFilter;
-      const isFilterChange = newStatusFilter !== prevStatus;
+      const prevModel = modelFilter;
+      const prevCreator = useCommon ? commonCreatorFilter : creatorFilter;
+
+      const isFilterChange =
+        newStatusFilter !== prevStatus ||
+        newModelFilter !== prevModel ||
+        newCreatorFilter !== prevCreator;
 
       const nextPage = isFilterChange ? 1 : newPagination.current || 1;
       const nextPageSize =
@@ -930,9 +1039,12 @@ const JobsPage: React.FC = () => {
         (useCommon ? commonPagination.pageSize : pagination.pageSize);
 
       if (useCommon) {
-        // Update status filter first if changed
+        // Update filters first if changed
         if (newStatusFilter !== commonStatusFilter) {
           setCommonStatusFilter(newStatusFilter);
+        }
+        if (newCreatorFilter !== commonCreatorFilter) {
+          setCommonCreatorFilter(newCreatorFilter);
         }
         // Trigger fetch with new pagination - manualRefresh will update pagination state
         commonManualRefresh({
@@ -940,10 +1052,18 @@ const JobsPage: React.FC = () => {
           pageSize: nextPageSize,
           status: newStatusFilter,
           search: commonSearchInput,
+          creator: newCreatorFilter,
         });
       } else {
+        // Update filters first if changed
         if (newStatusFilter !== statusFilter) {
           setStatusFilter(newStatusFilter);
+        }
+        if (newModelFilter !== modelFilter) {
+          setModelFilter(newModelFilter);
+        }
+        if (newCreatorFilter !== creatorFilter) {
+          setCreatorFilter(newCreatorFilter);
         }
         setPagination({
           current: isFilterChange ? 1 : newPagination.current,
@@ -954,16 +1074,23 @@ const JobsPage: React.FC = () => {
     },
     [
       activeMode,
-      commonPagination.total,
-      commonStatusFilter,
-      commonManualRefresh,
+      commonCreatorFilter,
       commonPagination.pageSize,
+      commonPagination.total,
+      commonManualRefresh,
       commonSearchInput,
+      commonStatusFilter,
+      creatorFilter,
+      currentUsername,
+      modelFilter,
+      pagination.pageSize,
+      pagination.total,
+      setCommonCreatorFilter,
       setCommonStatusFilter,
+      setCreatorFilter,
+      setModelFilter,
       setPagination,
       setStatusFilter,
-      pagination.total,
-      pagination.pageSize,
       statusFilter,
     ]
   );
@@ -994,6 +1121,88 @@ const JobsPage: React.FC = () => {
     setIsModalVisible(false);
     setTaskToCopy(null);
   }, []);
+
+  const handleResetFilters = useCallback(() => {
+    if (activeMode === 'common') {
+      updateCommonSearchInput('');
+      commonManualRefresh({
+        page: 1,
+        pageSize: commonPagination.pageSize,
+        status: '',
+        search: '',
+        creator: '',
+      });
+      return;
+    }
+
+    updateSearchInput('');
+    setStatusFilter('');
+    setModelFilter('');
+    setCreatorFilter('');
+    performSearch('');
+    setPagination(prev => ({
+      ...prev,
+      current: 1,
+    }));
+  }, [
+    activeMode,
+    commonManualRefresh,
+    commonPagination.pageSize,
+    performSearch,
+    setCreatorFilter,
+    setModelFilter,
+    setPagination,
+    setStatusFilter,
+    updateCommonSearchInput,
+    updateSearchInput,
+  ]);
+
+  /**
+   * Handle row selection change
+   */
+  const handleSelectionChange = useCallback(
+    (newSelectedRowKeys: React.Key[]) => {
+      if (newSelectedRowKeys.length > 5) {
+        messageApi.warning(t('pages.jobs.selectMaxForCompare'));
+        return;
+      }
+      setSelectedRowKeys(newSelectedRowKeys);
+    },
+    [messageApi, t]
+  );
+
+  /**
+   * Navigate to result comparison page with selected tasks
+   */
+  const handleGoToCompare = useCallback(() => {
+    if (selectedRowKeys.length < 2 || selectedRowKeys.length > 5) {
+      messageApi.warning(t('pages.jobs.selectMinForCompare'));
+      return;
+    }
+    const mode = activeMode === 'llm' ? 'model' : 'common';
+    const taskIds = selectedRowKeys.join(',');
+    navigate(`/result-comparison?tasks=${taskIds}&mode=${mode}`);
+  }, [activeMode, messageApi, navigate, selectedRowKeys, t]);
+
+  const COMPARABLE_STATUSES = useMemo(
+    () => ['completed', 'failed_requests'],
+    []
+  );
+
+  const rowSelection = useMemo(
+    () => ({
+      selectedRowKeys,
+      onChange: handleSelectionChange,
+      preserveSelectedRowKeys: true,
+      columnTitle: ' ',
+      getCheckboxProps: (record: Job | CommonJob) => ({
+        disabled: !COMPARABLE_STATUSES.includes(
+          record.status?.toLowerCase() ?? ''
+        ),
+      }),
+    }),
+    [selectedRowKeys, handleSelectionChange, COMPARABLE_STATUSES]
+  );
 
   const isCommonMode = activeMode === 'common';
   const currentJobs = isCommonMode ? commonFilteredJobs : filteredJobs;
@@ -1030,12 +1239,13 @@ const JobsPage: React.FC = () => {
           onChange={key => {
             setActiveMode(key as 'llm' | 'common');
             localStorage.setItem(MODE_STORAGE_KEY, key as 'llm' | 'common');
+            setSelectedRowKeys([]);
           }}
           items={[
             {
               key: 'llm',
               label: (
-                <span style={{ fontSize: 18, fontWeight: 600 }}>
+                <span className='tab-label'>
                   {t('pages.jobs.llmTab') || 'LLM Load Test'}
                 </span>
               ),
@@ -1043,35 +1253,50 @@ const JobsPage: React.FC = () => {
             {
               key: 'common',
               label: (
-                <span style={{ fontSize: 18, fontWeight: 600 }}>
-                  {t('pages.jobs.commonApiTab') || 'Common API Load Test'}
+                <span className='tab-label'>
+                  {t('pages.jobs.commonApiTab') || 'Business API Load Test'}
                 </span>
               ),
             },
           ]}
-          className='modern-tabs'
+          className='unified-tabs'
         />
 
-        {/* Create Task Button - Prominent Position */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: 24,
-            marginBottom: 16,
-          }}
-        >
-          <Button
-            type='primary'
-            className='btn-success'
-            icon={<PlusOutlined />}
-            onClick={() => setIsModalVisible(true)}
-            disabled={currentLoading}
-          >
-            {t('pages.jobs.createNew')}
-          </Button>
-          <Space wrap>
+        {/* Toolbar */}
+        <div className='jobs-toolbar'>
+          <div className='jobs-toolbar-left'>
+            <Button
+              type='primary'
+              className='modern-button-primary'
+              icon={<PlusOutlined />}
+              onClick={() => setIsModalVisible(true)}
+              disabled={currentLoading}
+            >
+              {t('pages.jobs.createNew')}
+            </Button>
+            {selectedRowKeys.length > 0 && (
+              <>
+                {selectedRowKeys.length >= 2 && selectedRowKeys.length <= 5 && (
+                  <Button
+                    type='primary'
+                    icon={<BarChartOutlined />}
+                    onClick={handleGoToCompare}
+                  >
+                    {`${t('pages.jobs.goToCompare')} (${t(
+                      'pages.jobs.selectedCount',
+                      {
+                        count: selectedRowKeys.length,
+                      }
+                    )})`}
+                  </Button>
+                )}
+                <Button onClick={() => setSelectedRowKeys([])}>
+                  {t('pages.jobs.clearSelection')}
+                </Button>
+              </>
+            )}
+          </div>
+          <div className='jobs-toolbar-right'>
             {currentRefreshing && <Badge status='processing' />}
             {renderLastRefreshTime(currentLastRefresh)}
             <Search
@@ -1089,14 +1314,24 @@ const JobsPage: React.FC = () => {
               enterButton
             />
             <Button
-              icon={<ReloadOutlined spin={currentRefreshing} />}
-              onClick={currentManualRefresh}
-              disabled={currentLoading || currentRefreshing}
+              onClick={handleResetFilters}
+              disabled={currentLoading}
               className='modern-button'
             >
-              {t('pages.jobs.refresh')}
+              {t('common.reset')}
             </Button>
-          </Space>
+            <Tooltip
+              title={`${t('pages.jobs.lastRefresh')}: ${currentLastRefresh ? formatDate(currentLastRefresh) : '-'}`}
+            >
+              <Button
+                type='text'
+                icon={<ReloadOutlined spin={currentRefreshing} />}
+                onClick={currentManualRefresh}
+                disabled={currentLoading || currentRefreshing}
+                className='modern-button'
+              />
+            </Tooltip>
+          </div>
         </div>
 
         <Table<any>
@@ -1105,6 +1340,7 @@ const JobsPage: React.FC = () => {
           dataSource={currentJobs as any}
           loading={currentLoading}
           pagination={currentPagination}
+          rowSelection={rowSelection}
           onChange={(pag, filters) => {
             // Only handle table change, let handleTableChange manage pagination updates
             handleTableChange(pag, filters);

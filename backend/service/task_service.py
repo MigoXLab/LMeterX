@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 import httpx
 from fastapi import Query, Request
 from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
 from model.common_task import CommonTask
@@ -219,12 +220,36 @@ async def _is_task_exist(request: Request, task_id: str) -> bool:
         return False
 
 
+async def get_all_models_svc(request: Request) -> Dict[str, Any]:
+    """
+    Retrieves all unique model names from the tasks table.
+
+    Args:
+        request: The FastAPI request object, used to access the database session.
+
+    Returns:
+        A dictionary containing the list of unique model names.
+    """
+    try:
+        db = request.state.db
+        query = select(Task.model).where(Task.model.isnot(None)).distinct()
+        result = await db.execute(query)
+        models = [row[0] for row in result.fetchall() if row[0]]
+        models.sort()
+        return {"status": "success", "data": models}
+    except SQLAlchemyError as e:
+        logger.error("Error getting all models: {}", e, exc_info=True)
+        return {"status": "error", "data": []}
+
+
 async def get_tasks_svc(
     request: Request,
     page: int = Query(1, ge=1, alias="page"),
     page_size: int = Query(10, ge=1, le=100, alias="pageSize"),
     status: Optional[str] = None,
     search: Optional[str] = None,
+    creator: Optional[str] = None,
+    model: Optional[str] = None,
 ):
     """
     Retrieves a paginated list of tasks from the database, with optional filtering.
@@ -236,6 +261,8 @@ async def get_tasks_svc(
         status: An optional filter to get tasks with a specific status.
                 Can be a single status or comma-separated multiple statuses.
         search: An optional search term to filter tasks by name or ID.
+        creator: An optional filter to get tasks created by a specific user.
+        model: An optional filter to get tasks using a specific model.
 
     Returns:
         A `TaskResponse` object containing the list of tasks and pagination details.
@@ -244,8 +271,8 @@ async def get_tasks_svc(
     pagination = Pagination()
     try:
         db = request.state.db
-        # Base query to select tasks.
-        query = select(Task)
+        # Base query to select tasks, excluding soft-deleted ones
+        query = select(Task).where(Task.is_deleted == 0)
 
         # Apply filters if provided.
         if status:
@@ -255,6 +282,12 @@ async def get_tasks_svc(
                 query = query.where(Task.status == status_list[0])
             else:
                 query = query.where(Task.status.in_(status_list))
+        if creator:
+            query = query.where(Task.created_by == creator)
+        if model:
+            model_list = [m.strip() for m in model.split(",") if m.strip()]
+            if model_list:
+                query = query.where(Task.model.in_(model_list))
         if search:
             query = query.where(
                 or_(
@@ -312,6 +345,7 @@ async def get_tasks_status_svc(request: Request, page_size: int):
         SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
         FROM tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
+        AND is_deleted = 0
         ORDER BY created_at DESC
         LIMIT :limit
         """
@@ -341,7 +375,7 @@ async def stop_task_svc(request: Request, task_id: str):
     try:
         db = request.state.db
         task = await db.get(Task, task_id)
-        if not task:
+        if not task or getattr(task, "is_deleted", 0) == 1:
             logger.warning("Stop request for non-existent task ID: {}", task_id)
             return TaskCreateRsp(
                 status="unknown", task_id=task_id, message="Task not found"
@@ -435,6 +469,8 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             concurrent_users=body.concurrent_users,
             spawn_rate=body.spawn_rate if body.spawn_rate else body.concurrent_users,
             chat_type=body.chat_type,
+            warmup_enabled=1 if body.warmup_enabled else 0,
+            warmup_duration=body.warmup_duration,
             stream_mode=str(body.stream_mode),
             headers=headers_json,
             cookies=cookies_json,
@@ -484,7 +520,7 @@ async def update_task_svc(request: Request, task_id: str, payload: Dict[str, Any
     db = request.state.db
     try:
         task = await db.get(Task, task_id)
-        if not task:
+        if not task or getattr(task, "is_deleted", 0) == 1:
             raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
 
         if settings.LDAP_ENABLED:
@@ -510,7 +546,8 @@ async def update_task_svc(request: Request, task_id: str, payload: Dict[str, Any
 
 async def delete_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
     """
-    Delete a task and its related results. Only the creator can delete.
+    Soft delete a task by marking it as deleted. Only the creator can delete.
+    The task and its related results will be hidden from queries but remain in the database.
     """
     if not task_id:
         raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
@@ -519,6 +556,10 @@ async def delete_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
     try:
         task = await db.get(Task, task_id)
         if not task:
+            raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+
+        # Check if task is already deleted
+        if getattr(task, "is_deleted", 0) == 1:
             raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
 
         # Prevent deleting tasks that are running or currently stopping to avoid orphaned resources
@@ -535,9 +576,8 @@ async def delete_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
             if task.created_by != username:
                 raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
 
-        # Clean up related results to avoid orphaned data
-        await db.execute(delete(TaskResult).where(TaskResult.task_id == task_id))
-        await db.delete(task)
+        # Soft delete: mark as deleted instead of physically removing
+        task.is_deleted = 1
         await db.commit()
         return {"status": "success", "task_id": task_id, "message": "Task deleted"}
     except ErrorResponse:
@@ -599,16 +639,16 @@ async def get_task_svc(request: Request, task_id: str):
     db = request.state.db
     try:
         task = await db.get(Task, task_id)
-        if task:
+        if task and getattr(task, "is_deleted", 0) == 0:
             return _build_task_detail(task)
 
         # Fallback to common API task to support shared log/detail pages
         common_task = await db.get(CommonTask, task_id)
-        if common_task:
+        if common_task and getattr(common_task, "is_deleted", 0) == 0:
             return _build_common_task_detail(common_task)
 
-            logger.warning("Get request for non-existent task ID: {}", task_id)
-            raise ErrorResponse.not_found("Task not found")
+        logger.warning("Get request for non-existent task ID: {}", task_id)
+        raise ErrorResponse.not_found("Task not found")
     except ErrorResponse:
         raise
     except Exception as e:
@@ -632,21 +672,27 @@ async def get_task_status_svc(request: Request, task_id: str):
     db = request.state.db
     try:
         # Query only the necessary fields for status check
-        query = select(
-            Task.id, Task.name, Task.status, Task.error_message, Task.updated_at
-        ).where(Task.id == task_id)
+        query = (
+            select(Task.id, Task.name, Task.status, Task.error_message, Task.updated_at)
+            .where(Task.id == task_id)
+            .where(Task.is_deleted == 0)
+        )
         result = await db.execute(query)
         task_data = result.first()
 
         if not task_data:
             # Fallback to common task
-            common_query = select(
-                CommonTask.id,
-                CommonTask.name,
-                CommonTask.status,
-                CommonTask.error_message,
-                CommonTask.updated_at,
-            ).where(CommonTask.id == task_id)
+            common_query = (
+                select(
+                    CommonTask.id,
+                    CommonTask.name,
+                    CommonTask.status,
+                    CommonTask.error_message,
+                    CommonTask.updated_at,
+                )
+                .where(CommonTask.id == task_id)
+                .where(CommonTask.is_deleted == 0)
+            )
             common_result = await db.execute(common_query)
             common_data = common_result.first()
             if common_data:
@@ -768,8 +814,10 @@ async def compare_performance_svc(
                 error="Maximum 10 tasks can be compared at once",
             )
 
-        # Get task information
-        task_query = select(Task).where(Task.id.in_(task_ids))
+        # Get task information, excluding soft-deleted tasks
+        task_query = (
+            select(Task).where(Task.id.in_(task_ids)).where(Task.is_deleted == 0)
+        )
         task_result = await db.execute(task_query)
         tasks = {task.id: task for task in task_result.scalars().all()}
 

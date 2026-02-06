@@ -21,6 +21,8 @@
     "antd": "^5.11.5",
     "axios": "^1.6.2",
     "dayjs": "^1.11.10",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.6",
     "html2canvas": "^1.4.1",
     "i18next": "^25.3.2",
     "i18next-browser-languagedetector": "^8.2.0",

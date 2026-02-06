@@ -20,7 +20,7 @@ const SystemMonitor: React.FC = () => {
     {
       key: 'engine-logs',
       label: (
-        <span style={{ fontSize: 18, fontWeight: 600 }}>
+        <span className='tab-label'>
           {t('components.systemLogs.engineLogs', {
             defaultValue: 'Engine Logs',
           })}
@@ -39,7 +39,7 @@ const SystemMonitor: React.FC = () => {
     {
       key: 'backend-logs',
       label: (
-        <span style={{ fontSize: 18, fontWeight: 600 }}>
+        <span className='tab-label'>
           {t('components.systemLogs.backendLogs', {
             defaultValue: 'Backend Service Logs',
           })}
@@ -74,7 +74,7 @@ const SystemMonitor: React.FC = () => {
           activeKey={activeTab}
           onChange={setActiveTab}
           items={tabItems}
-          className='modern-tabs'
+          className='unified-tabs'
         />
       </div>
     </div>

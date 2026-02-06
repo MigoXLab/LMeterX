@@ -19,13 +19,14 @@ CREATE TABLE `tasks` (
   `field_mapping` longtext COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Field mapping configuration for custom APIs (JSON string)',
   `api_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'openai-chat' COMMENT 'API type: openai-chat, claude-chat, embeddings, custom-chat',
   `model` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `system_prompt` longtext COLLATE utf8mb4_unicode_ci,
   `test_data` longtext COLLATE utf8mb4_unicode_ci,
   `stream_mode` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'True',
   `concurrent_users` int(11) DEFAULT '1',
   `spawn_rate` int(11) DEFAULT '0',
   `duration` int(11) DEFAULT '60',
   `chat_type` int(11) DEFAULT '0',
+  `warmup_enabled` tinyint(1) DEFAULT '1' COMMENT 'Warmup mode: 0=disabled, 1=enabled',
+  `warmup_duration` int(11) DEFAULT '120' COMMENT 'Warmup duration in seconds (10-1800)',
   `log_file` longtext COLLATE utf8mb4_unicode_ci,
   `result_file` longtext COLLATE utf8mb4_unicode_ci,
   `cert_file` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -33,6 +34,7 @@ CREATE TABLE `tasks` (
   `headers` json DEFAULT NULL,
   `cookies` json DEFAULT NULL,
   `error_message` text COLLATE utf8mb4_unicode_ci,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Soft delete flag: 0=active, 1=deleted',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -42,7 +44,8 @@ CREATE TABLE `tasks` (
   KEY `idx_status` (`status`),
   KEY `idx_created_at` (`created_at`),
   KEY `idx_model` (`model`),
-  KEY `idx_model_concurrent_status` (`model`, `concurrent_users`, `status`, `created_at`)
+  KEY `idx_model_concurrent_status` (`model`, `concurrent_users`, `status`, `created_at`),
+  KEY `idx_is_deleted` (`is_deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -91,20 +94,21 @@ CREATE TABLE `common_tasks` (
   `request_body` longtext COLLATE utf8mb4_unicode_ci,
   `dataset_file` longtext COLLATE utf8mb4_unicode_ci,
   `curl_command` longtext COLLATE utf8mb4_unicode_ci,
-  `stream_mode` varchar(8) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `concurrent_users` int(11) NOT NULL,
   `spawn_rate` int(11) NOT NULL,
   `duration` int(11) NOT NULL,
   `log_file` longtext COLLATE utf8mb4_unicode_ci,
   `result_file` longtext COLLATE utf8mb4_unicode_ci,
   `error_message` text COLLATE utf8mb4_unicode_ci,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Soft delete flag: 0=active, 1=deleted',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_common_status_created` (`status`,`created_at`),
   KEY `idx_common_created_by` (`created_by`),
   KEY `idx_common_name` (`name`),
-  KEY `idx_common_created` (`created_at`)
+  KEY `idx_common_created` (`created_at`),
+  KEY `idx_is_deleted` (`is_deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------

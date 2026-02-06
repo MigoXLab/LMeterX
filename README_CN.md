@@ -169,7 +169,7 @@ LDAP_BIND_PASSWORD=service_password                   # 服务账号密码
 
 # JWT 配置(可选)
 JWT_SECRET_KEY=your-secret-key-here    # JWT 签名密钥(生产环境请修改)
-JWT_EXPIRE_MINUTES=480                 # Token 过期时间(分钟，默认8小时)
+JWT_EXPIRE_MINUTES=10080                 # Token 过期时间(分钟，默认7天)
 ```
 
 **配置说明:**

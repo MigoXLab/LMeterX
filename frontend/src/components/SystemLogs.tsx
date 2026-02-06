@@ -15,7 +15,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Input, Select, Space, Switch, theme } from 'antd';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { logApi } from '../api/services';
 import { LoadingSpinner } from './ui/LoadingState';
@@ -50,6 +50,8 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
 
   // Track if it should scroll to the bottom
   const shouldScrollToBottom = useRef(true);
+  const fetchErrorRef = useRef<string | null>(null);
+  const fetchLogsRef = useRef<() => Promise<void>>(null!);
 
   // Automatically calculate height
   const getLogContainerHeight = () => {
@@ -159,8 +161,19 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
       // Clear serious errors after successful acquisition
       if (error) setError(null);
     } catch (err: any) {
+      // If 404 (log file not found), treat as "no logs" instead of error
+      const statusCode = err?.status || err?.response?.status;
+      if (statusCode === 404) {
+        setLogs('');
+        setFilteredLogs('');
+        if (error) setError(null);
+        return;
+      }
       const errorMessage =
-        err?.response?.data?.error || err?.message || `Failed to fetch logs`;
+        err?.data?.error ||
+        err?.response?.data?.error ||
+        err?.message ||
+        `Failed to fetch logs`;
       // Show serious errors on initial load, and non-blocking errors on polling
       if (loading) {
         setError(errorMessage);
@@ -173,6 +186,15 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
       }
     }
   };
+
+  // Keep refs in sync for stable auto-refresh callbacks
+  useEffect(() => {
+    fetchLogsRef.current = fetchLogs;
+  });
+
+  useEffect(() => {
+    fetchErrorRef.current = fetchError;
+  }, [fetchError]);
 
   // Effect for initial load and when service or line count settings change
   useEffect(() => {
@@ -199,9 +221,9 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
 
     if (isActive && autoRefresh && !loading) {
       autoRefreshTimerRef.current = window.setInterval(() => {
-        // If there is an error, pause polling
-        if (!fetchError) {
-          fetchLogs();
+        // Use refs to access latest values without adding them as effect deps
+        if (!fetchErrorRef.current) {
+          fetchLogsRef.current?.();
         }
       }, 3000);
     }
@@ -211,7 +233,7 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         clearInterval(autoRefreshTimerRef.current);
       }
     };
-  }, [isActive, autoRefresh, loading, fetchError, serviceName, tailLines]);
+  }, [isActive, autoRefresh, loading, serviceName, tailLines]);
 
   // Add window size change listener
   useEffect(() => {
@@ -357,6 +379,18 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
     };
     refresh();
   };
+
+  // Memoize rendered log lines to prevent unnecessary re-renders during polling
+  const renderedLogLines = useMemo(
+    () =>
+      filteredLogs
+        .split('\n')
+        .map((line, index) => (
+          <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
+        )),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredLogs]
+  );
 
   if (loading) {
     return (
@@ -546,9 +580,7 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
             />
           )}
 
-          {filteredLogs.split('\n').map((line, index) => (
-            <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
-          ))}
+          {renderedLogLines}
         </div>
         {showScrollToBottom && (
           <Button

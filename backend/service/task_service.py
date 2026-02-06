@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 import httpx
 from fastapi import Query, Request
 from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
 from model.common_task import CommonTask
@@ -236,7 +237,7 @@ async def get_all_models_svc(request: Request) -> Dict[str, Any]:
         models = [row[0] for row in result.fetchall() if row[0]]
         models.sort()
         return {"status": "success", "data": models}
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Error getting all models: {}", e, exc_info=True)
         return {"status": "error", "data": []}
 

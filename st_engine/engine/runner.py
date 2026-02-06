@@ -43,6 +43,7 @@ class LocustRunner:
     )  # Track task IDs that have been requested to stop
     _WARMUP_DURATION_SECONDS = 120
     _WARMUP_COOLDOWN_SECONDS = 3
+    _WARMUP_STOP_TIMEOUT_SECONDS = 10
 
     def __init__(self, base_dir: str):
         """Create a runner rooted at the given repository directory."""
@@ -237,7 +238,14 @@ class LocustRunner:
             stderr_thread.start()
 
             # Wait for warmup to complete with timeout buffer
-            warmup_timeout = warmup_duration + LOCUST_STOP_TIMEOUT
+            # _WARMUP_STOP_TIMEOUT_SECONDS (10s) is how long Locust waits for
+            # in-flight requests after --run-time expires; add extra buffer
+            # for process exit
+            warmup_timeout = (
+                warmup_duration
+                + self._WARMUP_STOP_TIMEOUT_SECONDS
+                + LOCUST_WAIT_TIMEOUT_BUFFER
+            )
             try:
                 warmup_process.wait(timeout=warmup_timeout)
                 stdout_thread.join(timeout=5)
@@ -308,18 +316,21 @@ class LocustRunner:
         task_logger.info("Starting main test phase")
 
     def _build_warmup_command(
-        self, task: Task, task_logger, warmup_duration: int = None
+        self, task: Task, task_logger, warmup_duration: int
     ) -> List[str]:
-        """Build Locust command for warmup phase (no dataset, warmup_mode enabled)."""
-        # Get warmup duration from parameter or task settings (default to class constant)
-        if warmup_duration is None:
-            warmup_duration = getattr(
-                task, "warmup_duration", self._WARMUP_DURATION_SECONDS
-            )
-        if not isinstance(warmup_duration, int) or warmup_duration <= 0:
-            warmup_duration = self._WARMUP_DURATION_SECONDS
+        """Build Locust command for warmup phase (no dataset, warmup_mode enabled).
 
+        Args:
+            task: The task configuration.
+            task_logger: Logger instance bound to the task.
+            warmup_duration: Pre-validated warmup duration in seconds.
+                Resolved and validated by ``_run_warmup_phase`` before calling.
+        """
         locust_bin = shutil.which("locust") or "locust"
+        # Use a short stop-timeout for warmup: after --run-time expires,
+        # Locust will forcibly kill remaining users within this timeout.
+        # Without this, Locust waits indefinitely for in-flight LLM streaming
+        # requests to complete, causing the warmup phase to never end on time.
         cmd = [
             locust_bin,
             "-f",
@@ -332,6 +343,8 @@ class LocustRunner:
             str(task.spawn_rate),
             "--run-time",
             f"{warmup_duration}s",
+            "--stop-timeout",
+            f"{self._WARMUP_STOP_TIMEOUT_SECONDS}s",
             "--duration",
             str(warmup_duration),
             "--headless",
@@ -396,6 +409,8 @@ class LocustRunner:
             str(task.spawn_rate),
             "--run-time",
             f"{task.duration}s",
+            "--stop-timeout",
+            f"{LOCUST_STOP_TIMEOUT}s",
             "--duration",
             str(task.duration),
             "--headless",

@@ -55,16 +55,20 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
                     logger.warning(f"Database error during commit: {e}")
                     try:
                         await session.rollback()
-                    except Exception:
-                        pass  # Ignore rollback errors if connection is dead
+                    except Exception as rollback_error:
+                        logger.debug(
+                            f"Failed to rollback session after commit error: {rollback_error}"
+                        )
                 return response
             except (OperationalError, PendingRollbackError) as e:
                 # Handle database connection errors gracefully
                 logger.warning(f"Database connection error in middleware: {e}")
                 try:
                     await session.rollback()
-                except Exception:
-                    pass  # Ignore rollback errors if connection is dead
+                except Exception as rollback_error:
+                    logger.debug(
+                        f"Failed to rollback session after connection error: {rollback_error}"
+                    )
                 raise
             except Exception:
                 # If any exception occurs during request processing, roll back the transaction.

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from sqlalchemy import URL, create_engine, event, text
-from sqlalchemy.exc import DisconnectionError, OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import Pool
 
@@ -181,10 +181,18 @@ def get_db_session() -> Iterator[Session]:
                 f"Failed to rollback after operational error: {rollback_error}"
             )
         raise
-    except Exception as e:
+    except SQLAlchemyError as e:
+        # Handle SQLAlchemy-specific errors (e.g., IntegrityError, DataError)
         # SECURITY: Log error without exposing connection details
         error_msg = str(e).replace(str(DATABASE_URL), SAFE_DATABASE_URL)
-        logger.error(f"An error occurred during the database session: {error_msg}")
+        logger.error(f"SQLAlchemy error during database session: {error_msg}")
+        try:
+            session.rollback()
+        except Exception as rollback_error:
+            logger.debug(f"Failed to rollback session: {rollback_error}")
+        raise
+    except Exception:
+        # Non-database errors: rollback for cleanup, but don't log misleading DB messages
         try:
             session.rollback()
         except Exception as rollback_error:

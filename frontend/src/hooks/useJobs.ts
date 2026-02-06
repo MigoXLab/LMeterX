@@ -293,8 +293,9 @@ export const useJobs = (messageApi: MessageInstance) => {
         if (response.data?.data) {
           setAllModels(response.data.data);
         }
-      } catch {
+      } catch (error) {
         // Ignore errors, filter will just show current page models
+        console.error('Failed to fetch all models:', error);
       }
     };
     fetchAllModels();

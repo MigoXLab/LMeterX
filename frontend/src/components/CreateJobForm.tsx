@@ -715,6 +715,20 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
     return true;
   };
 
+  // Helper function to normalize warmup_duration with default value
+  const normalizeWarmupDuration = (values: any) => {
+    const defaultWarmupDuration = 120;
+    if (
+      values.warmup_duration === undefined ||
+      values.warmup_duration === null
+    ) {
+      values.warmup_duration = defaultWarmupDuration;
+    }
+    if (values.warmup_enabled === false) {
+      values.warmup_duration = values.warmup_duration || defaultWarmupDuration;
+    }
+  };
+
   // Test API endpoint
   const handleTestAPI = async () => {
     try {
@@ -736,17 +750,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const values = form.getFieldsValue(true);
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
-      const defaultWarmupDuration = 120;
-      if (
-        values.warmup_duration === undefined ||
-        values.warmup_duration === null
-      ) {
-        values.warmup_duration = defaultWarmupDuration;
-      }
-      if (values.warmup_enabled === false) {
-        values.warmup_duration =
-          values.warmup_duration || defaultWarmupDuration;
-      }
+      normalizeWarmupDuration(values);
 
       // Ensure request_payload is available - auto-generate if empty
       if (!values.request_payload || !values.request_payload.trim()) {
@@ -876,17 +880,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const values = await form.validateFields();
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
-      const defaultWarmupDuration = 120;
-      if (
-        values.warmup_duration === undefined ||
-        values.warmup_duration === null
-      ) {
-        values.warmup_duration = defaultWarmupDuration;
-      }
-      if (values.warmup_enabled === false) {
-        values.warmup_duration =
-          values.warmup_duration || defaultWarmupDuration;
-      }
+      normalizeWarmupDuration(values);
 
       // Normalize and validate field_mapping for non-standard APIs
       const apiType = values.api_type || 'openai-chat';

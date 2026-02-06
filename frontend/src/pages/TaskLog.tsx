@@ -27,7 +27,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { jobApi, logApi } from '../api/services';
@@ -53,6 +53,14 @@ const isTaskInFinalState = (status: string | null | undefined): boolean => {
   return FINAL_TASK_STATUSES.includes(status.toUpperCase());
 };
 
+// Statuses where the task is actively producing logs
+const RUNNING_TASK_STATUSES = ['RUNNING', 'STOPPING'];
+
+const isTaskRunning = (status: string | null | undefined): boolean => {
+  if (!status) return false;
+  return RUNNING_TASK_STATUSES.includes(status.toUpperCase());
+};
+
 const TaskLogs: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -74,6 +82,15 @@ const TaskLogs: React.FC = () => {
   const errorRetryTimerRef = useRef<number | null>(null);
   const { token } = theme.useToken();
   const shouldScrollToBottom = useRef(true);
+  const taskRef = useRef<Job | null>(null);
+  const fetchErrorRef = useRef<string | null>(null);
+  const fetchLogsRef = useRef<() => Promise<void>>(null!);
+  const fetchTaskStatusRef = useRef<
+    (
+      isInitialLoad?: boolean,
+      showRefreshing?: boolean
+    ) => Promise<Job | null | undefined>
+  >(null!);
 
   const getLogContainerHeight = () => {
     if (fullscreen) {
@@ -157,8 +174,19 @@ const TaskLogs: React.FC = () => {
       }
       if (error) setError(null);
     } catch (err: any) {
+      // If 404 (log file not found), treat as "no logs" instead of error
+      const statusCode = err?.status || err?.response?.status;
+      if (statusCode === 404) {
+        setLogs('');
+        setFilteredLogs('');
+        if (error) setError(null);
+        return;
+      }
       const errorMsg =
-        err.response?.data?.error || err.message || 'Failed to fetch task logs';
+        err?.data?.error ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'Failed to fetch task logs';
       if (loading) {
         setError(errorMsg);
       } else {
@@ -171,10 +199,13 @@ const TaskLogs: React.FC = () => {
     }
   };
 
-  const fetchTaskStatus = async (isInitialLoad = false) => {
+  const fetchTaskStatus = async (
+    isInitialLoad = false,
+    showRefreshing = true
+  ) => {
     if (!id) return;
 
-    if (!isInitialLoad) {
+    if (!isInitialLoad && showRefreshing) {
       setIsStatusRefreshing(true);
     }
 
@@ -225,12 +256,26 @@ const TaskLogs: React.FC = () => {
         // Failed to fetch task info as fallback
       }
     } finally {
-      if (!isInitialLoad) {
+      if (!isInitialLoad && showRefreshing) {
         setIsStatusRefreshing(false);
       }
     }
     return null;
   };
+
+  // Keep function refs in sync for stable auto-refresh callbacks
+  useEffect(() => {
+    fetchLogsRef.current = fetchLogs;
+    fetchTaskStatusRef.current = fetchTaskStatus;
+  });
+
+  useEffect(() => {
+    taskRef.current = task;
+  }, [task]);
+
+  useEffect(() => {
+    fetchErrorRef.current = fetchError;
+  }, [fetchError]);
 
   useEffect(() => {
     if (!id) {
@@ -250,8 +295,15 @@ const TaskLogs: React.FC = () => {
       setFilteredLogs('');
       setLogUrl('');
 
-      await fetchTaskStatus(true);
-      await fetchLogs();
+      const currentTask = await fetchTaskStatus(true);
+      // Only fetch logs when task is running/stopping or in a final state (may have logs)
+      // Skip log fetch for non-running states like 'created' to avoid unnecessary 404s
+      if (
+        isTaskRunning(currentTask?.status) ||
+        isTaskInFinalState(currentTask?.status)
+      ) {
+        await fetchLogs();
+      }
 
       setLoading(false);
     };
@@ -264,16 +316,25 @@ const TaskLogs: React.FC = () => {
       clearInterval(autoRefreshTimerRef.current);
     }
 
-    const isFinal = isTaskInFinalState(task?.status);
-
-    if (autoRefresh && !loading && !isFinal) {
+    if (autoRefresh && !loading) {
       autoRefreshTimerRef.current = window.setInterval(async () => {
-        if (!fetchError) {
-          const updatedTask = await fetchTaskStatus();
+        // Use refs to access latest values without adding them as effect deps,
+        // preventing the interval from being constantly recreated
+        if (isTaskInFinalState(taskRef.current?.status)) {
+          setAutoRefresh(false);
+          return;
+        }
+        if (!fetchErrorRef.current) {
+          const updatedTask = await fetchTaskStatusRef.current?.(false, false);
           if (updatedTask && isTaskInFinalState(updatedTask.status)) {
+            // Task just reached final state; fetch logs one last time to get final output
+            await fetchLogsRef.current?.();
             return;
           }
-          await fetchLogs();
+          // Only fetch logs when the task is actively running/stopping
+          if (isTaskRunning(updatedTask?.status)) {
+            await fetchLogsRef.current?.();
+          }
         }
       }, 3000);
     }
@@ -283,7 +344,7 @@ const TaskLogs: React.FC = () => {
         clearInterval(autoRefreshTimerRef.current);
       }
     };
-  }, [autoRefresh, loading, fetchError, task, id, tailLines]);
+  }, [autoRefresh, loading, id, tailLines]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -422,6 +483,18 @@ const TaskLogs: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Memoize rendered log lines to prevent unnecessary re-renders during polling
+  const renderedLogLines = useMemo(
+    () =>
+      filteredLogs
+        .split('\n')
+        .map((line, index) => (
+          <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
+        )),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredLogs]
+  );
 
   // Render toolbar with only task ID (for error states)
   const renderTaskIdOnly = () => {
@@ -591,9 +664,7 @@ const TaskLogs: React.FC = () => {
             />
           )}
 
-          {filteredLogs.split('\n').map((line, index) => (
-            <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
-          ))}
+          {renderedLogLines}
         </div>
         {showScrollToBottom && (
           <Button
@@ -757,32 +828,11 @@ const TaskLogs: React.FC = () => {
             style={{ minHeight: '200px', backgroundColor: '#ffffff' }}
           >
             <Alert
-              description={
-                isTaskInFinalState(task.status)
-                  ? t('pages.taskLog.logEmpty')
-                  : t('pages.taskLog.logEmpty')
-              }
+              description={t('pages.taskLog.logEmpty')}
               type='info'
               showIcon
               style={{ background: 'transparent', border: 'none' }}
             />
-            <Space className='mt-16'>
-              <Button icon={<SyncOutlined />} onClick={handleManualRefresh}>
-                {t('pages.taskLog.refreshLogs')}
-              </Button>
-              <Switch
-                checkedChildren={t('pages.taskLog.autoRefresh')}
-                unCheckedChildren={t('pages.taskLog.autoRefresh')}
-                checked={autoRefresh}
-                onChange={checked => {
-                  setAutoRefresh(checked);
-                  if (checked) {
-                    setFetchError(null);
-                  }
-                }}
-                disabled={isTaskInFinalState(task?.status)}
-              />
-            </Space>
           </div>
         </div>
       </div>

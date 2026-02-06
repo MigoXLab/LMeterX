@@ -76,7 +76,12 @@
       "filterMine": "当前用户",
       "filterAll": "全部",
       "deleteRunningBlocked": "请先停止任务并等待任务完成后再删除",
-      "copyError": "加载任务详情失败"
+      "copyError": "加载任务详情失败",
+      "goToCompare": "去对比",
+      "selectedCount": "已选 {{count}} 个",
+      "selectMinForCompare": "请选择2-5个任务进行对比",
+      "selectMaxForCompare": "最多只能选择5个任务进行对比",
+      "clearSelection": "清除勾选"
     },
     "results": {
       "title": "测试结果",

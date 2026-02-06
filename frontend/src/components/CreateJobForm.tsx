@@ -3293,8 +3293,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               {
                 key: '1',
                 label: (
-                  <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                    <SettingOutlined style={{ marginRight: 8 }} />
+                  <span className='tab-label'>
+                    <span className='tab-icon'>
+                      <SettingOutlined />
+                    </span>
                     {t('components.createJobForm.basicRequest')}
                   </span>
                 ),
@@ -3307,8 +3309,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               tabItems.push({
                 key: '2',
                 label: (
-                  <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                    <ApiOutlined style={{ marginRight: 8 }} />
+                  <span className='tab-label'>
+                    <span className='tab-icon'>
+                      <ApiOutlined />
+                    </span>
                     {t('components.createJobForm.fieldMapping')}
                   </span>
                 ),
@@ -3320,8 +3324,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
             tabItems.push({
               key: isStandardChatApi ? '2' : '3',
               label: (
-                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                  <DatabaseOutlined style={{ marginRight: 8 }} />
+                <span className='tab-label'>
+                  <span className='tab-icon'>
+                    <DatabaseOutlined />
+                  </span>
                   {t('components.createJobForm.dataLoad')}
                 </span>
               ),
@@ -3335,6 +3341,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 tabPosition='top'
                 size='large'
                 items={tabItems}
+                className='unified-tabs'
                 style={{
                   minHeight: '500px',
                 }}

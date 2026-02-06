@@ -492,7 +492,6 @@ const TaskLogs: React.FC = () => {
         .map((line, index) => (
           <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
         )),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [filteredLogs]
   );
 

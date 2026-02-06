@@ -32,7 +32,9 @@ const LanguageSwitcher: React.FC = () => {
           {/* <span style={{ marginRight: '8px' }}>🇺🇸</span> */}
           {t('header.english')}
           {currentLanguage === 'en' && (
-            <span style={{ marginLeft: '8px', color: '#333', fontWeight: 600 }}>
+            <span
+              style={{ marginLeft: '8px', color: '#667eea', fontWeight: 600 }}
+            >
               ✓
             </span>
           )}
@@ -53,7 +55,9 @@ const LanguageSwitcher: React.FC = () => {
           {/* <span style={{ marginRight: '8px' }}>🇨🇳</span> */}
           {t('header.chinese')}
           {currentLanguage === 'zh' && (
-            <span style={{ marginLeft: '8px', color: '#333', fontWeight: 600 }}>
+            <span
+              style={{ marginLeft: '8px', color: '#667eea', fontWeight: 600 }}
+            >
               ✓
             </span>
           )}
@@ -79,16 +83,14 @@ const LanguageSwitcher: React.FC = () => {
           justifyContent: 'center',
           border: 'none',
           background: 'transparent',
-          color: '#333',
+          color: 'var(--color-text-secondary)',
           borderRadius: '8px',
           padding: 0,
           height: '36px',
           width: '36px',
           lineHeight: '1',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: 'all 0.25s ease',
           fontWeight: 500,
-          position: 'relative',
-          overflow: 'hidden',
         }}
       >
         <GlobalOutlined

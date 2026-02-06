@@ -217,6 +217,7 @@ const CommonResults: React.FC = () => {
               onClick={handleDownloadReport}
               loading={isDownloading}
               disabled={loading || !results || results.length === 0}
+              className='modern-button-primary-light'
             >
               {t('pages.results.downloadReport')}
             </Button>

@@ -475,7 +475,7 @@ const TaskResults: React.FC = () => {
           <IconTooltip
             title={statisticExplanations[tooltipKey]}
             className='ml-4'
-            color='#1890ff'
+            color='#667eea'
           />
         </span>
       );
@@ -933,24 +933,11 @@ const TaskResults: React.FC = () => {
           />
           <Space>
             <Button
-              type='default'
               icon={<RobotOutlined />}
               onClick={() => setAnalysisModalVisible(true)}
               loading={isAnalyzing}
               disabled={loading || !!error || !results || results.length === 0}
-              style={{
-                backgroundColor: '#52c41a',
-                borderColor: '#52c41a',
-                color: '#ffffff',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.backgroundColor = '#73d13d';
-                e.currentTarget.style.borderColor = '#73d13d';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.backgroundColor = '#52c41a';
-                e.currentTarget.style.borderColor = '#52c41a';
-              }}
+              className='modern-button-ai-summary'
             >
               {t('pages.results.aiSummary')}
             </Button>
@@ -960,6 +947,7 @@ const TaskResults: React.FC = () => {
               onClick={handleDownloadReport}
               loading={isDownloading}
               disabled={loading || !!error || !results || results.length === 0}
+              className='modern-button-primary-light'
             >
               {t('pages.results.downloadReport')}
             </Button>
@@ -1143,7 +1131,7 @@ const TaskResults: React.FC = () => {
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <RobotOutlined style={{ color: '#52c41a' }} />
+            <RobotOutlined style={{ color: 'var(--brand-primary)' }} />
             {t('pages.results.aiSummary')}
           </div>
         }
@@ -1167,6 +1155,7 @@ const TaskResults: React.FC = () => {
               onClick={handleAnalysis}
               loading={isAnalyzing}
               icon={<RobotOutlined />}
+              className='modern-button-primary-light'
             >
               {t('pages.results.startAnalysis')}
             </Button>

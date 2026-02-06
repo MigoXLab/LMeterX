@@ -65,7 +65,7 @@ const Layout: React.FC = () => {
             overflow: 'hidden',
           }}
         >
-          <Title level={4} style={{ margin: 0, color: '#1677ff' }}>
+          <Title level={4} style={{ margin: 0, color: '#667eea' }}>
             {collapsed ? 'LLM' : 'LMeterX'}
           </Title>
         </div>

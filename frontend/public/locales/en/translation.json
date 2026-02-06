@@ -76,7 +76,12 @@
       "filterMine": "Mine",
       "filterAll": "All",
       "deleteRunningBlocked": "Please stop the task and wait for it to finish before deleting.",
-      "copyError": "Failed to load task details"
+      "copyError": "Failed to load task details",
+      "goToCompare": "Compare",
+      "selectedCount": "{{count}} selected",
+      "selectMinForCompare": "Please select 2-5 tasks to compare",
+      "selectMaxForCompare": "Maximum 5 tasks can be selected for comparison",
+      "clearSelection": "Clear Selection"
     },
     "results": {
       "title": "Test Results",

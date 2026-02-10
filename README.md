@@ -13,36 +13,6 @@
   </p>
 </div>
 
-⭐ If you like this project, please click the "Star" button in the upper right corner to support us. Your support is our motivation to move forward!
-
-## Contents
-- [Contents](#contents)
-- [📋 Project Overview](#-project-overview)
-- [✨ Core Features](#-core-features)
-  - [Feature Comparison](#feature-comparison)
-- [🏗️ System Architecture](#️-system-architecture)
-- [🚀 Quick Start](#-quick-start)
-  - [Environment Checklist](#environment-checklist)
-  - [One-Click Deployment (Recommended)](#one-click-deployment-recommended)
-  - [Data \& Volume Layout](#data--volume-layout)
-  - [Usage Guide](#usage-guide)
-    - [LLM API Load Testing](#llm-api-load-testing)
-    - [General API Load Testing](#general-api-load-testing)
-- [🔧 Configuration](#-configuration)
-  - [Database Configuration](#database-configuration)
-  - [LDAP/AD Authentication Configuration](#ldapad-authentication-configuration)
-  - [Resource Configuration](#resource-configuration)
-- [🤝 Development Guide](#-development-guide)
-  - [Technology Stack](#technology-stack)
-  - [Development Environment Setup](#development-environment-setup)
-- [🗺️ Development Roadmap](#️-development-roadmap)
-  - [In Development](#in-development)
-  - [Planned](#planned)
-- [🗂️ Dataset Reference Notes](#️-dataset-reference-notes)
-- [👥 Contributing](#-contributing)
-- [📝 Citation](#-citation)
-- [📄 Open Source License](#-open-source-license)
-
 ## 📋 Project Overview
 
 LMeterX is a professional large language model performance testing platform that can be applied to model inference services based on large model inference frameworks (such as LiteLLM, vLLM, TensorRT-LLM, LMDeploy, and others), and also supports performance testing for cloud services like Azure OpenAI, AWS Bedrock, Google Vertex AI, and other major cloud providers. Through an intuitive Web interface, users can easily create and manage test tasks, monitor testing processes in real-time, and obtain detailed performance analysis reports, providing reliable data support for model deployment and performance optimization.
@@ -284,3 +254,9 @@ If you use EvalScope in your research, please cite our work:
 ## 📄 Open Source License
 
 This project is licensed under the [Apache 2.0 License](LICENSE).
+
+<div align="center">
+
+**⭐ If you like this project, please click the "Star" button in the upper right corner to support us. Your support is our motivation to move forward!**
+
+</div>

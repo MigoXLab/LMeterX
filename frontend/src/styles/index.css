@@ -137,29 +137,34 @@ body {
 }
 
 .user-menu-trigger {
-  border-radius: var(--radius-md) !important;
+  border-radius: 8px !important;
   border: none !important;
   background: transparent !important;
   height: 36px !important;
   display: inline-flex !important;
   align-items: center !important;
-  gap: 8px !important;
-  padding: 0 12px !important;
-  font-weight: 600 !important;
+  gap: 6px !important;
+  padding: 3px 12px 3px 3px !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
   letter-spacing: 0.01em;
   transition: all 0.25s ease !important;
   line-height: 1 !important;
   color: var(--color-text) !important;
+  cursor: pointer;
 }
 
 .user-menu-trigger:hover {
   background: var(--brand-light) !important;
   color: var(--brand-primary) !important;
-  box-shadow: var(--shadow-sm) !important;
 }
 
 .user-menu-trigger:active {
   background: var(--brand-active) !important;
+}
+
+.user-menu-trigger .ant-avatar {
+  flex-shrink: 0;
 }
 
 /* Header Navigation Menu Styles */
@@ -249,10 +254,34 @@ body {
 }
 
 /* ========================================
-   Tech Style Buttons - GitHub & Language Switcher
+   Tech Style Buttons - GitHub Star & Language Switcher
    ======================================== */
 
-.github-button-tech,
+/* GitHub Star 引导按钮 */
+.github-star-button {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary) !important;
+  transition: all 0.25s ease !important;
+  text-decoration: none !important;
+}
+
+.github-star-button:hover {
+  color: var(--brand-primary) !important;
+  background: var(--brand-light) !important;
+  transform: translateY(-1px);
+}
+
+.github-star-button .anticon {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.github-star-button:active {
+  transform: translateY(0);
+  background: var(--color-bg-active) !important;
+}
+
+/* 语言切换按钮 */
 .language-switcher-tech {
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -260,29 +289,13 @@ body {
   transition: all 0.25s ease !important;
 }
 
-.github-button-tech:hover,
 .language-switcher-tech:hover {
-  background: var(--brand-light) !important;
   color: var(--brand-primary) !important;
-  box-shadow: var(--shadow-sm) !important;
+  background: var(--brand-light) !important;
 }
 
-.github-button-tech:active,
 .language-switcher-tech:active {
   background: var(--color-bg-active) !important;
-}
-
-.github-button-tech .anticon,
-.language-switcher-tech .anticon {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.github-button-tech:hover .anticon {
-  transform: rotate(15deg) scale(1.1);
-}
-
-.language-switcher-tech:hover .anticon {
-  transform: rotate(360deg) scale(1.1);
 }
 
 /* ========================================
@@ -382,6 +395,12 @@ body {
   font-size: 16px;
   display: inline-flex;
   align-items: center;
+}
+
+/* Field Mapping Section - prevent label wrapping */
+.field-mapping-section .ant-form-item-label > label {
+  white-space: nowrap !important;
+  overflow: visible !important;
 }
 
 /* ========================================
@@ -1329,10 +1348,10 @@ body {
 }
 
 .page-content {
-  margin: 0px 0px;
+  margin: 0;
   padding: 0;
   background: transparent;
-  overflow: auto;
+  overflow-x: hidden;
 }
 
 .auth-content {
@@ -1926,7 +1945,7 @@ body.api-test-modal-open {
 
 @media (max-width: 768px) {
   .page-container {
-    padding: 16px;
+    padding: 16px 24px;
   }
 
   .form-field-70,
@@ -2267,11 +2286,11 @@ body.api-test-modal-open {
   }
 
   .page-container {
-    padding: 24px 80px;
+    padding: 24px 40px;
   }
 
-  .ant-layout-header {
-    padding: 0 40px !important;
+  .header-inner {
+    padding: 0 40px;
   }
 
   .page-header-card,
@@ -2286,11 +2305,11 @@ body.api-test-modal-open {
   }
 
   .page-container {
-    padding: 16px 40px;
+    padding: 16px 24px;
   }
 
-  .ant-layout-header {
-    padding: 0 24px !important;
+  .header-inner {
+    padding: 0 24px;
   }
 
   .page-header-card,

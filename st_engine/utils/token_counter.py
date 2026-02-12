@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 TOKENIZER_CACHE_SIZE = 16  # Cache size for tokenizer instances
 DEFAULT_TOKEN_RATIO_EN = 4  # Estimate: 1 token ≈ 4 bytes UTF-8
 DEFAULT_TOKEN_RATIO_CJK = 3  # Estimate: 1 token ≈ 3 bytes UTF-8
-DEFAULT_ENCODING = "cl100k_base"
+# Default to the latest OpenAI BPE encoding (o200k_base).
+# New / unknown models automatically use this — no manual updates needed.
+DEFAULT_ENCODING = "o200k_base"
 
 # Known model aliases (lowercase) → canonical model names
 _MODEL_ALIASES = {
@@ -33,17 +35,24 @@ _MODEL_ALIASES = {
     "gpt-4-turbo-preview": "gpt-4-turbo",
     "gpt-4-1106-preview": "gpt-4-turbo",
     "gpt-4-0125-preview": "gpt-4o",
+    "o1-preview": "o1",
+    "o1-mini-2024-09-12": "o1-mini",
+    "o3-mini-2025-01-31": "o3-mini",
 }
 
-# Model prefix → encoding hints (ordered by priority)
+# Legacy model prefix → encoding overrides.
+# Only models that do NOT use the latest DEFAULT_ENCODING (o200k_base) are
+# listed here. Any model not matched below falls through to o200k_base,
+# so new models (o-series, gpt-4o, gpt-4.1, gpt-4.5, …) need NO changes.
 _MODEL_ENCODING_HINTS = (
-    ("gpt-4o", "o200k_base"),
-    ("gpt-4.1", "o200k_base"),
+    # GPT-4 / GPT-3.5 era — cl100k_base
     ("gpt-4-turbo", "cl100k_base"),
-    ("gpt-4", "cl100k_base"),
+    ("gpt-4-", "cl100k_base"),  # gpt-4-0613, gpt-4-32k, etc. (but NOT gpt-4o*)
     ("gpt-3.5", "cl100k_base"),
+    # Embeddings — cl100k_base
     ("text-embedding-3", "cl100k_base"),
     ("text-embedding-ada-002", "cl100k_base"),
+    # Legacy completions models
     ("text-davinci-003", "p50k_base"),
     ("text-davinci-002", "p50k_base"),
     ("davinci", "r50k_base"),
@@ -58,7 +67,7 @@ class TokenCounter(ABC):
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for the provided text with a safe fallback."""
-        if not text or not text.strip():
+        if not text or text.isspace():
             return 0
 
         try:
@@ -101,14 +110,8 @@ class TikTokenCounter(TokenCounter):
         normalized = _normalize_model_name(model_name)
         tk = cast(Any, tiktoken)
 
-        try:
-            return tk.encoding_for_model(model_name)
-        except KeyError:
-            logger.debug(
-                "encoding_for_model failed for '%s', trying normalized name", model_name
-            )
-
-        if normalized and normalized != model_name:
+        # Step 1: Try normalized name first (handles aliases, path prefixes, etc.)
+        if normalized:
             try:
                 return tk.encoding_for_model(normalized)
             except KeyError:
@@ -116,6 +119,16 @@ class TikTokenCounter(TokenCounter):
                     "encoding_for_model failed for normalized name '%s'", normalized
                 )
 
+        # Step 2: Try original name as fallback
+        if normalized != model_name:
+            try:
+                return tk.encoding_for_model(model_name)
+            except KeyError:
+                logger.debug(
+                    "encoding_for_model failed for original name '%s'", model_name
+                )
+
+        # Step 3: Resolve encoding by prefix hints
         encoding_name = _resolve_encoding_name(normalized or model_name)
         logger.debug(
             "Falling back to encoding '%s' for model '%s'", encoding_name, model_name
@@ -133,20 +146,41 @@ class TikTokenCounter(TokenCounter):
 class RegexTokenCounter(TokenCounter):
     """
     Lightweight heuristic counter using a Unicode-aware regex.
-    Provides a predictable upper bound when tiktoken is unavailable.
+    Applies a subword compensation factor to approximate BPE tokenization
+    when tiktoken is unavailable.
     """
+
+    # Subword compensation: BPE splits long words into subwords, so raw word
+    # count underestimates real token count. 1.3 is an empirical factor that
+    # brings regex estimates closer to tiktoken results on mixed EN/CJK text.
+    _SUBWORD_FACTOR = 1.3
 
     _TOKENIZER_REGEX = re.compile(
         r"\d+\.\d+|"  # decimal numbers
         r"[A-Za-z0-9]+(?:['`][A-Za-z0-9]+)?|"  # words with optional apostrophes/backticks
-        r"[\u4E00-\u9FFF]|"  # CJK Unified Ideographs
+        r"[\u3040-\u30FF]|"  # Japanese Hiragana + Katakana
+        r"[\u4E00-\u9FFF\u3400-\u4DBF]|"  # CJK Unified Ideographs (basic + Ext-A)
+        r"[\uAC00-\uD7AF]|"  # Korean Hangul Syllables
         r"[^\s]",  # catch-all for remaining non-whitespace chars (emoji, symbols, punctuation)
         re.UNICODE,
     )
 
+    # Characters that are typically 1 token each in BPE (no subword splitting)
+    _CJK_LIKE_RE = re.compile(r"[\u3040-\u30FF\u4E00-\u9FFF\u3400-\u4DBF\uAC00-\uD7AF]")
+
     def _count_tokens(self, text: str) -> int:
         tokens = self._TOKENIZER_REGEX.findall(text)
-        return len(tokens)
+        raw_count = len(tokens)
+        if raw_count == 0:
+            return 0
+
+        # CJK / Kana / Hangul characters are typically 1 token each, no subword factor
+        cjk_count = len(self._CJK_LIKE_RE.findall(text))
+        non_cjk_count = raw_count - cjk_count
+
+        # Apply subword compensation only to non-CJK tokens
+        estimated = cjk_count + math.ceil(non_cjk_count * self._SUBWORD_FACTOR)
+        return max(1, estimated)
 
 
 # === Global Tokenizer factory (thread-safe + LRU cache)===
@@ -176,8 +210,8 @@ def get_token_counter(model_name: str) -> TokenCounter:
         return RegexTokenCounter()
 
 
-# === Core function: Efficient token counting (without caching the text itself!)===
-def count_tokens(text: str, model_name: str = "gpt-3.5-turbo") -> int:
+# === Core function: Efficient token counting ===
+def count_tokens(text: str, model_name: str = "gpt-4o") -> int:
     """
     Args:
         text (str): Input text
@@ -186,7 +220,7 @@ def count_tokens(text: str, model_name: str = "gpt-3.5-turbo") -> int:
     Returns:
         int: Number of tokens
     """
-    if not text or not text.strip():
+    if not text or text.isspace():
         return 0
 
     try:
@@ -225,7 +259,12 @@ def _resolve_encoding_name(model_name: str) -> str:
 
 
 def estimate_tokens_via_bytes(text: str) -> int:
-    """Heuristic: estimate tokens from UTF-8 byte length."""
+    """Heuristic: estimate tokens from UTF-8 byte length.
+
+    Uses empirical ratios:
+    - CJK characters: ~0.7 tokens per character (BPE often merges common bigrams)
+    - Latin/other: ~1 token per 4 UTF-8 bytes
+    """
     if not text:
         return 0
 
@@ -233,8 +272,19 @@ def estimate_tokens_via_bytes(text: str) -> int:
     if utf8_bytes == 0:
         return 0
 
-    cjk_chars = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
-    cjk_tokens = cjk_chars
+    # Count CJK-like characters (CJK Unified basic + Ext-A, Kana, Hangul)
+    cjk_chars = sum(
+        1
+        for char in text
+        if (
+            "\u4e00" <= char <= "\u9fff"
+            or "\u3400" <= char <= "\u4dbf"
+            or "\u3040" <= char <= "\u30ff"
+            or "\uac00" <= char <= "\ud7af"
+        )
+    )
+    # BPE tokenizers commonly merge frequent CJK bigrams → ~0.7 tokens/char
+    cjk_tokens = math.ceil(cjk_chars * 0.7)
 
     remaining_bytes = max(0, utf8_bytes - cjk_chars * DEFAULT_TOKEN_RATIO_CJK)
     latin_tokens = (

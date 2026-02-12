@@ -1387,7 +1387,7 @@ const JobsPage: React.FC = () => {
         open={isModalVisible}
         onCancel={handleModalCancel}
         footer={null}
-        width={800}
+        width={900}
         destroyOnHidden
         maskClosable={false}
       >

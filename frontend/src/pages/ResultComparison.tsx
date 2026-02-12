@@ -28,7 +28,6 @@ import {
   Space,
   Table,
   Tabs,
-  Tag,
   Tooltip,
   Typography,
   message,
@@ -57,13 +56,13 @@ import { createFileTimestamp, formatDate } from '../utils/date';
 const { Text } = Typography;
 const { Option } = Select;
 
-// Macaron palette — soft, pastel tones derived from brand #667eea → #764ba2
+// Macaron palette
 const TASK_COLORS = [
-  '#8EA9F5', // Soft Periwinkle
-  '#B38CD9', // Lavender Macaron
-  '#A0B4F5', // Periwinkle Macaron
-  '#D4BEF0', // Lilac Macaron (lighter)
   '#A8D8F8', // Sky Macaron (lighter)
+  '#8EA9F5', // Soft Periwinkle
+  '#D4BEF0', // Lilac Macaron (lighter)
+  '#B38CD9', // Lavender Macaron
+  '#9A95E0', // Rose Macaron
 ];
 
 interface ModelTaskInfo {
@@ -614,33 +613,6 @@ const ResultComparison: React.FC = () => {
     return map;
   }, [activeComparisonResults]);
 
-  const getModelColor = (modelName: string) => {
-    // Assign colors based on the actual order of data appearance to maintain consistency with data display order
-    const allTasks =
-      comparisonMode === 'model'
-        ? [
-            ...availableTasks,
-            ...selectedTasks,
-            ...comparisonResults.map(result => ({
-              model_name: result.model_name,
-              created_at: '', // No need for specific time, only model name is needed
-            })),
-          ]
-        : [];
-
-    // Get unique model names in order of appearance, without alphabetical sorting
-    const uniqueModelsList: string[] = [];
-    allTasks.forEach(task => {
-      if (!uniqueModelsList.includes(task.model_name)) {
-        uniqueModelsList.push(task.model_name);
-      }
-    });
-
-    const index =
-      uniqueModelsList.length > 0 ? uniqueModelsList.indexOf(modelName) : 0;
-    return TASK_COLORS[index % TASK_COLORS.length];
-  };
-
   // Get color for task by task_id
   const getTaskColor = (taskId: string) => {
     return taskColorMap[taskId] || TASK_COLORS[0];
@@ -685,17 +657,17 @@ const ResultComparison: React.FC = () => {
             ellipsis: true,
             render: (model: string) => (
               <Tooltip title={model} placement='topLeft'>
-                <Tag
-                  color={getModelColor(model)}
+                <span
                   style={{
                     maxWidth: '100%',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
+                    display: 'inline-block',
                   }}
                 >
                   {model}
-                </Tag>
+                </span>
               </Tooltip>
             ),
           },

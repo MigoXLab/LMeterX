@@ -449,40 +449,39 @@ class LLMTestUser(HttpUser):
 
             input_tokens = completion_tokens = total_tokens = 0
 
-            # Try to extract from usage
+            # Step 1: Try to extract from usage (field_mapping / API response)
             if usage:
                 input_tokens = extract_token_from_usage(usage, ["input", "prompt"])
                 completion_tokens = extract_token_from_usage(
                     usage, ["output", "completion"]
                 )
                 total_tokens = extract_token_from_usage(usage, ["total", "all"])
-
-                # Ensure total_tokens consistency
-                if total_tokens == 0:
-                    total_tokens = input_tokens + completion_tokens
                 logger.debug(f"usage: {usage}")
-            # If usage provides total+input but not completion, derive completion to avoid extra tokenization
-            if completion_tokens == 0 and total_tokens > 0 and input_tokens > 0:
-                completion_tokens = max(total_tokens - input_tokens, 0)
 
-            # Only fallback to manual tokenization when usage does not provide totals
-            if (
-                completion_tokens == 0
-                and total_tokens == 0
-                and (content or reasoning_content)
-            ):
-                input_tokens = (
-                    count_tokens(str(user_prompt), model_name) if user_prompt else 0
-                )
-                reasoning_content_tokens = (
-                    count_tokens(str(reasoning_content), model_name)
-                    if reasoning_content
-                    else 0
-                )
-                content_tokens = (
-                    count_tokens(str(content), model_name) if content else 0
-                )
-                completion_tokens = reasoning_content_tokens + content_tokens
+            # Step 2: Per-field partial fallback — count only the missing fields
+            # If input_tokens is missing, count from user_prompt
+            if input_tokens == 0 and user_prompt:
+                input_tokens = count_tokens(str(user_prompt), model_name)
+
+            # If completion_tokens is missing, try to derive or count
+            if completion_tokens == 0:
+                if total_tokens > 0 and input_tokens > 0:
+                    # Derive completion from total - input
+                    completion_tokens = max(total_tokens - input_tokens, 0)
+                elif content or reasoning_content:
+                    # Fallback to manual tokenization from response text
+                    reasoning_content_tokens = (
+                        count_tokens(str(reasoning_content), model_name)
+                        if reasoning_content
+                        else 0
+                    )
+                    content_tokens = (
+                        count_tokens(str(content), model_name) if content else 0
+                    )
+                    completion_tokens = reasoning_content_tokens + content_tokens
+
+            # Step 3: Ensure total_tokens consistency
+            if total_tokens == 0:
                 total_tokens = input_tokens + completion_tokens
 
             if completion_tokens > 0 or total_tokens > 0:

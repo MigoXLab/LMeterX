@@ -402,7 +402,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   useEffect(() => {
     if (autoSyncSpawnRate && isFormReady) {
       if (concurrentUsers && typeof concurrentUsers === 'number') {
-        const spawnRateValue = Math.min(concurrentUsers, 100);
+        const spawnRateValue = Math.min(concurrentUsers, 1000);
         form.setFieldsValue({ spawn_rate: spawnRateValue });
       }
     }
@@ -412,7 +412,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   const handleConcurrentUsersChange = (value: number) => {
     setConcurrentUsers(value);
     if (autoSyncSpawnRate && value) {
-      const spawnRateValue = Math.min(value, 100);
+      const spawnRateValue = Math.min(value, 1000);
       form.setFieldsValue({ spawn_rate: spawnRateValue });
     }
   };
@@ -2223,14 +2223,14 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               {
                 type: 'number',
                 min: 1,
-                max: 100,
+                max: 1000,
                 message: t('components.createJobForm.spawnRateRangeLimit'),
               },
             ]}
           >
             <InputNumber
               min={1}
-              max={100}
+              max={1000}
               style={{ width: '100%' }}
               placeholder='1'
               onChange={handleSpawnRateChange}
@@ -2333,7 +2333,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
 
   // Field mapping section
   const fieldMappingSection = (
-    <div style={{ marginBottom: 24, marginLeft: '8px' }}>
+    <div
+      style={{ marginBottom: 24, marginLeft: '8px' }}
+      className='field-mapping-section'
+    >
       <div
         style={{
           marginBottom: '16px',

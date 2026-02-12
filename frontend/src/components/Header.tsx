@@ -4,13 +4,9 @@
  * @author Charm
  * @copyright 2025
  * */
-import {
-  GithubOutlined,
-  LogoutOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
+import { GithubOutlined, LogoutOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
-import { Button, Dropdown, Layout, Menu } from 'antd';
+import { Avatar, Button, Dropdown, Layout, Menu, Space } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -45,7 +41,6 @@ const Header: React.FC = () => {
     width: '100%',
     maxWidth: '100%',
     margin: '0 auto',
-    padding: '0 80px',
     display: 'flex',
     alignItems: 'center',
     gap: 24,
@@ -93,19 +88,22 @@ const Header: React.FC = () => {
     alignItems: 'center',
   };
 
-  const githubButtonStyle: React.CSSProperties = {
-    display: 'flex',
+  const githubStarStyle: React.CSSProperties = {
+    display: 'inline-flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
     borderRadius: '8px',
     border: 'none',
     background: 'transparent',
     color: 'var(--color-text-secondary)',
     transition: 'all 0.25s ease',
-    height: '36px',
-    width: '36px',
-    padding: 0,
+    height: '32px',
+    padding: '0 10px',
     fontWeight: 500,
+    fontSize: '13px',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
   };
 
   const rightActionsStyle: React.CSSProperties = {
@@ -118,12 +116,12 @@ const Header: React.FC = () => {
     borderRadius: 8,
     background: 'transparent',
     border: 'none',
-    padding: '0 12px',
+    padding: '0 12px 0 4px',
     height: 36,
-    display: 'flex',
+    display: 'inline-flex',
     alignItems: 'center',
-    gap: 6,
-    fontWeight: 600,
+    gap: 8,
+    fontWeight: 500,
     letterSpacing: '0.01em',
     lineHeight: 1,
     transition: 'all 0.25s ease',
@@ -193,15 +191,16 @@ const Header: React.FC = () => {
           />
         </div>
         <div className='header-actions' style={rightActionsStyle}>
-          <Button
-            type='text'
-            icon={<GithubOutlined />}
-            className='github-button-tech'
-            style={githubButtonStyle}
+          <a
+            className='github-star-button'
+            style={githubStarStyle}
             href='https://github.com/MigoXLab/LMeterX'
             target='_blank'
             rel='noopener noreferrer'
-          />
+          >
+            <GithubOutlined style={{ fontSize: 15 }} />
+            <span>Star</span>
+          </a>
           <LanguageSwitcher />
           {LDAP_ENABLED && (
             <Dropdown
@@ -212,11 +211,26 @@ const Header: React.FC = () => {
             >
               <Button
                 type='text'
-                icon={<UserOutlined />}
                 className='user-menu-trigger'
                 style={userButtonStyle}
               >
-                {userLabel}
+                <Space size={6} align='center'>
+                  <Avatar
+                    size={26}
+                    style={{
+                      background:
+                        'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      lineHeight: '26px',
+                    }}
+                  >
+                    {(user?.display_name || user?.username || '?')
+                      .charAt(0)
+                      .toUpperCase()}
+                  </Avatar>
+                  <span>{userLabel}</span>
+                </Space>
               </Button>
             </Dropdown>
           )}

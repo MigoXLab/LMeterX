@@ -9,7 +9,10 @@
     "languageSwitch": "语言切换",
     "english": "English",
     "chinese": "中文",
-    "logout": "退出登录"
+    "logout": "退出登录",
+    "starOnGithub": "去 GitHub 给我们 Star",
+    "switchToEnglish": "Switch to English",
+    "switchToChinese": "切换为中文"
   },
   "pages": {
     "login": {

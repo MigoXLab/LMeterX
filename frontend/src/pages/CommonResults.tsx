@@ -57,6 +57,7 @@ const CommonResults: React.FC = () => {
   const overviewRef = useRef<HTMLDivElement | null>(null);
   const taskRef = useRef<HTMLDivElement | null>(null);
   const chartsRef = useRef<HTMLDivElement | null>(null);
+  const metricsTableRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch task info and results
   useEffect(() => {
@@ -225,6 +226,12 @@ const CommonResults: React.FC = () => {
           { ref: taskRef, title: t('pages.results.taskInfo') },
           { ref: overviewRef, title: t('pages.results.resultsOverview') }
         );
+        if (metricsTableRef.current) {
+          elementsToCapture.push({
+            ref: metricsTableRef,
+            title: t('pages.results.metricsDetail'),
+          });
+        }
       }
 
       const canvases = await Promise.all(
@@ -869,7 +876,7 @@ const CommonResults: React.FC = () => {
         </div>
 
         {/* Metrics Detail Table */}
-        <div className='results-section unified-section'>
+        <div className='results-section unified-section' ref={metricsTableRef}>
           <div className='section-header'>
             <span className='section-title'>
               {t('pages.results.metricsDetail')}

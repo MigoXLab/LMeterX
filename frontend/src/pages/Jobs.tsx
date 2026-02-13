@@ -307,7 +307,12 @@ const JobsPage: React.FC = () => {
           </span>
         ),
         okText: t('pages.jobs.confirmStop'),
-        okType: 'danger',
+        okButtonProps: {
+          style: {
+            backgroundColor: '#fa8c16',
+            borderColor: '#fa8c16',
+          },
+        },
         cancelText: t('common.cancel'),
         onOk: () =>
           activeMode === 'llm' ? stopJob(jobId) : stopCommonJob(jobId),

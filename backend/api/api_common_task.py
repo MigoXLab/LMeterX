@@ -24,6 +24,7 @@ from service.common_task_service import (
     compare_common_performance_svc,
     create_common_task_svc,
     delete_common_task_svc,
+    get_common_task_realtime_metrics_svc,
     get_common_task_result_svc,
     get_common_task_status_svc,
     get_common_task_svc,
@@ -88,6 +89,18 @@ async def stop_common_task(request: Request, task_id: str):
 @router.get("/{task_id}/results", response_model=CommonTaskResultRsp)
 async def get_common_task_result(request: Request, task_id: str):
     return await get_common_task_result_svc(request, task_id)
+
+
+@router.get("/{task_id}/realtime-metrics", response_model=Dict[str, Any])
+async def get_common_task_realtime_metrics(
+    request: Request,
+    task_id: str,
+    since: float = Query(
+        0.0, description="Only return data points after this timestamp"
+    ),
+):
+    """Get real-time performance metrics for a running task."""
+    return await get_common_task_realtime_metrics_svc(request, task_id, since)
 
 
 @router.put("/{task_id}")

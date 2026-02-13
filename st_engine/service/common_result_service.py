@@ -3,9 +3,11 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+from typing import List
+
 from sqlalchemy.orm import Session
 
-from model.common_task import CommonTaskResult
+from model.common_task import CommonTaskRealtimeMetric, CommonTaskResult
 from utils.logger import logger
 
 
@@ -56,9 +58,9 @@ class CommonResultService:
                             if stat.get("median_latency") is not None
                             else 0.0
                         ),
-                        "p90_latency": (
-                            stat.get("p90_latency")
-                            if stat.get("p90_latency") is not None
+                        "p95_latency": (
+                            stat.get("p95_latency")
+                            if stat.get("p95_latency") is not None
                             else 0.0
                         ),
                         "rps": (
@@ -89,3 +91,48 @@ class CommonResultService:
             task_logger.exception(f" Failed to insert test results: {e}")
             session.rollback()
             raise
+
+    def persist_realtime_metrics(
+        self, session: Session, task_id: str, data_points: List[dict]
+    ) -> int:
+        """
+        Batch-insert real-time metric data points into MySQL.
+        The data is pre-read from the JSONL file by the runner before the
+        result directory is cleaned up (see CommonLocustRunner._finalize_task).
+        Returns the number of rows inserted.
+        """
+        task_logger = logger.bind(task_id=task_id)
+
+        if not data_points:
+            task_logger.debug("No realtime metric data points to persist.")
+            return 0
+
+        inserted = 0
+        try:
+            for point in data_points:
+                metric = CommonTaskRealtimeMetric(
+                    task_id=task_id,
+                    timestamp=point.get("timestamp", 0),
+                    current_users=int(point.get("current_users", 0)),
+                    current_rps=float(point.get("current_rps", 0)),
+                    current_fail_per_sec=float(point.get("current_fail_per_sec", 0)),
+                    avg_response_time=float(point.get("avg_response_time", 0)),
+                    min_response_time=float(point.get("min_response_time", 0)),
+                    max_response_time=float(point.get("max_response_time", 0)),
+                    median_response_time=float(point.get("median_response_time", 0)),
+                    p95_response_time=float(point.get("p95_response_time", 0)),
+                    total_requests=int(point.get("total_requests", 0)),
+                    total_failures=int(point.get("total_failures", 0)),
+                )
+                session.add(metric)
+                inserted += 1
+
+            session.commit()
+            task_logger.info(
+                f"Persisted {inserted} realtime metric data points to database."
+            )
+        except Exception as e:
+            task_logger.exception(f"Failed to persist realtime metrics: {e}")
+            session.rollback()
+
+        return inserted

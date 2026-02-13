@@ -80,6 +80,13 @@ export interface CommonJob {
   concurrent_users: number;
   spawn_rate?: number;
   duration: number;
+  // Stepped load configuration
+  load_mode?: 'fixed' | 'stepped';
+  step_start_users?: number;
+  step_increment?: number;
+  step_duration?: number;
+  step_max_users?: number;
+  step_sustain_duration?: number;
   created_by?: string;
   status:
     | 'pending'
@@ -95,6 +102,20 @@ export interface CommonJob {
   created_at: string;
   updated_at: string;
   error_message?: string;
+}
+
+export interface RealtimeMetricPoint {
+  timestamp: number;
+  current_users: number;
+  current_rps: number;
+  current_fail_per_sec: number;
+  avg_response_time: number;
+  min_response_time: number;
+  max_response_time: number;
+  median_response_time: number;
+  p95_response_time: number;
+  total_requests: number;
+  total_failures: number;
 }
 
 export interface Pagination {

@@ -135,7 +135,7 @@ class TestTaskAPI:
             min_response_time=50.0,
             max_response_time=500.0,
             median_response_time=140.0,
-            percentile_90_response_time=300.0,
+            percentile_95_response_time=300.0,
             rps=10.5,
             avg_content_length=256.0,
             total_tps=25.0,

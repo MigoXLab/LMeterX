@@ -269,6 +269,8 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.metricType'),
       dataIndex: 'metric_type',
       key: 'metric_type',
+      width: 200,
+      ellipsis: true,
       render: (text: string) => {
         const explanation = metricExplanations[text];
         if (explanation) {
@@ -288,16 +290,19 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.totalRequests'),
       dataIndex: 'request_count',
       key: 'request_count',
+      width: 110,
+      align: 'right' as const,
       render: (_: number, record: any) => {
         const requestCount = getRequestCountValue(record);
-        return requestCount !== undefined ? requestCount : 0;
+        return requestCount !== undefined ? requestCount.toLocaleString() : '0';
       },
     },
-
     {
       title: t('pages.results.avgResponseTime'),
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -310,9 +315,10 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.maxResponseTime'),
       dataIndex: 'max_response_time',
       key: 'max_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
-
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
@@ -323,9 +329,10 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.minResponseTime'),
       dataIndex: 'min_response_time',
       key: 'min_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
-
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
@@ -333,9 +340,11 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.p90ResponseTime'),
-      dataIndex: 'percentile_90_response_time',
-      key: 'percentile_90_response_time',
+      title: t('pages.results.p95ResponseTime'),
+      dataIndex: 'percentile_95_response_time',
+      key: 'percentile_95_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -348,9 +357,10 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.medianResponseTime'),
       dataIndex: 'median_response_time',
       key: 'median_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
-
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
@@ -361,6 +371,8 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.rps'),
       dataIndex: 'rps',
       key: 'rps',
+      width: 100,
+      align: 'right' as const,
       render: (text: number) => (text ? text.toFixed(2) : '0.00'),
     },
   ];
@@ -1082,7 +1094,8 @@ const TaskResults: React.FC = () => {
                 columns={columns}
                 rowKey='metric_type'
                 pagination={false}
-                className='modern-table unified-table'
+                scroll={{ x: 1000 }}
+                className='modern-table'
               />
             </div>
           </div>

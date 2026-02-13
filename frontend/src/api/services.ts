@@ -181,6 +181,13 @@ export const commonJobApi = {
   stopJob: (id: string) => api.post<CommonJob>(`/common-tasks/stop/${id}`),
 
   getJobResult: (jobId: string) => api.get(`/common-tasks/${jobId}/results`),
+
+  // Get real-time performance metrics for a running task (incremental fetch)
+  getRealtimeMetrics: (jobId: string, since: number = 0) =>
+    api.get<{ status: string; data: any[]; error?: string }>(
+      `/common-tasks/${jobId}/realtime-metrics`,
+      { params: { since } }
+    ),
 };
 
 // Results API methods
@@ -269,7 +276,7 @@ export const comparisonApi = {
         success_rate: number;
         rps: number;
         avg_response_time: number;
-        p90_response_time: number;
+        p95_response_time: number;
         min_response_time: number;
         max_response_time: number;
         avg_content_length: number;

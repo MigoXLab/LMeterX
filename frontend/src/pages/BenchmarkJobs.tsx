@@ -420,7 +420,10 @@ const BenchmarkJobs: React.FC = () => {
         description={t('pages.benchmarkJobs.description')}
       />
 
-      <div className='flex justify-between align-center mb-24'>
+      <div
+        className='flex justify-between align-center'
+        style={{ marginBottom: 20 }}
+      >
         <Space>
           <Button
             type='primary'

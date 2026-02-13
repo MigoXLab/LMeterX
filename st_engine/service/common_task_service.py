@@ -318,6 +318,122 @@ class CommonTaskService:
                 "return_code": -1,
             }
 
+    def _safe_refresh_task(self, session: Session, task: CommonTask, task_logger):
+        """Refresh task state from DB, rolling back on connection errors."""
+        try:
+            session.refresh(task)
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            task_logger.warning(
+                f" Database connection error while refreshing task state: {e}. "
+                "Continuing with task processing."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                task_logger.debug(
+                    "Failed to rollback session after refresh error.",
+                    exc_info=True,
+                )
+
+    def _persist_task_realtime_metrics(
+        self, session: Session, task: CommonTask, run_result: dict, task_logger
+    ):
+        """Persist real-time metrics to DB (non-fatal on failure)."""
+        realtime_data = run_result.get("realtime_metrics_data", [])
+        try:
+            self.result_service.persist_realtime_metrics(
+                session, task.id, realtime_data
+            )
+        except Exception as metrics_err:
+            task_logger.warning(
+                f"Non-fatal: failed to persist realtime metrics: {metrics_err}"
+            )
+
+    def _resolve_task_status(
+        self, session: Session, task: CommonTask, run_result: dict, task_logger
+    ):
+        """Decide and persist the final task status based on run results."""
+        run_status = run_result.get("status")
+        locust_result = run_result.get("locust_result", {})
+
+        if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
+            task_logger.info(
+                f" Task {task.id} was stopped during execution. Marking stopped."
+            )
+            self.update_task_status(session, task, TASK_STATUS_STOPPED)
+        elif run_status == "COMPLETED":
+            self._handle_completed(session, task, locust_result)
+        elif run_status == "FAILED_REQUESTS":
+            if locust_result:
+                self.result_service.insert_locust_results(
+                    session, locust_result, task.id
+                )
+            self.update_task_status(session, task, TASK_STATUS_FAILED_REQUESTS)
+        else:
+            error_message = run_result.get("stderr") or "Runner failed to start."
+            self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
+
+    def _handle_completed(
+        self, session: Session, task: CommonTask, locust_result: dict
+    ):
+        """Handle a successfully completed run, persisting results or marking failed."""
+        self.update_task_status(session, task, TASK_STATUS_COMPLETED)
+        if locust_result:
+            self.result_service.insert_locust_results(session, locust_result, task.id)
+        else:
+            self.update_task_status(
+                session,
+                task,
+                TASK_STATUS_FAILED,
+                "Runner completed but no result file was generated.",
+            )
+
+    def _handle_pipeline_db_error(
+        self, session: Session, task: CommonTask, task_logger, error: Exception
+    ):
+        """Handle database connection errors during pipeline execution."""
+        task_logger.warning(
+            f" Database connection error in pipeline: {error}. "
+            "Task processing may be incomplete."
+        )
+        try:
+            session.rollback()
+        except Exception:
+            task_logger.debug(
+                "Failed to rollback session after pipeline DB error.",
+                exc_info=True,
+            )
+        try:
+            self.update_task_status(
+                session,
+                task,
+                TASK_STATUS_FAILED,
+                f"Pipeline error: Database connection issue - {str(error)}",
+            )
+        except Exception as status_update_error:
+            logger.warning(
+                f" Could not update task {task.id} status due to database error: {status_update_error}"
+            )
+
+    def _handle_pipeline_error(
+        self, session: Session, task: CommonTask, task_logger, error: Exception
+    ):
+        """Handle unexpected errors during pipeline execution."""
+        task_logger.error(f" Pipeline error: {error}")
+        task_logger.error(f" Full traceback: {traceback.format_exc()}")
+        try:
+            self.update_task_status(
+                session, task, TASK_STATUS_FAILED, str(error) or "Pipeline error"
+            )
+        except (OperationalError, pymysql.err.OperationalError) as db_error:
+            logger.warning(
+                f" Database connection error while updating failed task status: {db_error}"
+            )
+        except Exception as status_update_error:
+            logger.error(
+                f" Critical: Failed to update status for task {task.id}: {status_update_error}"
+            )
+
     def process_task_pipeline(self, task: CommonTask, session: Session):
         """Process a single task end-to-end and persist its status/results."""
         handler_id = None
@@ -327,92 +443,14 @@ class CommonTaskService:
             self.update_task_status(session, task, TASK_STATUS_RUNNING)
 
             run_result = self.start_task(task)
-            run_status = run_result.get("status")
-            locust_result = run_result.get("locust_result", {})
 
-            try:
-                session.refresh(task)
-            except (OperationalError, pymysql.err.OperationalError) as e:
-                task_logger.warning(
-                    f" Database connection error while refreshing task state: {e}. "
-                    "Continuing with task processing."
-                )
-                try:
-                    session.rollback()
-                except Exception:
-                    task_logger.debug(
-                        "Failed to rollback session after refresh error.",
-                        exc_info=True,
-                    )
-
-            if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
-                task_logger.info(
-                    f" Task {task.id} was stopped during execution. Marking stopped."
-                )
-                self.update_task_status(session, task, TASK_STATUS_STOPPED)
-            elif run_status == "COMPLETED":
-                self.update_task_status(session, task, TASK_STATUS_COMPLETED)
-                if locust_result:
-                    self.result_service.insert_locust_results(
-                        session, locust_result, task.id
-                    )
-                else:
-                    self.update_task_status(
-                        session,
-                        task,
-                        TASK_STATUS_FAILED,
-                        "Runner completed but no result file was generated.",
-                    )
-            elif run_status == "FAILED_REQUESTS":
-                if locust_result:
-                    self.result_service.insert_locust_results(
-                        session, locust_result, task.id
-                    )
-                self.update_task_status(session, task, TASK_STATUS_FAILED_REQUESTS)
-            else:
-                error_message = run_result.get("stderr") or "Runner failed to start."
-                self.update_task_status(
-                    session, task, TASK_STATUS_FAILED, error_message
-                )
+            self._safe_refresh_task(session, task, task_logger)
+            self._persist_task_realtime_metrics(session, task, run_result, task_logger)
+            self._resolve_task_status(session, task, run_result, task_logger)
         except (OperationalError, pymysql.err.OperationalError) as e:
-            task_logger.warning(
-                f" Database connection error in pipeline: {e}. "
-                "Task processing may be incomplete."
-            )
-            try:
-                session.rollback()
-            except Exception:
-                task_logger.debug(
-                    "Failed to rollback session after pipeline DB error.",
-                    exc_info=True,
-                )
-            # Try to update status, but don't fail if database is still unavailable
-            try:
-                self.update_task_status(
-                    session,
-                    task,
-                    TASK_STATUS_FAILED,
-                    f"Pipeline error: Database connection issue - {str(e)}",
-                )
-            except Exception as status_update_error:
-                logger.warning(
-                    f" Could not update task {task.id} status due to database error: {status_update_error}"
-                )
+            self._handle_pipeline_db_error(session, task, task_logger, e)
         except Exception as e:
-            task_logger.error(f" Pipeline error: {e}")
-            task_logger.error(f" Full traceback: {traceback.format_exc()}")
-            try:
-                self.update_task_status(
-                    session, task, TASK_STATUS_FAILED, str(e) or "Pipeline error"
-                )
-            except (OperationalError, pymysql.err.OperationalError) as db_error:
-                logger.warning(
-                    f" Database connection error while updating failed task status: {db_error}"
-                )
-            except Exception as status_update_error:
-                logger.error(
-                    f" Critical: Failed to update status for task {task.id}: {status_update_error}"
-                )
+            self._handle_pipeline_error(session, task, task_logger, e)
         finally:
             if handler_id is not None:
                 remove_task_log_sink(handler_id)

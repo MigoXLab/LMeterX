@@ -12,6 +12,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Radio,
   Row,
   Select,
   Space,
@@ -65,6 +66,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
   const methodValue = Form.useWatch('method', form);
   const urlValue = Form.useWatch('target_url', form);
   const datasetSource = Form.useWatch('dataset_source', form);
+  const loadMode = Form.useWatch('load_mode', form) || 'fixed';
 
   const isFormReady = useMemo(() => {
     const hasUrl = urlValue && /^https?:\/\//i.test(urlValue);
@@ -80,9 +82,16 @@ const CreateCommonJobForm: React.FC<Props> = ({
     target_url: '',
     headers: 'Content-Type: application/json',
     request_body: '',
+    load_mode: 'fixed' as const,
     concurrent_users: 1,
     spawn_rate: 1,
     duration: 60,
+    // Stepped load defaults
+    step_start_users: 10,
+    step_increment: 10,
+    step_duration: 30,
+    step_max_users: 100,
+    step_sustain_duration: 60,
     curl_command: '',
     dataset_source: 'none',
     dataset_file: '',
@@ -185,8 +194,11 @@ const CreateCommonJobForm: React.FC<Props> = ({
     const datasetFile =
       values.dataset_source === 'upload' ? values.dataset_file || '' : '';
 
-    return {
+    const mode = values.load_mode || 'fixed';
+
+    const payload: any = {
       ...values,
+      load_mode: mode,
       response_mode: values.response_mode,
       dataset_file: datasetFile,
       curl_command: safeCurlCommand,
@@ -203,6 +215,31 @@ const CreateCommonJobForm: React.FC<Props> = ({
         ? { temp_task_id: values.temp_task_id || tempTaskId }
         : {}),
     };
+
+    if (mode === 'fixed') {
+      // Clear stepped fields for fixed mode
+      delete payload.step_start_users;
+      delete payload.step_increment;
+      delete payload.step_duration;
+      delete payload.step_max_users;
+      delete payload.step_sustain_duration;
+    } else {
+      // For stepped mode, set fixed fields to placeholder values
+      // Backend will derive actual values from stepped config
+      payload.concurrent_users = values.step_max_users || 1;
+      payload.spawn_rate = values.step_increment || 1;
+      // Calculate approximate total duration for stepped mode
+      // steps = ceil((max - start) / increment), total ≈ steps * step_duration + sustain
+      const startU = values.step_start_users || 1;
+      const maxU = values.step_max_users || 1;
+      const incr = values.step_increment || 1;
+      const stepDur = values.step_duration || 30;
+      const sustainDur = values.step_sustain_duration || 60;
+      const steps = Math.max(1, Math.ceil((maxU - startU) / incr)) + 1;
+      payload.duration = Math.max(1, steps * stepDur + sustainDur);
+    }
+
+    return payload;
   };
 
   const handleCurlParse = () => {
@@ -281,7 +318,9 @@ const CreateCommonJobForm: React.FC<Props> = ({
         })
       );
     } catch (err: any) {
-      const detail = err?.response?.data?.detail;
+      // apiClient throws { data, status, statusText } — not wrapped in .response
+      const errData = err?.data ?? err?.response?.data;
+      const detail = errData?.detail;
       let detailText = '';
       if (Array.isArray(detail)) {
         detailText = detail
@@ -294,7 +333,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
       }
 
       const errorMsg =
-        err?.response?.data?.error ||
+        errData?.error ||
         detailText ||
         err?.message ||
         t('components.createCommonJobForm.testFailed');
@@ -303,7 +342,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
       setTestResult({
         status: 'error',
         error: errorMsg,
-        body: err?.response?.data || errorMsg,
+        body: errData || errorMsg,
       });
       setTestModalVisible(true);
     } finally {
@@ -570,56 +609,170 @@ const CreateCommonJobForm: React.FC<Props> = ({
           </Form.Item>
         )}
 
-        <Row gutter={16}>
-          <Col span={8}>
-            <Form.Item
-              label={t('components.createCommonJobForm.concurrentUsers')}
-              name='concurrent_users'
-              rules={[
-                {
-                  required: true,
-                  message: t(
-                    'components.createCommonJobForm.concurrentUsersRequired'
-                  ),
-                },
-              ]}
-            >
-              <InputNumber min={1} max={5000} className='w-full' />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item
-              label={t('components.createCommonJobForm.spawnRate')}
-              name='spawn_rate'
-              required
-              rules={[
-                {
-                  required: true,
-                  message: t(
-                    'components.createCommonJobForm.spawnRateRequired'
-                  ),
-                },
-              ]}
-            >
-              <InputNumber min={1} max={10000} className='w-full' />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item
-              label={t('components.createCommonJobForm.duration')}
-              name='duration'
-              required
-              rules={[
-                {
-                  required: true,
-                  message: t('components.createCommonJobForm.durationRequired'),
-                },
-              ]}
-            >
-              <InputNumber min={1} max={172800} className='w-full' />
-            </Form.Item>
-          </Col>
-        </Row>
+        {/* Load mode selector: fixed concurrency vs stepped */}
+        <Form.Item
+          label={t('components.createCommonJobForm.loadMode')}
+          name='load_mode'
+        >
+          <Radio.Group>
+            <Radio.Button value='fixed'>
+              {t('components.createCommonJobForm.loadModeFixed')}
+            </Radio.Button>
+            <Radio.Button value='stepped'>
+              {t('components.createCommonJobForm.loadModeStepped')}
+            </Radio.Button>
+          </Radio.Group>
+        </Form.Item>
+
+        {/* Fixed concurrency configuration */}
+        {loadMode === 'fixed' && (
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createCommonJobForm.concurrentUsers')}
+                name='concurrent_users'
+                rules={[
+                  {
+                    required: loadMode === 'fixed',
+                    message: t(
+                      'components.createCommonJobForm.concurrentUsersRequired'
+                    ),
+                  },
+                ]}
+              >
+                <InputNumber min={1} max={5000} className='w-full' />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createCommonJobForm.spawnRate')}
+                name='spawn_rate'
+                rules={[
+                  {
+                    required: loadMode === 'fixed',
+                    message: t(
+                      'components.createCommonJobForm.spawnRateRequired'
+                    ),
+                  },
+                ]}
+              >
+                <InputNumber min={1} max={10000} className='w-full' />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createCommonJobForm.duration')}
+                name='duration'
+                rules={[
+                  {
+                    required: loadMode === 'fixed',
+                    message: t(
+                      'components.createCommonJobForm.durationRequired'
+                    ),
+                  },
+                ]}
+              >
+                <InputNumber min={1} max={172800} className='w-full' />
+              </Form.Item>
+            </Col>
+          </Row>
+        )}
+
+        {/* Stepped load configuration */}
+        {loadMode === 'stepped' && (
+          <>
+            <Row gutter={16}>
+              <Col span={8}>
+                <Form.Item
+                  label={t('components.createCommonJobForm.stepStartUsers')}
+                  name='step_start_users'
+                  rules={[
+                    {
+                      required: true,
+                      message: t(
+                        'components.createCommonJobForm.stepStartUsersRequired'
+                      ),
+                    },
+                  ]}
+                >
+                  <InputNumber min={1} max={5000} className='w-full' />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item
+                  label={t('components.createCommonJobForm.stepIncrement')}
+                  name='step_increment'
+                  rules={[
+                    {
+                      required: true,
+                      message: t(
+                        'components.createCommonJobForm.stepIncrementRequired'
+                      ),
+                    },
+                  ]}
+                >
+                  <InputNumber min={1} max={5000} className='w-full' />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item
+                  label={t('components.createCommonJobForm.stepDuration')}
+                  name='step_duration'
+                  tooltip={t('components.createCommonJobForm.stepDurationTip')}
+                  rules={[
+                    {
+                      required: true,
+                      message: t(
+                        'components.createCommonJobForm.stepDurationRequired'
+                      ),
+                    },
+                  ]}
+                >
+                  <InputNumber min={5} max={3600} className='w-full' />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label={t('components.createCommonJobForm.stepMaxUsers')}
+                  name='step_max_users'
+                  rules={[
+                    {
+                      required: true,
+                      message: t(
+                        'components.createCommonJobForm.stepMaxUsersRequired'
+                      ),
+                    },
+                  ]}
+                >
+                  <InputNumber min={1} max={10000} className='w-full' />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label={t(
+                    'components.createCommonJobForm.stepSustainDuration'
+                  )}
+                  name='step_sustain_duration'
+                  tooltip={t(
+                    'components.createCommonJobForm.stepSustainDurationTip'
+                  )}
+                  rules={[
+                    {
+                      required: true,
+                      message: t(
+                        'components.createCommonJobForm.stepSustainDurationRequired'
+                      ),
+                    },
+                  ]}
+                >
+                  <InputNumber min={1} max={172800} className='w-full' />
+                </Form.Item>
+              </Col>
+            </Row>
+          </>
+        )}
 
         <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button

@@ -180,7 +180,7 @@ class StatsManager:
                     "min_latency": endpoint.min_response_time,
                     "max_latency": endpoint.max_response_time,
                     "median_latency": endpoint.median_response_time,
-                    "p90_latency": endpoint.get_response_time_percentile(0.9),
+                    "p95_latency": endpoint.get_response_time_percentile(0.95),
                     "avg_content_length": endpoint.avg_content_length,
                     "rps": endpoint.total_rps,
                     "created_at": current_time,

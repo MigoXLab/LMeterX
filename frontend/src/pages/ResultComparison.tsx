@@ -126,7 +126,7 @@ interface CommonComparisonMetrics {
   success_rate: number;
   rps: number;
   avg_response_time: number;
-  p90_response_time: number;
+  p95_response_time: number;
   min_response_time: number;
   max_response_time: number;
   avg_content_length: number;
@@ -162,7 +162,7 @@ interface MetricCardConfig {
 
 type CommonNumericMetricKey =
   | 'avg_response_time'
-  | 'p90_response_time'
+  | 'p95_response_time'
   | 'min_response_time'
   | 'max_response_time'
   | 'rps'
@@ -1258,13 +1258,13 @@ const ResultComparison: React.FC = () => {
         decimals: 3,
       },
       {
-        metricKey: 'p90_response_time',
-        title: t('pages.results.p90ResponseTime', 'P90 Response Time'),
+        metricKey: 'p95_response_time',
+        title: t('pages.results.p95ResponseTime', 'P95 Response Time'),
         description: t(
-          'pages.resultComparison.metricDescriptions.p90ResponseTime',
-          '90th percentile response time (seconds)'
+          'pages.resultComparison.metricDescriptions.p95ResponseTime',
+          '95th percentile response time (seconds)'
         ),
-        chartTitle: t('pages.results.p90ResponseTime', 'P90 Response Time'),
+        chartTitle: t('pages.results.p95ResponseTime', 'P95 Response Time'),
         unit: 's',
         decimals: 3,
       },

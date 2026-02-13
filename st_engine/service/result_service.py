@@ -47,7 +47,7 @@ class ResultService:
                         "min_latency": stat["min_latency"],
                         "max_latency": stat["max_latency"],
                         "median_latency": stat["median_latency"],
-                        "p90_latency": stat["p90_latency"],
+                        "p95_latency": stat["p95_latency"],
                         "rps": stat["rps"],
                         "avg_content_length": stat["avg_content_length"],
                         # Initialize token-related fields with default values for standard stats
@@ -81,7 +81,7 @@ class ResultService:
                     min_latency=0,
                     max_latency=0,
                     median_latency=0,
-                    p90_latency=0,
+                    p95_latency=0,
                     rps=custom_metrics.get(
                         "req_throughput", 0.0
                     ),  # Use request throughput

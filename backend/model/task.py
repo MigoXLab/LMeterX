@@ -392,7 +392,7 @@ class TaskResultItem(BaseModel):
     median_response_time: float
     metric_type: str
     min_response_time: float
-    percentile_90_response_time: float
+    percentile_95_response_time: float
     request_count: int
     rps: float
     task_id: str
@@ -569,7 +569,7 @@ class TaskResult(Base):
     min_latency = Column(Float, nullable=False)
     max_latency = Column(Float, nullable=False)
     median_latency = Column(Float, nullable=False)
-    p90_latency = Column(Float, nullable=False)
+    p95_latency = Column(Float, nullable=False)
     rps = Column(Float, nullable=False)
     avg_content_length = Column(Float, nullable=False)
     total_tps = Column(Float, nullable=True, default=0.0)
@@ -603,8 +603,8 @@ class TaskResult(Base):
             median_response_time=(
                 float(self.median_latency) if self.median_latency is not None else 0.0
             ),
-            percentile_90_response_time=(
-                float(self.p90_latency) if self.p90_latency is not None else 0.0
+            percentile_95_response_time=(
+                float(self.p95_latency) if self.p95_latency is not None else 0.0
             ),
             rps=float(self.rps) if self.rps is not None else 0.0,
             avg_content_length=(

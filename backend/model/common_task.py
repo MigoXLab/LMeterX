@@ -80,6 +80,68 @@ class CommonTaskCreateReq(BaseModel):
         description="Users spawned per second. Defaults to concurrent_users.",
     )
 
+    # -- Stepped load configuration --
+    load_mode: str = Field(
+        default="fixed",
+        description="Load mode: 'fixed' for constant concurrency, 'stepped' for stepped load",
+    )
+    step_start_users: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=5000,
+        description="Initial number of users for stepped load",
+    )
+    step_increment: Optional[int] = Field(
+        default=None, ge=1, le=1000, description="Users to add per step"
+    )
+    step_duration: Optional[int] = Field(
+        default=None, ge=1, le=86400, description="Duration of each step in seconds"
+    )
+    step_max_users: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=5000,
+        description="Maximum number of users for stepped load",
+    )
+    step_sustain_duration: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=172800,
+        description="Duration to sustain at max users in seconds",
+    )
+
+    @validator("load_mode")
+    def validate_load_mode(cls, v: str) -> str:
+        if v not in ("fixed", "stepped"):
+            raise ValueError("load_mode must be 'fixed' or 'stepped'")
+        return v
+
+    @validator("step_sustain_duration", always=True)
+    def validate_stepped_config(cls, v, values):
+        """Validate that all stepped fields are provided when load_mode is 'stepped'."""
+        load_mode = values.get("load_mode", "fixed")
+        if load_mode == "stepped":
+            required_fields = {
+                "step_start_users": values.get("step_start_users"),
+                "step_increment": values.get("step_increment"),
+                "step_duration": values.get("step_duration"),
+                "step_max_users": values.get("step_max_users"),
+            }
+            missing = [k for k, val in required_fields.items() if val is None]
+            if missing:
+                raise ValueError(f"Stepped load mode requires: {', '.join(missing)}")
+            if v is None:
+                raise ValueError(
+                    "step_sustain_duration is required for stepped load mode"
+                )
+            start = values.get("step_start_users", 0)
+            max_u = values.get("step_max_users", 0)
+            if start > max_u:
+                raise ValueError(
+                    "step_start_users cannot be greater than step_max_users"
+                )
+        return v
+
     @validator("name")
     def validate_name(cls, v: str) -> str:
         if not v or not v.strip():
@@ -187,7 +249,7 @@ class CommonTaskResultItem(BaseModel):
     median_response_time: float
     metric_type: str
     min_response_time: float
-    percentile_90_response_time: float
+    percentile_95_response_time: float
     request_count: int
     rps: float
     task_id: str
@@ -243,7 +305,7 @@ class CommonComparisonMetrics(BaseModel):
     success_rate: float
     rps: float
     avg_response_time: float
-    p90_response_time: float
+    p95_response_time: float
     min_response_time: float
     max_response_time: float
     avg_content_length: float
@@ -288,6 +350,15 @@ class CommonTask(Base):
     concurrent_users = Column(Integer, nullable=False)
     spawn_rate = Column(Integer, nullable=False)
     duration = Column(Integer, nullable=False)
+    # Stepped load configuration
+    load_mode = Column(
+        String(16), nullable=False, default="fixed", server_default="fixed"
+    )
+    step_start_users = Column(Integer, nullable=True)
+    step_increment = Column(Integer, nullable=True)
+    step_duration = Column(Integer, nullable=True)
+    step_max_users = Column(Integer, nullable=True)
+    step_sustain_duration = Column(Integer, nullable=True)
     log_file = Column(Text, nullable=True)
     result_file = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
@@ -310,7 +381,7 @@ class CommonTaskResult(Base):
     min_latency = Column(Float, nullable=False)
     max_latency = Column(Float, nullable=False)
     median_latency = Column(Float, nullable=False)
-    p90_latency = Column(Float, nullable=False)
+    p95_latency = Column(Float, nullable=False)
     rps = Column(Float, nullable=False)
     avg_content_length = Column(Float, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
@@ -340,8 +411,8 @@ class CommonTaskResult(Base):
             median_response_time=(
                 float(self.median_latency) if self.median_latency is not None else 0.0
             ),
-            percentile_90_response_time=(
-                float(self.p90_latency) if self.p90_latency is not None else 0.0
+            percentile_95_response_time=(
+                float(self.p95_latency) if self.p95_latency is not None else 0.0
             ),
             rps=float(self.rps) if self.rps is not None else 0.0,
             avg_content_length=(
@@ -351,3 +422,24 @@ class CommonTaskResult(Base):
             ),
             created_at=self.created_at.isoformat() if self.created_at else "",
         )
+
+
+class CommonTaskRealtimeMetric(Base):
+    """SQLAlchemy model for real-time performance metrics collected during load tests."""
+
+    __tablename__ = "common_task_realtime_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String(40), nullable=False, index=True)
+    timestamp = Column(Float, nullable=False)
+    current_users = Column(Integer, nullable=False, default=0)
+    current_rps = Column(Float, nullable=False, default=0.0)
+    current_fail_per_sec = Column(Float, nullable=False, default=0.0)
+    avg_response_time = Column(Float, nullable=False, default=0.0)
+    min_response_time = Column(Float, nullable=False, default=0.0)
+    max_response_time = Column(Float, nullable=False, default=0.0)
+    median_response_time = Column(Float, nullable=False, default=0.0)
+    p95_response_time = Column(Float, nullable=False, default=0.0)
+    total_requests = Column(Integer, nullable=False, default=0)
+    total_failures = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, server_default=func.now())

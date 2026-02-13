@@ -477,6 +477,11 @@ class LocustRunner:
             if existing_pythonpath
             else self.base_dir
         )
+        # Apply extra env vars from subclasses (e.g., stepped load config)
+        extra_env = getattr(self, "_extra_env", {})
+        if extra_env:
+            env.update(extra_env)
+            task_logger.debug(f"Applied extra env vars: {list(extra_env.keys())}")
         task_logger.debug(
             f"Setting LOCUST_CONCURRENT_USERS={env['LOCUST_CONCURRENT_USERS']} from task.concurrent_users={task.concurrent_users}"
         )

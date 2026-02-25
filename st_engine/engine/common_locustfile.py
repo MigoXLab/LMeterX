@@ -4,78 +4,23 @@ Supports both fixed concurrency and stepped load patterns.
 """
 
 import json
-import math
 import os
 import queue
 import tempfile
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import gevent
 import urllib3
-from locust import HttpUser, LoadTestShape, events, task
+from locust import HttpUser, events, task
 from urllib3.exceptions import InsecureRequestWarning
 
 from utils.logger import logger
+from utils.realtime_metrics import realtime_metrics_greenlet
 
 # Disable the specific InsecureRequestWarning from urllib3
 # This warning appears when verify=False is used for SSL certificate verification
 urllib3.disable_warnings(InsecureRequestWarning)
-
-# ---- Real-time metrics collection ----
-# Default interval (seconds) used for short tests or when duration is unknown.
-_DEFAULT_METRICS_INTERVAL = 2
-# Maximum number of data points we want to store per task.
-# This caps the table growth regardless of test duration.
-_MAX_METRICS_DATA_POINTS = 1080
-
-
-def _calc_metrics_interval() -> int:
-    """Calculate an adaptive metrics collection interval based on test duration and load mode.
-
-    Strategy:
-    - For short tests (≤5 min): 2 s  → up to 150 data points
-    - For medium tests (5–30 min): 5 s  → up to 360 data points
-    - For long tests (30–120 min): 10 s → up to 720 data points
-    - For very long tests (>2 h): 30 s  → e.g. 24 h → 2880 data points
-
-    In stepped mode the interval is capped at 5 s to preserve step-transition
-    visibility regardless of total duration.
-
-    Returns the interval in seconds.
-    """
-    load_mode = os.environ.get("LOAD_MODE", "fixed")
-    duration_str = os.environ.get("TASK_DURATION", "")
-
-    if not duration_str:
-        return _DEFAULT_METRICS_INTERVAL
-
-    try:
-        duration = int(duration_str)
-    except (ValueError, TypeError):
-        return _DEFAULT_METRICS_INTERVAL
-
-    if duration <= 0:
-        return _DEFAULT_METRICS_INTERVAL
-
-    if load_mode == "stepped":
-        # Stepped mode needs finer granularity to show step transitions clearly
-        if duration <= 300:
-            return 2
-        elif duration <= 1800:
-            return 3
-        else:
-            return 5
-
-    # Fixed concurrency mode — scale interval with duration
-    if duration <= 300:  # ≤ 5 min
-        return 2
-    elif duration <= 1800:  # 5 – 30 min
-        return 5
-    elif duration <= 7200:  # 30 min – 2 h
-        return 10
-    else:  # > 2 h
-        return 30
 
 
 def _parse_kv(json_str: str) -> Dict[str, str]:
@@ -180,71 +125,6 @@ def _build_stat_row(task_id: str, name: str, stat) -> Dict:
         return {}
 
 
-def _get_realtime_metrics_path(task_id: str) -> str:
-    """Return the path for the real-time metrics JSONL file."""
-    return os.path.join(
-        tempfile.gettempdir(), "locust_result", task_id, "realtime_metrics.jsonl"
-    )
-
-
-def _collect_realtime_snapshot(environment) -> Dict[str, Any]:
-    """Collect a single snapshot of current metrics from Locust stats."""
-    total = environment.stats.total
-    runner = environment.runner
-    current_users = runner.user_count if runner else 0
-    now = time.time()
-
-    snapshot: Dict[str, Any] = {
-        "timestamp": now,
-        "current_users": current_users,
-        "current_rps": round(total.current_rps, 2) if total else 0,
-        "current_fail_per_sec": round(total.current_fail_per_sec, 2) if total else 0,
-        "avg_response_time": round(total.avg_response_time, 2) if total else 0,
-        "min_response_time": round(total.min_response_time or 0, 2) if total else 0,
-        "max_response_time": round(total.max_response_time or 0, 2) if total else 0,
-        "median_response_time": (
-            round(total.median_response_time or 0, 2) if total else 0
-        ),
-        "p95_response_time": (
-            round(total.get_response_time_percentile(0.95) or 0, 2) if total else 0
-        ),
-        "total_requests": total.num_requests if total else 0,
-        "total_failures": total.num_failures if total else 0,
-    }
-    return snapshot
-
-
-def _realtime_metrics_greenlet(environment):
-    """Background greenlet that periodically writes real-time metrics to a JSONL file.
-
-    The collection interval is dynamically adjusted based on the test duration
-    and load mode (via ``_calc_metrics_interval``), so long-running stability
-    tests produce far fewer data points than short benchmark runs.
-    """
-    task_id = getattr(environment.parsed_options, "task_id", "") or os.environ.get(
-        "TASK_ID", "unknown"
-    )
-    metrics_path = _get_realtime_metrics_path(task_id)
-    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
-    task_logger = logger.bind(task_id=task_id)
-
-    interval = _calc_metrics_interval()
-    task_logger.info(
-        f"Real-time metrics writer started -> {metrics_path} " f"(interval={interval}s)"
-    )
-
-    while True:
-        try:
-            gevent.sleep(interval)
-            snapshot = _collect_realtime_snapshot(environment)
-            with open(metrics_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(snapshot) + "\n")
-        except gevent.GreenletExit:
-            break
-        except Exception as e:  # pragma: no cover
-            task_logger.debug(f"Realtime metrics write error: {e}")
-
-
 @events.init_command_line_parser.add_listener
 def init_parser(parser):
     """Add custom CLI options for common API tasks."""
@@ -269,9 +149,9 @@ def on_test_start(environment, **kwargs):
     task_logger = logger.bind(task_id=task_id)
     load_mode = os.environ.get("LOAD_MODE", "fixed")
     task_logger.info(f"Common API load test started. load_mode={load_mode}")
-    # Spawn background greenlet for real-time metrics collection
+    # Spawn background greenlet for real-time metrics collection (shared module)
     environment._realtime_greenlet = gevent.spawn(
-        _realtime_metrics_greenlet, environment
+        realtime_metrics_greenlet, environment
     )
 
 
@@ -311,75 +191,12 @@ def on_test_stop(environment, **kwargs):
 
 # ---------------------------------------------------------------------------
 # Stepped load shape (conditionally activated via LOAD_MODE env var)
+# Reuses the shared SteppedLoadShape from utils/stepped_load.py
 # ---------------------------------------------------------------------------
 _LOAD_MODE = os.environ.get("LOAD_MODE", "fixed")
 
 if _LOAD_MODE == "stepped":
-
-    class SteppedLoadShape(LoadTestShape):
-        """
-        Stepped load shape similar to JMeter Ultimate Thread Group.
-
-        Pattern:
-        - Start at ``step_start_users`` virtual users.
-        - Every ``step_duration`` seconds, add ``step_increment`` users.
-        - Once ``step_max_users`` is reached, sustain for ``step_sustain_duration``.
-        - Then return None to signal test end.
-
-        All parameters are read from environment variables set by the runner.
-        """
-
-        def __init__(self):
-            """Initialize stepped load shape from environment variables."""
-            super().__init__()
-            self.step_start_users = int(os.environ.get("STEP_START_USERS", "1"))
-            self.step_increment = int(os.environ.get("STEP_INCREMENT", "10"))
-            self.step_duration = int(os.environ.get("STEP_DURATION", "30"))
-            self.step_max_users = int(os.environ.get("STEP_MAX_USERS", "100"))
-            self.step_sustain_duration = int(
-                os.environ.get("STEP_SUSTAIN_DURATION", "60")
-            )
-            # Calculate the number of ramp-up steps
-            self.num_steps = max(
-                1,
-                math.ceil(
-                    (self.step_max_users - self.step_start_users)
-                    / max(self.step_increment, 1)
-                )
-                + 1,  # +1 for the initial step
-            )
-            # Total ramp phase time
-            self.ramp_phase_time = self.num_steps * self.step_duration
-            # Total test time
-            self.total_time = self.ramp_phase_time + self.step_sustain_duration
-            logger.debug(
-                f"SteppedLoadShape initialized: start={self.step_start_users}, "
-                f"increment={self.step_increment}, step_duration={self.step_duration}s, "
-                f"max={self.step_max_users}, sustain={self.step_sustain_duration}s, "
-                f"total_time={self.total_time}s"
-            )
-
-        def tick(self) -> Optional[Tuple[int, float]]:
-            """Return (user_count, spawn_rate) or None to stop."""
-            run_time = self.get_run_time()
-
-            if run_time > self.total_time:
-                return None  # Test complete
-
-            if run_time <= self.ramp_phase_time:
-                # Determine which step we are on
-                current_step = int(run_time // self.step_duration)
-                target_users = min(
-                    self.step_start_users + current_step * self.step_increment,
-                    self.step_max_users,
-                )
-            else:
-                # Sustain phase at max users
-                target_users = self.step_max_users
-
-            # Use a high spawn rate to reach target quickly within each step
-            spawn_rate = max(target_users, 1)
-            return (target_users, float(spawn_rate))
+    from utils.stepped_load import SteppedLoadShape  # noqa: F401 – imported for Locust
 
 
 class CommonApiUser(HttpUser):

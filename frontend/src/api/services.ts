@@ -152,6 +152,13 @@ export const jobApi = {
 
   // Test API endpoint
   testApiEndpoint: (data: any) => api.post<any>('/tasks/test', data),
+
+  // Get real-time performance metrics for a running task (incremental fetch)
+  getRealtimeMetrics: (jobId: string, since: number = 0) =>
+    api.get<{ status: string; data: any[]; error?: string }>(
+      `/tasks/${jobId}/realtime-metrics`,
+      { params: { since } }
+    ),
 };
 
 // Common API job methods

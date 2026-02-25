@@ -10,6 +10,7 @@ import tempfile
 import time
 from typing import Any, Dict, Optional
 
+import gevent
 import urllib3
 from gevent import queue
 from locust import HttpUser, events, task
@@ -22,6 +23,7 @@ from utils.common import mask_sensitive_data
 from utils.error_handler import ErrorResponse
 from utils.event_handler import EventManager
 from utils.logger import logger
+from utils.realtime_metrics import realtime_metrics_greenlet
 from utils.stats_manager import StatsManager
 from utils.token_counter import count_tokens
 
@@ -305,6 +307,30 @@ def on_locust_init(environment, **kwargs):
         raise
 
 
+@events.test_start.add_listener
+def on_test_start(environment, **kwargs):
+    """Spawn real-time metrics greenlet when the test starts.
+
+    Metrics are NOT collected during warmup mode to keep warmup lightweight.
+    """
+    if getattr(environment, "warmup_mode", False):
+        return
+
+    task_id = getattr(environment.parsed_options, "task_id", "") or os.environ.get(
+        "TASK_ID", "unknown"
+    )
+    task_logger = global_state.get_task_logger(task_id)
+    load_mode = os.environ.get("LOAD_MODE", "fixed")
+    task_logger.info(f"LLM API load test started. load_mode={load_mode}")
+
+    # Spawn background greenlet for real-time metrics collection
+    # include_entries=True  -> capture per-metric detail for LLM charts
+    # is_llm=True           -> use wider collection intervals (LLM requests are long-running)
+    environment._realtime_greenlet = gevent.spawn(
+        realtime_metrics_greenlet, environment, include_entries=True, is_llm=True
+    )
+
+
 @events.test_stop.add_listener
 def on_test_stop(environment, **kwargs):
     """Handle metrics aggregation when test stops"""
@@ -313,6 +339,12 @@ def on_test_stop(environment, **kwargs):
 
         task_logger = global_state.get_task_logger(global_state.config.task_id)
         runner = environment.runner
+
+        # Stop real-time metrics greenlet
+        greenlet = getattr(environment, "_realtime_greenlet", None)
+        if greenlet and not greenlet.dead:
+            greenlet.kill(block=False)
+            task_logger.debug("Real-time metrics greenlet stopped.")
 
         # Skip stats collection in warmup mode
         if getattr(environment, "warmup_mode", False):
@@ -348,6 +380,15 @@ def on_test_stop(environment, **kwargs):
 
     except Exception as e:
         task_logger.error(f"Error in on_test_stop: {e}", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# Stepped load shape (conditionally activated via LOAD_MODE env var)
+# ---------------------------------------------------------------------------
+_LOAD_MODE = os.environ.get("LOAD_MODE", "fixed")
+
+if _LOAD_MODE == "stepped":
+    from utils.stepped_load import SteppedLoadShape  # noqa: F401 – imported for Locust
 
 
 # === MAIN USER CLASS ===

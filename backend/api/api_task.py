@@ -24,6 +24,7 @@ from service.task_service import (
     delete_task_svc,
     get_all_models_svc,
     get_model_tasks_for_comparison_svc,
+    get_task_realtime_metrics_svc,
     get_task_result_svc,
     get_task_status_svc,
     get_task_svc,
@@ -138,6 +139,18 @@ async def get_task_result(request: Request, task_id: str):
         TaskResultRsp: A response object containing the task results.
     """
     return await get_task_result_svc(request, task_id)
+
+
+@router.get("/{task_id}/realtime-metrics", response_model=Dict[str, Any])
+async def get_task_realtime_metrics(
+    request: Request,
+    task_id: str,
+    since: float = Query(
+        0.0, description="Only return data points after this timestamp"
+    ),
+):
+    """Get real-time performance metrics for a running or completed LLM task."""
+    return await get_task_realtime_metrics_svc(request, task_id, since)
 
 
 @router.put("/{task_id}")

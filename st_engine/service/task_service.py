@@ -411,6 +411,20 @@ class TaskService:
                 "return_code": -1,
             }
 
+    def _persist_task_realtime_metrics(
+        self, session: Session, task: Task, run_result: dict, task_logger
+    ):
+        """Persist real-time metrics to DB (non-fatal on failure)."""
+        realtime_data = run_result.get("realtime_metrics_data", [])
+        try:
+            self.result_service.persist_realtime_metrics(
+                session, task.id, realtime_data
+            )
+        except Exception as metrics_err:
+            task_logger.warning(
+                f"Non-fatal: failed to persist realtime metrics: {metrics_err}"
+            )
+
     def process_task_pipeline(self, task: Task, session: Session):  # noqa: C901
         """
         Manages the complete pipeline for processing a single task.
@@ -453,6 +467,9 @@ class TaskService:
                         "Failed to rollback session after refresh error.",
                         exc_info=True,
                     )
+
+            # Persist realtime metrics regardless of status (non-fatal)
+            self._persist_task_realtime_metrics(session, task, run_result, task_logger)
 
             if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
                 task_logger.info(

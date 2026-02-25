@@ -44,6 +44,13 @@ export interface Job {
     cert_file?: string;
     key_file?: string;
   };
+  // Stepped load configuration
+  load_mode?: 'fixed' | 'stepped';
+  step_start_users?: number;
+  step_increment?: number;
+  step_duration?: number;
+  step_max_users?: number;
+  step_sustain_duration?: number;
   created_by?: string;
   test_data?: string;
   status:
@@ -104,6 +111,17 @@ export interface CommonJob {
   error_message?: string;
 }
 
+/**
+ * Per-metric stat snapshot used in LLM real-time charts.
+ * Each key in the `metrics` dict maps a metric name (e.g. "Total_time")
+ * to its avg_response_time, current_rps and current_fail_per_sec.
+ */
+export interface MetricEntryStat {
+  avg_response_time: number;
+  current_rps: number;
+  current_fail_per_sec: number;
+}
+
 export interface RealtimeMetricPoint {
   timestamp: number;
   current_users: number;
@@ -116,6 +134,8 @@ export interface RealtimeMetricPoint {
   p95_response_time: number;
   total_requests: number;
   total_failures: number;
+  /** Per-metric breakdown (LLM API only) */
+  metrics?: Record<string, MetricEntryStat>;
 }
 
 export interface Pagination {

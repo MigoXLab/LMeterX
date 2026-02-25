@@ -4,6 +4,7 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import json
+import math
 import os
 import shutil
 import subprocess  # nosec B404
@@ -11,7 +12,7 @@ import tempfile
 import threading
 import time
 from queue import Queue
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import psutil
 
@@ -50,13 +51,49 @@ class LocustRunner:
         self.base_dir = base_dir
         self._locustfile_path = os.path.join(self.base_dir, "engine", "locustfile.py")
 
+    # --- Shared stepped load helpers ---
+
+    def _get_stepped_env(self, task) -> Dict[str, str]:
+        """Build environment variables for stepped load mode.
+
+        Works with any task object that has step_* attributes (Task or CommonTask).
+        """
+        return {
+            "LOAD_MODE": "stepped",
+            "STEP_START_USERS": str(getattr(task, "step_start_users", None) or 1),
+            "STEP_INCREMENT": str(getattr(task, "step_increment", None) or 10),
+            "STEP_DURATION": str(getattr(task, "step_duration", None) or 30),
+            "STEP_MAX_USERS": str(getattr(task, "step_max_users", None) or 100),
+            "STEP_SUSTAIN_DURATION": str(
+                getattr(task, "step_sustain_duration", None) or 60
+            ),
+        }
+
+    def _calc_stepped_total_duration(self, task) -> int:
+        """Calculate total duration for stepped load mode.
+
+        Works with any task object that has step_* attributes.
+        """
+        start = getattr(task, "step_start_users", None) or 1
+        increment = getattr(task, "step_increment", None) or 10
+        step_dur = getattr(task, "step_duration", None) or 30
+        max_users = getattr(task, "step_max_users", None) or 100
+        sustain = getattr(task, "step_sustain_duration", None) or 60
+
+        num_steps = max(1, math.ceil((max_users - start) / max(increment, 1)) + 1)
+        return num_steps * step_dur + sustain
+
+    def _get_load_mode(self, task) -> str:
+        """Return the load mode for the task ('fixed' or 'stepped')."""
+        return getattr(task, "load_mode", "fixed") or "fixed"
+
     def run_locust_process(self, task: Task) -> dict:
         """
         Run Locust test as a separate process with full lifecycle management.
         For LLM API tasks, runs a warmup phase first to avoid cold start interference.
         """
         task_logger = logger.bind(task_id=task.id)
-        task_logger.info(f"Starting Locust task {task.id}")
+        task_logger.debug(f"Starting Locust task {task.id}")
 
         try:
             # Step 1: Prepare environment
@@ -153,21 +190,31 @@ class LocustRunner:
         if not isinstance(warmup_duration, int) or warmup_duration <= 0:
             warmup_duration = self._WARMUP_DURATION_SECONDS
 
+        # In stepped mode, warmup uses the max concurrency (step_max_users)
+        load_mode = self._get_load_mode(task)
+        warmup_users = (
+            getattr(task, "step_max_users", None) or task.concurrent_users
+            if load_mode == "stepped"
+            else task.concurrent_users
+        )
         task_logger.info(
-            f"Starting warmup phase: {warmup_duration}s with {task.concurrent_users} users"
+            f"Starting warmup phase: {warmup_duration}s with {warmup_users} users"
+            f" (load_mode={load_mode})"
         )
 
         warmup_task_id = f"{task.id}_warmup"
 
         # Build warmup command (no test_data, with warmup_mode flag)
-        warmup_cmd = self._build_warmup_command(task, task_logger, warmup_duration)
+        warmup_cmd = self._build_warmup_command(
+            task, task_logger, warmup_duration, warmup_users
+        )
         self._validate_subprocess_command(warmup_cmd, "Warmup")
         masked_cmd = mask_sensitive_command(warmup_cmd)
         task_logger.info(f"Warmup command: {' '.join(masked_cmd)}")
 
         env = os.environ.copy()
         env["TASK_ID"] = warmup_task_id
-        env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
+        env["LOCUST_CONCURRENT_USERS"] = str(warmup_users)
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
             f"{self.base_dir}{os.pathsep}{existing_pythonpath}"
@@ -194,7 +241,7 @@ class LocustRunner:
 
             # Handle multiprocess registration for warmup
             cpu_count = get_cpu_count()
-            concurrent_users = int(task.concurrent_users)
+            concurrent_users = int(warmup_users)
             if should_enable_multiprocess(concurrent_users, cpu_count):
                 try:
                     warmup_port = allocate_master_port(warmup_task_id)
@@ -316,7 +363,7 @@ class LocustRunner:
         task_logger.info("Starting main test phase")
 
     def _build_warmup_command(
-        self, task: Task, task_logger, warmup_duration: int
+        self, task: Task, task_logger, warmup_duration: int, warmup_users: int = 0
     ) -> List[str]:
         """Build Locust command for warmup phase (no dataset, warmup_mode enabled).
 
@@ -325,7 +372,11 @@ class LocustRunner:
             task_logger: Logger instance bound to the task.
             warmup_duration: Pre-validated warmup duration in seconds.
                 Resolved and validated by ``_run_warmup_phase`` before calling.
+            warmup_users: Number of concurrent users for warmup.
+                In stepped mode, this is ``step_max_users``.
         """
+        if not warmup_users:
+            warmup_users = int(task.concurrent_users)
         locust_bin = shutil.which("locust") or "locust"
         # Use a short stop-timeout for warmup: after --run-time expires,
         # Locust will forcibly kill remaining users within this timeout.
@@ -338,7 +389,7 @@ class LocustRunner:
             "--host",
             task.target_host,
             "--users",
-            str(task.concurrent_users),
+            str(warmup_users),
             "--spawn-rate",
             str(task.spawn_rate),
             "--run-time",
@@ -397,22 +448,16 @@ class LocustRunner:
     def _build_locust_command(self, task: Task, task_logger) -> List[str]:
         """Build Locust command based on task config."""
         locust_bin = shutil.which("locust") or "locust"
+        load_mode = self._get_load_mode(task)
+
         cmd = [
             locust_bin,
             "-f",
             self._locustfile_path,
             "--host",
             task.target_host,
-            "--users",
-            str(task.concurrent_users),
-            "--spawn-rate",
-            str(task.spawn_rate),
-            "--run-time",
-            f"{task.duration}s",
             "--stop-timeout",
             f"{LOCUST_STOP_TIMEOUT}s",
-            "--duration",
-            str(task.duration),
             "--headless",
             "--only-summary",
             "--api_path",
@@ -432,6 +477,31 @@ class LocustRunner:
             "--task-id",
             task.id,
         ]
+
+        if load_mode == "stepped":
+            # In stepped mode, LoadTestShape controls users/run-time/spawn-rate.
+            # Do NOT pass --users / --run-time / --spawn-rate.
+            task_logger.info(
+                f"Stepped load mode: start={getattr(task, 'step_start_users', 1)}, "
+                f"increment={getattr(task, 'step_increment', 10)}, "
+                f"step_duration={getattr(task, 'step_duration', 30)}s, "
+                f"max={getattr(task, 'step_max_users', 100)}, "
+                f"sustain={getattr(task, 'step_sustain_duration', 60)}s"
+            )
+        else:
+            # Fixed concurrency mode - pass standard Locust args
+            cmd.extend(
+                [
+                    "--users",
+                    str(task.concurrent_users),
+                    "--spawn-rate",
+                    str(task.spawn_rate),
+                    "--run-time",
+                    f"{task.duration}s",
+                    "--duration",
+                    str(task.duration),
+                ]
+            )
 
         cpu_count = get_cpu_count()
         concurrent_users = int(task.concurrent_users)
@@ -463,6 +533,20 @@ class LocustRunner:
         self, cmd: List[str], task: Task, task_logger
     ) -> subprocess.Popen:
         """Start Locust subprocess and register multiprocess group if needed."""
+        # Inject stepped load env vars and task duration
+        load_mode = self._get_load_mode(task)
+        if load_mode == "stepped":
+            if not hasattr(self, "_extra_env"):
+                self._extra_env = {}
+            self._extra_env.update(self._get_stepped_env(task))
+            self._extra_env["TASK_DURATION"] = str(
+                self._calc_stepped_total_duration(task)
+            )
+        else:
+            if not hasattr(self, "_extra_env"):
+                self._extra_env = {}
+            self._extra_env["TASK_DURATION"] = str(task.duration)
+
         self._validate_subprocess_command(cmd, "Locust")
         masked_cmd = mask_sensitive_command(cmd)
         task_logger.info(f"Executing: {' '.join(masked_cmd)}")
@@ -477,6 +561,11 @@ class LocustRunner:
             if existing_pythonpath
             else self.base_dir
         )
+        # Apply extra env vars (stepped load config, task duration, etc.)
+        extra_env = getattr(self, "_extra_env", {})
+        if extra_env:
+            env.update(extra_env)
+            task_logger.debug(f"Applied extra env vars: {list(extra_env.keys())}")
         task_logger.debug(
             f"Setting LOCUST_CONCURRENT_USERS={env['LOCUST_CONCURRENT_USERS']} from task.concurrent_users={task.concurrent_users}"
         )
@@ -542,7 +631,19 @@ class LocustRunner:
         stdout_thread.start()
         stderr_thread.start()
 
-        total_timeout = task.duration + LOCUST_STOP_TIMEOUT + LOCUST_WAIT_TIMEOUT_BUFFER
+        # Use stepped total duration for timeout calculation if applicable
+        load_mode = self._get_load_mode(task)
+        effective_duration = task.duration
+        if load_mode == "stepped":
+            effective_duration = self._calc_stepped_total_duration(task)
+            task_logger.info(
+                f"Stepped mode: overriding timeout duration to {effective_duration}s "
+                f"(original fixed duration: {task.duration}s)"
+            )
+
+        total_timeout = (
+            effective_duration + LOCUST_STOP_TIMEOUT + LOCUST_WAIT_TIMEOUT_BUFFER
+        )
 
         try:
             process.wait(timeout=total_timeout)
@@ -578,7 +679,34 @@ class LocustRunner:
         stderr: str,
         task_logger,
     ) -> dict:
-        """Load result and perform cleanup."""
+        """Load result and perform cleanup.
+
+        Also reads realtime metrics JSONL before the result directory is
+        deleted, so that ``process_task_pipeline`` can persist the data.
+        """
+        # Pre-read realtime metrics JSONL before directory cleanup
+        metrics_path = os.path.join(
+            tempfile.gettempdir(), "locust_result", task.id, "realtime_metrics.jsonl"
+        )
+        realtime_metrics_data: List[dict] = []
+        if os.path.exists(metrics_path):
+            try:
+                with open(metrics_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            realtime_metrics_data.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+                task_logger.info(
+                    f"Read {len(realtime_metrics_data)} realtime metric points "
+                    f"from JSONL before directory cleanup."
+                )
+            except Exception as e:
+                task_logger.warning(f"Failed to pre-read realtime metrics JSONL: {e}")
+
         result_file = os.path.join(
             tempfile.gettempdir(), "locust_result", task.id, "result.json"
         )
@@ -605,6 +733,7 @@ class LocustRunner:
             "stderr": stderr,
             "return_code": process.returncode,
             "locust_result": locust_result,
+            "realtime_metrics_data": realtime_metrics_data,
         }
 
     def _cleanup_task(self, task: Task, process: subprocess.Popen, task_logger) -> None:
@@ -633,44 +762,6 @@ class LocustRunner:
                 p = psutil.Process(pid)
                 p.kill()
                 task_logger.info(f"Force killed remaining orphaned process {pid}")
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-
-        task_logger.info(f"Cleanup completed for task {task_id}")
-
-    def _cleanup_task_old(
-        self, task: Task, process: subprocess.Popen, task_logger
-    ) -> None:
-        """Perform comprehensive cleanup after task completion."""
-        task_id = task.id
-        task_logger.info(f"Starting cleanup for task {task_id}")
-
-        # Remove from process dict
-        self._process_dict.pop(task_id, None)
-
-        # Terminate multiprocess group
-        if should_enable_multiprocess(int(task.concurrent_users)):
-            terminate_locust_process_group(task_id, timeout=15.0)
-
-        # Ensure main process is dead
-        if process.poll() is None:
-            try:
-                process.terminate()
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-
-        # Cleanup resources
-        cleanup_task_resources(task_id)
-
-        # Kill any remaining locust processes tied to this task
-        remaining_pids = self._find_remaining_locust_processes(task_id)
-        for pid in remaining_pids:
-            try:
-                p = psutil.Process(pid)
-                p.kill()
-                task_logger.info(f"Force killed remaining process {pid}")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 

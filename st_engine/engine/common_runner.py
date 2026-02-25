@@ -24,18 +24,14 @@ class CommonLocustRunner(LocustRunner):
     def _build_locust_command(self, task: CommonTask, task_logger) -> List[str]:
         """Build Locust command for common API tests."""
         locust_bin = shutil.which("locust") or "locust"
+        load_mode = self._get_load_mode(task)
+
         cmd = [
             locust_bin,
             "-f",
             self._locustfile_path,
             "--host",
             task.target_host,
-            "--users",
-            str(task.concurrent_users),
-            "--spawn-rate",
-            str(task.spawn_rate),
-            "--run-time",
-            f"{task.duration}s",
             "--headless",
             "--only-summary",
             "--api_path",
@@ -49,6 +45,28 @@ class CommonLocustRunner(LocustRunner):
             "--task-id",
             task.id,
         ]
+
+        if load_mode == "stepped":
+            # In stepped mode, LoadTestShape controls users/run-time/spawn-rate.
+            # Do NOT pass --users / --run-time / --spawn-rate; Locust ignores them
+            # when a shape class is present, but omitting avoids confusion.
+            task_logger.info(
+                f"Stepped load mode: start={task.step_start_users}, "
+                f"increment={task.step_increment}, step_duration={task.step_duration}s, "
+                f"max={task.step_max_users}, sustain={task.step_sustain_duration}s"
+            )
+        else:
+            # Fixed concurrency mode - pass standard Locust args
+            cmd.extend(
+                [
+                    "--users",
+                    str(task.concurrent_users),
+                    "--spawn-rate",
+                    str(task.spawn_rate),
+                    "--run-time",
+                    f"{task.duration}s",
+                ]
+            )
 
         # Optional args
         for key in ["request_body", "dataset_file"]:

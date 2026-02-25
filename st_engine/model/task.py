@@ -187,7 +187,7 @@ class TaskResultItem(BaseModel):
     median_response_time: float
     metric_type: str
     min_response_time: float
-    percentile_90_response_time: float
+    percentile_95_response_time: float
     request_count: int
     rps: float
     task_id: str
@@ -229,6 +229,15 @@ class Task(Base):
     concurrent_users = Column(Integer, nullable=False)
     spawn_rate = Column(Integer, nullable=False)
     duration = Column(Integer, nullable=False)
+    # Stepped load configuration
+    load_mode = Column(
+        String(16), nullable=False, default="fixed", server_default="fixed"
+    )
+    step_start_users = Column(Integer, nullable=True)
+    step_increment = Column(Integer, nullable=True)
+    step_duration = Column(Integer, nullable=True)
+    step_max_users = Column(Integer, nullable=True)
+    step_sustain_duration = Column(Integer, nullable=True)
     chat_type = Column(Integer, nullable=True)
     warmup_enabled = Column(Integer, nullable=True, default=1, server_default="1")
     warmup_duration = Column(Integer, nullable=True, default=120, server_default="120")
@@ -264,7 +273,7 @@ class TaskResult(Base):
     min_latency = Column(Float, nullable=False)
     max_latency = Column(Float, nullable=False)
     median_latency = Column(Float, nullable=False)
-    p90_latency = Column(Float, nullable=False)
+    p95_latency = Column(Float, nullable=False)
     rps = Column(Float, nullable=False)
     avg_content_length = Column(Float, nullable=False)
     total_tps = Column(Float, nullable=False)
@@ -286,7 +295,7 @@ class TaskResult(Base):
             min_response_time=self.min_latency,
             max_response_time=self.max_latency,
             median_response_time=self.median_latency,
-            percentile_90_response_time=self.p90_latency,
+            percentile_95_response_time=self.p95_latency,
             rps=self.rps,
             avg_content_length=self.avg_content_length,
             created_at=self.created_at.isoformat(),
@@ -295,3 +304,25 @@ class TaskResult(Base):
             avg_total_tokens_per_req=self.avg_total_tokens_per_req,
             avg_completion_tokens_per_req=self.avg_completion_tokens_per_req,
         )
+
+
+class TaskRealtimeMetric(Base):
+    """SQLAlchemy model for real-time performance metrics collected during LLM load tests."""
+
+    __tablename__ = "task_realtime_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String(40), nullable=False, index=True)
+    timestamp = Column(Float, nullable=False)
+    current_users = Column(Integer, nullable=False, default=0)
+    current_rps = Column(Float, nullable=False, default=0.0)
+    current_fail_per_sec = Column(Float, nullable=False, default=0.0)
+    avg_response_time = Column(Float, nullable=False, default=0.0)
+    min_response_time = Column(Float, nullable=False, default=0.0)
+    max_response_time = Column(Float, nullable=False, default=0.0)
+    median_response_time = Column(Float, nullable=False, default=0.0)
+    p95_response_time = Column(Float, nullable=False, default=0.0)
+    total_requests = Column(Integer, nullable=False, default=0)
+    total_failures = Column(Integer, nullable=False, default=0)
+    metrics_detail = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

@@ -1,18 +1,22 @@
 """
 Locustfile for common HTTP API load testing (non-LLM).
+Supports both fixed concurrency and stepped load patterns.
 """
 
 import json
 import os
 import queue
 import tempfile
+import time
 from typing import Any, Dict, Optional
 
+import gevent
 import urllib3
 from locust import HttpUser, events, task
 from urllib3.exceptions import InsecureRequestWarning
 
 from utils.logger import logger
+from utils.realtime_metrics import realtime_metrics_greenlet
 
 # Disable the specific InsecureRequestWarning from urllib3
 # This warning appears when verify=False is used for SSL certificate verification
@@ -112,7 +116,7 @@ def _build_stat_row(task_id: str, name: str, stat) -> Dict:
             "min_latency": stat.min_response_time,
             "max_latency": stat.max_response_time,
             "median_latency": stat.median_response_time,
-            "p90_latency": stat.get_response_time_percentile(0.9),
+            "p95_latency": stat.get_response_time_percentile(0.95),
             "rps": stat.total_rps,
             "avg_content_length": stat.avg_content_length,
         }
@@ -140,9 +144,15 @@ def init_parser(parser):
 
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
-    """Log test start for common API tasks."""
+    """Log test start and spawn real-time metrics greenlet."""
     task_id = environment.parsed_options.task_id or os.environ.get("TASK_ID", "unknown")
-    logger.bind(task_id=task_id).info("Common API load test started.")
+    task_logger = logger.bind(task_id=task_id)
+    load_mode = os.environ.get("LOAD_MODE", "fixed")
+    task_logger.info(f"Common API load test started. load_mode={load_mode}")
+    # Spawn background greenlet for real-time metrics collection (shared module)
+    environment._realtime_greenlet = gevent.spawn(
+        realtime_metrics_greenlet, environment
+    )
 
 
 @events.test_stop.add_listener
@@ -151,6 +161,12 @@ def on_test_stop(environment, **kwargs):
     options = environment.parsed_options
     task_id = options.task_id or os.environ.get("TASK_ID", "unknown")
     task_logger = logger.bind(task_id=task_id)
+
+    # Stop real-time metrics greenlet
+    greenlet = getattr(environment, "_realtime_greenlet", None)
+    if greenlet and not greenlet.dead:
+        greenlet.kill(block=False)
+        task_logger.debug("Real-time metrics greenlet stopped.")
 
     locust_stats = []
     try:
@@ -168,9 +184,19 @@ def on_test_stop(environment, **kwargs):
                 locust_stats.append(total_row)
         task_logger.debug(f"locust_stats: {locust_stats}")
         result_file = _write_result_file(task_id, locust_stats)
-        task_logger.info(f"Common task result saved to {result_file}")
+        # task_logger.debug(f"Common task result saved to {result_file}")
     except Exception as e:  # pragma: no cover - defensive
         task_logger.error(f"Failed to aggregate common stats: {e}", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# Stepped load shape (conditionally activated via LOAD_MODE env var)
+# Reuses the shared SteppedLoadShape from utils/stepped_load.py
+# ---------------------------------------------------------------------------
+_LOAD_MODE = os.environ.get("LOAD_MODE", "fixed")
+
+if _LOAD_MODE == "stepped":
+    from utils.stepped_load import SteppedLoadShape  # noqa: F401 – imported for Locust
 
 
 class CommonApiUser(HttpUser):
@@ -263,15 +289,15 @@ class CommonApiUser(HttpUser):
                 text_payload,
             )
             # Log the outgoing request parameters at debug level
-            self.task_logger.debug(
-                _format_context(
-                    headers=self.headers,
-                    cookies=self.cookies,
-                    json_payload=json_payload,
-                    text_payload=text_payload,
-                    include_sensitive=True,
-                )
-            )
+            # self.task_logger.debug(
+            #     _format_context(
+            #         headers=self.headers,
+            #         cookies=self.cookies,
+            #         json_payload=json_payload,
+            #         text_payload=text_payload,
+            #         include_sensitive=True,
+            #     )
+            # )
 
             response = self.client.request(
                 self.method,

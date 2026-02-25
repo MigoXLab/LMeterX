@@ -7,9 +7,11 @@
 import {
   DownloadOutlined,
   DownOutlined,
+  ExclamationCircleOutlined,
   FileTextOutlined,
   InfoCircleOutlined,
   RobotOutlined,
+  StopOutlined,
   UnorderedListOutlined,
   UpOutlined,
 } from '@ant-design/icons';
@@ -23,10 +25,18 @@ import {
   Space,
   Statistic,
   Table,
+  Tabs,
   Tooltip,
 } from 'antd';
+import ReactECharts from 'echarts-for-react';
 import html2canvas from 'html2canvas';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { analysisApi, jobApi, resultApi } from '../api/services';
@@ -36,6 +46,7 @@ import { LoadingSpinner } from '../components/ui/LoadingState';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useLanguage } from '../contexts/LanguageContext';
+import { RealtimeMetricPoint } from '../types/job';
 import { formatDate } from '../utils/date';
 
 const SUMMARY_METRIC_TYPES = new Set([
@@ -74,10 +85,17 @@ const TaskResults: React.FC = () => {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [showAnalysisReport, setShowAnalysisReport] = useState(false);
   const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(true);
+  const [activeTab, setActiveTab] = useState('charts');
+  const [metricsData, setMetricsData] = useState<RealtimeMetricPoint[]>([]);
+  const [isStopping, setIsStopping] = useState(false);
+  const lastMetricTs = useRef<number>(0);
+  const fetchingRef = useRef(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const configCardRef = useRef<HTMLDivElement | null>(null);
   const overviewCardRef = useRef<HTMLDivElement | null>(null);
   const detailsCardRef = useRef<HTMLDivElement | null>(null);
   const metricsDetailCardRef = useRef<HTMLDivElement | null>(null);
+  const chartsRef = useRef<HTMLDivElement | null>(null);
 
   const getNumericValue = (item: any, fields: string[]): number | undefined => {
     if (!item) {
@@ -194,6 +212,487 @@ const TaskResults: React.FC = () => {
     fetchAnalysisResult();
   }, [id]);
 
+  // Fetch real-time metrics incrementally (with lock to prevent concurrent fetches)
+  const fetchMetrics = useCallback(async () => {
+    if (!id || fetchingRef.current) return;
+    fetchingRef.current = true;
+    try {
+      const res = await jobApi.getRealtimeMetrics(id, lastMetricTs.current);
+      const body: any = res.data;
+      const points: RealtimeMetricPoint[] = body?.data ?? [];
+      if (points.length > 0) {
+        setMetricsData(prev => [...prev, ...points]);
+        lastMetricTs.current = Math.max(...points.map(p => p.timestamp));
+      }
+    } catch {
+      // Silently ignore fetch errors during polling
+    } finally {
+      fetchingRef.current = false;
+    }
+  }, [id]);
+
+  // Poll task status while task is running/pending to detect completion
+  useEffect(() => {
+    if (!id || !taskInfo) return;
+    const isActive =
+      taskInfo.status === 'running' || taskInfo.status === 'pending';
+    if (!isActive) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const statusRes = await jobApi.getJobStatus(id);
+        const statusData = statusRes.data as any;
+        if (statusData) {
+          setTaskInfo((prev: any) => ({
+            ...prev,
+            status: statusData.status,
+            error_message: statusData.error_message,
+            updated_at: statusData.updated_at,
+          }));
+          // Refresh results when task completes
+          if (
+            statusData.status !== 'running' &&
+            statusData.status !== 'pending'
+          ) {
+            try {
+              const resultsResponse = await resultApi.getJobResult(id);
+              if (
+                resultsResponse.data &&
+                Array.isArray(resultsResponse.data.results)
+              ) {
+                setResults(resultsResponse.data.results);
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [id, taskInfo?.status]);
+
+  // Poll real-time metrics ONLY when task is running and charts tab is active
+  useEffect(() => {
+    if (!taskInfo) return;
+
+    const isRunning = taskInfo.status === 'running';
+    if (activeTab === 'charts' && id) {
+      // Always do an initial fetch when switching to charts tab
+      fetchMetrics();
+
+      if (isRunning) {
+        pollingRef.current = setInterval(fetchMetrics, 2000);
+      }
+    }
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [activeTab, taskInfo?.status, id, fetchMetrics]);
+
+  // Whether the task is currently in a stoppable state
+  const isTaskRunning =
+    taskInfo?.status === 'running' || taskInfo?.status === 'pending';
+
+  // Handle stop test with confirmation dialog
+  const handleStopTest = useCallback(() => {
+    if (!id) return;
+    Modal.confirm({
+      title: t('pages.jobs.stopConfirmTitle'),
+      icon: <ExclamationCircleOutlined />,
+      content: t('pages.jobs.stopConfirmContent'),
+      okText: t('pages.jobs.confirmStop'),
+      okButtonProps: {
+        style: {
+          backgroundColor: '#fa8c16',
+          borderColor: '#fa8c16',
+        },
+      },
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setIsStopping(true);
+        try {
+          await jobApi.stopJob(id);
+          message.success(t('pages.jobs.stopSuccess'));
+          const taskRes = await jobApi.getJob(id);
+          setTaskInfo(taskRes.data);
+        } catch {
+          message.error(t('pages.jobs.stopFailed'));
+        } finally {
+          setIsStopping(false);
+        }
+      },
+    });
+  }, [id, t]);
+
+  // Format timestamp for chart x-axis display (HH:mm:ss)
+  const formatChartTime = useCallback((ts: number) => {
+    const d = new Date(ts * 1000);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }, []);
+
+  // Format timestamp for tooltip header (YYYY/M/D HH:mm:ss)
+  const formatTooltipTime = useCallback((ts: number) => {
+    const d = new Date(ts * 1000);
+    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  }, []);
+
+  // Shared tooltip config
+  const chartTooltip = useMemo(
+    () => ({
+      trigger: 'axis' as const,
+      formatter: (params: any) => {
+        const list = Array.isArray(params) ? params : [params];
+        if (list.length === 0) return '';
+        const header = `<div style="margin-bottom:4px;font-weight:600">${formatTooltipTime(Number(list[0].axisValue))}</div>`;
+        const rows = list
+          .map(
+            (p: any) =>
+              `<div>${p.marker} ${p.seriesName}<span style="float:right;margin-left:20px;font-weight:600">${p.value ?? '-'}</span></div>`
+          )
+          .join('');
+        return header + rows;
+      },
+    }),
+    [formatTooltipTime]
+  );
+
+  // --- LLM per-metric names and color palette for response time chart ---
+  type LLMMetricName =
+    | 'Total_time'
+    | 'Time_to_first_reasoning_token'
+    | 'Time_to_first_output_token'
+    | 'Time_to_reasoning_completion'
+    | 'Time_to_output_completion';
+
+  const LLM_METRIC_NAMES: LLMMetricName[] = [
+    'Total_time',
+    'Time_to_first_reasoning_token',
+    'Time_to_first_output_token',
+    'Time_to_reasoning_completion',
+    'Time_to_output_completion',
+  ];
+
+  const LLM_METRIC_COLORS: Record<LLMMetricName, string> = {
+    Total_time: '#1890ff',
+    Time_to_first_reasoning_token: '#faad14',
+    Time_to_first_output_token: '#52c41a',
+    Time_to_reasoning_completion: '#eb2f96',
+    Time_to_output_completion: '#722ed1',
+  };
+
+  // Discover which LLM metric names actually have data across all snapshots
+  const availableMetricNames = useMemo(() => {
+    const found = new Set<string>();
+    metricsData.forEach(p => {
+      if (p.metrics) {
+        LLM_METRIC_NAMES.forEach(name => {
+          if (p.metrics![name]) {
+            found.add(name);
+          }
+        });
+      }
+    });
+    return LLM_METRIC_NAMES.filter(n => found.has(n));
+  }, [metricsData]);
+
+  // ECharts: Response Time chart
+  const responseTimeOption = useMemo(() => {
+    if (metricsData.length === 0) return {};
+    const timestamps = metricsData.map(p => p.timestamp);
+
+    // Build one series per available LLM metric (avg only, no P95)
+    const series: Array<{
+      name: string;
+      type: 'line';
+      data: (number | null)[];
+      smooth: boolean;
+      symbol: string;
+      symbolSize: number;
+      showSymbol: boolean;
+      connectNulls: boolean;
+      itemStyle: { color: string };
+      lineStyle: { color: string };
+    }> = availableMetricNames.map(metricName => ({
+      name: metricName,
+      type: 'line' as const,
+      data: metricsData.map(p => {
+        const val = p.metrics?.[metricName]?.avg_response_time;
+        return val != null ? Number(val.toFixed(1)) : null;
+      }),
+      smooth: true,
+      symbol: 'emptyCircle',
+      symbolSize: 4,
+      showSymbol: false,
+      connectNulls: true,
+      itemStyle: { color: LLM_METRIC_COLORS[metricName] ?? '#1890ff' },
+      lineStyle: { color: LLM_METRIC_COLORS[metricName] ?? '#1890ff' },
+    }));
+
+    // Fallback if no per-metric detail: show aggregate avg (backward compat)
+    if (series.length === 0) {
+      series.push({
+        name: t('pages.results.chartAvgRT', 'Avg Response Time'),
+        type: 'line' as const,
+        data: metricsData.map(p =>
+          p.avg_response_time != null
+            ? Number(p.avg_response_time.toFixed(1))
+            : null
+        ),
+        smooth: true,
+        symbol: 'emptyCircle',
+        symbolSize: 4,
+        showSymbol: false,
+        connectNulls: true,
+        itemStyle: { color: '#1890ff' },
+        lineStyle: { color: '#1890ff' },
+      });
+    }
+
+    return {
+      tooltip: chartTooltip,
+      legend: {
+        data: series.map(s => s.name),
+        bottom: 0,
+        type: 'scroll' as const,
+      },
+      grid: { top: 40, right: 30, bottom: 60, left: 60 },
+      xAxis: {
+        type: 'category' as const,
+        data: timestamps,
+        axisLabel: {
+          formatter: (val: number) => formatChartTime(val),
+          rotate: 0,
+        },
+      },
+      yAxis: { type: 'value' as const, name: 'ms' },
+      series,
+    };
+  }, [metricsData, formatChartTime, chartTooltip, t, availableMetricNames]);
+
+  // ECharts: RPS & Failures chart
+  // RPS: prefer Total_time metric, fallback to api_path metric, then aggregate
+  // Failures/s: prefer failure metric, fallback to api_path metric, then aggregate
+  const rpsOption = useMemo(() => {
+    if (metricsData.length === 0) return {};
+    const timestamps = metricsData.map(p => p.timestamp);
+
+    // Resolve api_path for fallback lookup
+    const apiPath = taskInfo?.api_path || '';
+
+    const rpsData = metricsData.map(p => {
+      if (p.metrics) {
+        // Prefer Total_time's rps
+        const totalEntry = p.metrics.Total_time;
+        if (totalEntry?.current_rps != null) {
+          return Number(totalEntry.current_rps.toFixed(2));
+        }
+        // Fallback: api_path metric
+        const apiEntry = apiPath ? p.metrics[apiPath] : undefined;
+        if (apiEntry?.current_rps != null) {
+          return Number(apiEntry.current_rps.toFixed(2));
+        }
+      }
+      // Final fallback: aggregate rps
+      return p.current_rps != null ? Number(p.current_rps.toFixed(2)) : 0;
+    });
+
+    const failData = metricsData.map(p => {
+      if (p.metrics) {
+        // Prefer failure metric's fail_per_sec
+        const failEntry = p.metrics.failure;
+        if (failEntry?.current_fail_per_sec != null) {
+          return Number(failEntry.current_fail_per_sec.toFixed(2));
+        }
+        // Fallback: api_path metric
+        const apiEntry = apiPath ? p.metrics[apiPath] : undefined;
+        if (apiEntry?.current_fail_per_sec != null) {
+          return Number(apiEntry.current_fail_per_sec.toFixed(2));
+        }
+      }
+      // Final fallback: aggregate fail_per_sec
+      return p.current_fail_per_sec != null
+        ? Number(p.current_fail_per_sec.toFixed(2))
+        : 0;
+    });
+
+    return {
+      tooltip: chartTooltip,
+      legend: {
+        data: ['RPS', t('pages.results.chartFailPerSec', 'Failures/s')],
+        bottom: 0,
+      },
+      grid: { top: 40, right: 30, bottom: 50, left: 60 },
+      xAxis: {
+        type: 'category' as const,
+        data: timestamps,
+        axisLabel: {
+          formatter: (val: number) => formatChartTime(val),
+        },
+      },
+      yAxis: { type: 'value' as const, name: 'req/s' },
+      series: [
+        {
+          name: 'RPS',
+          type: 'line',
+          data: rpsData,
+          smooth: true,
+          symbol: 'emptyCircle',
+          symbolSize: 4,
+          showSymbol: false,
+          itemStyle: { color: '#52c41a' },
+          lineStyle: { color: '#52c41a' },
+          areaStyle: { opacity: 0.15, color: '#52c41a' },
+        },
+        {
+          name: t('pages.results.chartFailPerSec', 'Failures/s'),
+          type: 'line',
+          data: failData,
+          smooth: true,
+          symbol: 'emptyCircle',
+          symbolSize: 4,
+          showSymbol: false,
+          itemStyle: { color: '#f5222d' },
+        },
+      ],
+    };
+  }, [metricsData, formatChartTime, chartTooltip, t, taskInfo?.api_path]);
+
+  // ECharts: Concurrent Users chart
+  const usersOption = useMemo(() => {
+    if (metricsData.length === 0) return {};
+    const timestamps = metricsData.map(p => p.timestamp);
+    return {
+      tooltip: chartTooltip,
+      legend: {
+        data: [t('pages.results.chartConcurrentUsers', 'Concurrent Users')],
+        bottom: 0,
+      },
+      grid: { top: 40, right: 30, bottom: 50, left: 60 },
+      xAxis: {
+        type: 'category' as const,
+        data: timestamps,
+        axisLabel: {
+          formatter: (val: number) => formatChartTime(val),
+        },
+      },
+      yAxis: { type: 'value' as const, name: 'users' },
+      series: [
+        {
+          name: t('pages.results.chartConcurrentUsers', 'Concurrent Users'),
+          type: 'line',
+          data: metricsData.map(p => p.current_users),
+          smooth: false,
+          symbol: 'emptyCircle',
+          symbolSize: 6,
+          showSymbol: true,
+          step: 'end' as const,
+          areaStyle: { opacity: 0.1 },
+          itemStyle: { color: '#b37feb' },
+          lineStyle: { color: '#b37feb' },
+        },
+      ],
+    };
+  }, [metricsData, formatChartTime, chartTooltip, t]);
+
+  // Render the Charts tab content
+  const renderChartsContent = () => {
+    if (metricsData.length === 0) {
+      const isRunning =
+        taskInfo?.status === 'running' || taskInfo?.status === 'pending';
+      return (
+        <div
+          className='flex justify-center align-center'
+          style={{ minHeight: '30vh' }}
+        >
+          <Alert
+            description={
+              isRunning
+                ? t(
+                    'pages.results.chartsWaiting',
+                    'Waiting for real-time metrics data...'
+                  )
+                : t(
+                    'pages.results.chartsNoData',
+                    'No real-time metrics data available for this task.'
+                  )
+            }
+            type='info'
+            showIcon
+            style={{ background: 'transparent', border: 'none' }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        ref={chartsRef}
+        style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
+      >
+        {/* Response Time Chart */}
+        <div className='results-section unified-section'>
+          <div className='section-header'>
+            <span className='section-title'>
+              {t('pages.results.chartResponseTime', 'Response Time')}
+            </span>
+          </div>
+          <div className='section-content'>
+            <ReactECharts
+              option={responseTimeOption}
+              style={{ height: 300 }}
+              notMerge
+              lazyUpdate
+            />
+          </div>
+        </div>
+
+        {/* RPS & Failures Chart */}
+        <div className='results-section unified-section'>
+          <div className='section-header'>
+            <span className='section-title'>
+              {t('pages.results.chartRps', 'RPS & Failures')}
+            </span>
+          </div>
+          <div className='section-content'>
+            <ReactECharts
+              option={rpsOption}
+              style={{ height: 260 }}
+              notMerge
+              lazyUpdate
+            />
+          </div>
+        </div>
+
+        {/* Concurrent Users Chart */}
+        <div className='results-section unified-section'>
+          <div className='section-header'>
+            <span className='section-title'>
+              {t('pages.results.chartConcurrentUsers', 'Concurrent Users')}
+            </span>
+          </div>
+          <div className='section-content'>
+            <ReactECharts
+              option={usersOption}
+              style={{ height: 240 }}
+              notMerge
+              lazyUpdate
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Define metric results
   const TpsResult = results.find(item => item.metric_type === 'token_metrics');
   const CompletionResult = results.find(
@@ -269,6 +768,8 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.metricType'),
       dataIndex: 'metric_type',
       key: 'metric_type',
+      width: 200,
+      ellipsis: true,
       render: (text: string) => {
         const explanation = metricExplanations[text];
         if (explanation) {
@@ -288,16 +789,19 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.totalRequests'),
       dataIndex: 'request_count',
       key: 'request_count',
+      width: 110,
+      align: 'right' as const,
       render: (_: number, record: any) => {
         const requestCount = getRequestCountValue(record);
-        return requestCount !== undefined ? requestCount : 0;
+        return requestCount !== undefined ? requestCount.toLocaleString() : '0';
       },
     },
-
     {
       title: t('pages.results.avgResponseTime'),
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -310,9 +814,10 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.maxResponseTime'),
       dataIndex: 'max_response_time',
       key: 'max_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
-
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
@@ -323,9 +828,10 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.minResponseTime'),
       dataIndex: 'min_response_time',
       key: 'min_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
-
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
@@ -333,9 +839,11 @@ const TaskResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.p90ResponseTime'),
-      dataIndex: 'percentile_90_response_time',
-      key: 'percentile_90_response_time',
+      title: t('pages.results.p95ResponseTime'),
+      dataIndex: 'percentile_95_response_time',
+      key: 'percentile_95_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -348,9 +856,10 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.medianResponseTime'),
       dataIndex: 'median_response_time',
       key: 'median_response_time',
+      width: 120,
+      align: 'right' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
-
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
           return text.toFixed(3);
         }
@@ -361,6 +870,8 @@ const TaskResults: React.FC = () => {
       title: t('pages.results.rps'),
       dataIndex: 'rps',
       key: 'rps',
+      width: 100,
+      align: 'right' as const,
       render: (text: number) => (text ? text.toFixed(2) : '0.00'),
     },
   ];
@@ -932,6 +1443,18 @@ const TaskResults: React.FC = () => {
             level={3}
           />
           <Space>
+            {isTaskRunning && (
+              <Tooltip title={t('pages.results.stopTest', 'Stop Test')}>
+                <Button
+                  danger
+                  icon={<StopOutlined />}
+                  onClick={handleStopTest}
+                  loading={isStopping}
+                >
+                  {t('pages.results.stopTest', 'Stop Test')}
+                </Button>
+              </Tooltip>
+            )}
             <Button
               icon={<RobotOutlined />}
               onClick={() => setAnalysisModalVisible(true)}
@@ -987,143 +1510,195 @@ const TaskResults: React.FC = () => {
             style={{ background: 'transparent', border: 'none' }}
           />
         </div>
-      ) : !results || results.length === 0 ? (
-        <div className='results-content'>
-          {renderTaskInfoSection()}
-          <div
-            className='flex justify-center align-center'
-            style={{ minHeight: '30vh', backgroundColor: '#ffffff' }}
-          >
-            <Alert
-              description={error || t('pages.results.noTestResultsAvailable')}
-              type={error ? 'error' : 'info'}
-              showIcon
-              style={{ background: 'transparent', border: 'none' }}
-            />
-          </div>
-        </div>
       ) : (
         <div className='results-content'>
-          {/* AI Summary Report */}
-          {showAnalysisReport && analysisResult && (
-            <div className='results-section'>
-              <div className='section-header'>
-                <span className='section-title'>
-                  {t('pages.results.aiSummary')}
-                </span>
-                <Space>
-                  <CopyButton
-                    text={analysisResult.analysis_report}
-                    successMessage={t('pages.results.analysisCopied')}
-                    tooltip={t('pages.results.copyAnalysis')}
-                  />
-                  <Button
-                    type='text'
-                    size='small'
-                    icon={
-                      isAnalysisExpanded ? <UpOutlined /> : <DownOutlined />
-                    }
-                    onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
-                    style={{ padding: '4px 8px' }}
-                  >
-                    {isAnalysisExpanded
-                      ? t('pages.results.collapse')
-                      : t('pages.results.expand')}
-                  </Button>
-                </Space>
-              </div>
-              {isAnalysisExpanded && (
-                <div className='section-content'>
-                  <MarkdownRenderer
-                    content={analysisResult.analysis_report}
-                    className='analysis-content'
-                  />
-                </div>
-              )}
-            </div>
-          )}
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={[
+              {
+                key: 'charts',
+                label: (
+                  <span className='tab-label'>
+                    {t('pages.results.tabCharts', 'Charts')}
+                  </span>
+                ),
+                children: renderChartsContent(),
+              },
+              {
+                key: 'statistics',
+                label: (
+                  <span className='tab-label'>
+                    {t('pages.results.tabStatistics', 'Statistics')}
+                  </span>
+                ),
+                children:
+                  !results || results.length === 0 ? (
+                    <div>
+                      {renderTaskInfoSection()}
+                      <div
+                        className='flex justify-center align-center'
+                        style={{
+                          minHeight: '30vh',
+                          backgroundColor: '#ffffff',
+                        }}
+                      >
+                        <Alert
+                          description={
+                            error || t('pages.results.noTestResultsAvailable')
+                          }
+                          type={error ? 'error' : 'info'}
+                          showIcon
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* AI Summary Report */}
+                      {showAnalysisReport && analysisResult && (
+                        <div className='results-section'>
+                          <div className='section-header'>
+                            <span className='section-title'>
+                              {t('pages.results.aiSummary')}
+                            </span>
+                            <Space>
+                              <CopyButton
+                                text={analysisResult.analysis_report}
+                                successMessage={t(
+                                  'pages.results.analysisCopied'
+                                )}
+                                tooltip={t('pages.results.copyAnalysis')}
+                              />
+                              <Button
+                                type='text'
+                                size='small'
+                                icon={
+                                  isAnalysisExpanded ? (
+                                    <UpOutlined />
+                                  ) : (
+                                    <DownOutlined />
+                                  )
+                                }
+                                onClick={() =>
+                                  setIsAnalysisExpanded(!isAnalysisExpanded)
+                                }
+                                style={{ padding: '4px 8px' }}
+                              >
+                                {isAnalysisExpanded
+                                  ? t('pages.results.collapse')
+                                  : t('pages.results.expand')}
+                              </Button>
+                            </Space>
+                          </div>
+                          {isAnalysisExpanded && (
+                            <div className='section-content'>
+                              <MarkdownRenderer
+                                content={analysisResult.analysis_report}
+                                className='analysis-content'
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-          {/* Task Info - Converted to table format */}
-          {renderTaskInfoSection()}
+                      {/* Task Info */}
+                      {renderTaskInfoSection()}
 
-          {/* Results Overview */}
-          <div
-            className='results-section unified-section'
-            ref={overviewCardRef}
-          >
-            <div className='section-header'>
-              <span className='section-title'>
-                {t('pages.results.resultsOverview')}
-              </span>
-            </div>
-            <div className='section-content'>{renderOverviewMetrics()}</div>
-          </div>
+                      {/* Results Overview */}
+                      <div
+                        className='results-section unified-section'
+                        ref={overviewCardRef}
+                      >
+                        <div className='section-header'>
+                          <span className='section-title'>
+                            {t('pages.results.resultsOverview')}
+                          </span>
+                        </div>
+                        <div className='section-content'>
+                          {renderOverviewMetrics()}
+                        </div>
+                      </div>
 
-          {/* Metrics Detail */}
-          <div
-            className='results-section unified-section'
-            ref={metricsDetailCardRef}
-          >
-            <div className='section-header'>
-              <span className='section-title'>
-                {t('pages.results.metricsDetail')}
-              </span>
-            </div>
-            <div className='section-content'>
-              <Table
-                dataSource={results.filter(
-                  item =>
-                    item.metric_type !== 'total_tokens_per_second' &&
-                    item.metric_type !== 'completion_tokens_per_second' &&
-                    item.metric_type !== 'token_metrics' &&
-                    (results.length <= 1 ||
-                      !requestMetricTypeSet.has(item.metric_type))
-                )}
-                columns={columns}
-                rowKey='metric_type'
-                pagination={false}
-                className='modern-table unified-table'
-              />
-            </div>
-          </div>
+                      {/* Metrics Detail */}
+                      <div
+                        className='results-section unified-section'
+                        ref={metricsDetailCardRef}
+                      >
+                        <div className='section-header'>
+                          <span className='section-title'>
+                            {t('pages.results.metricsDetail')}
+                          </span>
+                        </div>
+                        <div className='section-content'>
+                          <Table
+                            dataSource={results.filter(
+                              item =>
+                                item.metric_type !==
+                                  'total_tokens_per_second' &&
+                                item.metric_type !==
+                                  'completion_tokens_per_second' &&
+                                item.metric_type !== 'token_metrics' &&
+                                (results.length <= 1 ||
+                                  !requestMetricTypeSet.has(item.metric_type))
+                            )}
+                            columns={columns}
+                            rowKey='metric_type'
+                            pagination={false}
+                            scroll={{ x: 1000 }}
+                            className='modern-table'
+                          />
+                        </div>
+                      </div>
 
-          {/* Test Result Details */}
-          <div className='results-section' ref={detailsCardRef}>
-            <div className='section-header'>
-              <span className='section-title'>
-                {t('pages.results.resultDetails')}
-              </span>
-            </div>
-            <div className='section-content'>
-              <div style={{ position: 'relative' }}>
-                <pre
-                  className='modal-pre'
-                  style={{
-                    backgroundColor: '#f5f5f5',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    overflow: 'auto',
-                    maxHeight: '500px',
-                  }}
-                >
-                  <code>{JSON.stringify(results, null, 2)}</code>
-                </pre>
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '8px',
-                    right: '8px',
-                  }}
-                >
-                  <CopyButton
-                    text={JSON.stringify(results, null, 2)}
-                    successMessage={t('pages.results.resultsCopied')}
-                    tooltip={t('pages.results.copyResults')}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+                      {/* Test Result Details */}
+                      <div className='results-section' ref={detailsCardRef}>
+                        <div className='section-header'>
+                          <span className='section-title'>
+                            {t('pages.results.resultDetails')}
+                          </span>
+                        </div>
+                        <div className='section-content'>
+                          <div style={{ position: 'relative' }}>
+                            <pre
+                              className='modal-pre'
+                              style={{
+                                backgroundColor: '#f5f5f5',
+                                padding: '16px',
+                                borderRadius: '8px',
+                                overflow: 'auto',
+                                maxHeight: '500px',
+                              }}
+                            >
+                              <code>{JSON.stringify(results, null, 2)}</code>
+                            </pre>
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '8px',
+                                right: '8px',
+                              }}
+                            >
+                              <CopyButton
+                                text={JSON.stringify(results, null, 2)}
+                                successMessage={t(
+                                  'pages.results.resultsCopied'
+                                )}
+                                tooltip={t('pages.results.copyResults')}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ),
+              },
+            ]}
+            className='unified-tabs'
+          />
         </div>
       )}
 

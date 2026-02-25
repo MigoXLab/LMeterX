@@ -746,7 +746,7 @@ const TaskLogs: React.FC = () => {
         }}
       >
         {!fullscreen && (
-          <div className='page-header-wrapper mb-24'>
+          <div className='page-header-wrapper'>
             <PageHeader
               title={t('pages.taskLog.title', '任务日志')}
               icon={<MonitorOutlined />}
@@ -800,7 +800,7 @@ const TaskLogs: React.FC = () => {
         }}
       >
         {!fullscreen && (
-          <div className='page-header-wrapper mb-24'>
+          <div className='page-header-wrapper'>
             <PageHeader
               title={t('pages.taskLog.title', '任务日志')}
               icon={<MonitorOutlined />}
@@ -849,7 +849,7 @@ const TaskLogs: React.FC = () => {
 
   return (
     <div className='page-container'>
-      <div className='page-header-wrapper mb-24'>
+      <div className='page-header-wrapper'>
         <PageHeader
           title={t('pages.taskLog.title', '任务日志')}
           icon={<MonitorOutlined />}

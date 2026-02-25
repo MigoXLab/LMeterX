@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/images/logo.png" alt="LMeterX Logo" width="400"/>
+  <img src="docs/images/logo.png" alt="LMeterX Logo" width="300"/>
   <p>
     <a href="https://github.com/MigoXLab/LMeterX/blob/main/LICENSE"><img src="https://img.shields.io/github/license/MigoXLab/LMeterX" alt="License"></a>
     <a href="https://github.com/MigoXLab/LMeterX/stargazers"><img src="https://img.shields.io/github/stars/MigoXLab/LMeterX" alt="GitHub stars"></a>
@@ -27,10 +27,10 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 - **主流框架兼容**：适配 vLLM、LiteLLM、TRT-LLM 等主流推理框架及云平台，实现环境无缝迁移。
 - **全模态全场景**：支持 GPT、Claude、Llama 及 [MinerU](https://github.com/opendatalab/MinerU)、[dots.ocr](https://github.com/rednote-hilab/dots.ocr) 等文档解析模型，涵盖文本、多模态与流式交互。
 - **混合协议压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持标准 Chat API 与业务 HTTP 接口，实现从底层模型到上层业务的全链路压测。
-- **极速高并发负载**：支持多进程模拟超高并发，精准探测系统性能极限与稳定性。
+- **多模式高并发压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持固定/阶梯式并发策略，支持模拟超高并发，精准定位性能拐点与系统容量上限。
 - **内置双模数据集**：预置高质量自建集与 ShareGPT 标准集，支持一键调用，大幅降低测试准备门槛。
 - **智能自动化预热**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持模型自动预热，消除冷启动干扰，确保测试数据精准可靠。
-- **精细化多维指标**：实时采集 TTFT、RPS、TPS、吞吐分布等核心指标，提供多维度性能度量。
+- **多维指标可视化**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：集成 TTFT、RPS、TPS、吞吐分布等核心指标，多维度性能指标实时可视化呈现。
 - **AI 驱动数据洞察**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：AI 辅助分析报告，支持多模型多维度结果对比，直观呈现性能优化方向。
 - **一站式 Web 控制台**：直观管理任务调度、监控与实时日志，显著降低上手门槛与运维成本。
 - **企业级架构安全**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持分布式弹性部署与 LDAP/AD 集成，满足企业级高可用与安全认证需求。

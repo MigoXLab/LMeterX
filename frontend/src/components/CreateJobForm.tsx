@@ -81,6 +81,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   const [tempTaskId] = useState(`temp-${Date.now()}`);
   // add state to track if auto sync spawn_rate
   const [autoSyncSpawnRate, setAutoSyncSpawnRate] = useState(true);
+  const loadMode = Form.useWatch('load_mode', form) || 'fixed';
   const [isCopyMode, setIsCopyMode] = useState(false);
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
@@ -307,12 +308,19 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
 
       if (activeTabKey === dataLoadTabKey) {
         // Test Data and Load Configuration
-        const requiredFields = [
-          'test_data_input_type',
-          'duration',
-          'concurrent_users',
-          'spawn_rate',
-        ];
+        const currentLoadMode = form.getFieldValue('load_mode') || 'fixed';
+        const requiredFields: string[] = ['test_data_input_type'];
+        if (currentLoadMode === 'fixed') {
+          requiredFields.push('duration', 'concurrent_users', 'spawn_rate');
+        } else {
+          requiredFields.push(
+            'step_start_users',
+            'step_increment',
+            'step_duration',
+            'step_max_users',
+            'step_sustain_duration'
+          );
+        }
 
         // Add chat_type validation when using default dataset and chat API
         const currentTestDataInputType =
@@ -881,6 +889,30 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
       normalizeWarmupDuration(values);
+
+      // Normalize payload based on load_mode (fixed vs stepped)
+      const mode = values.load_mode || 'fixed';
+      if (mode === 'fixed') {
+        // Clear stepped fields for fixed mode
+        delete values.step_start_users;
+        delete values.step_increment;
+        delete values.step_duration;
+        delete values.step_max_users;
+        delete values.step_sustain_duration;
+      } else {
+        // For stepped mode, set fixed fields to valid placeholder values
+        // Backend will derive actual values from stepped config
+        values.concurrent_users = values.step_max_users || 1;
+        values.spawn_rate = values.step_increment || 1;
+        // Calculate approximate total duration for stepped mode
+        const startU = values.step_start_users || 1;
+        const maxU = values.step_max_users || 1;
+        const incr = values.step_increment || 1;
+        const stepDur = values.step_duration || 30;
+        const sustainDur = values.step_sustain_duration || 60;
+        const steps = Math.max(1, Math.ceil((maxU - startU) / incr)) + 1;
+        values.duration = Math.max(1, steps * stepDur + sustainDur);
+      }
 
       // Normalize and validate field_mapping for non-standard APIs
       const apiType = values.api_type || 'openai-chat';
@@ -2126,118 +2158,227 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         </Space>
       </div>
 
-      <Row gutter={24}>
-        <Col span={8}>
-          <Form.Item
-            name='duration'
-            label={
-              <span>
-                {t('components.createJobForm.testDuration')}
-                <Tooltip
-                  title={t('components.createJobForm.testDurationTooltip')}
-                >
-                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                </Tooltip>
-              </span>
-            }
-            rules={[
-              {
-                required: true,
-                message: t('components.createJobForm.pleaseEnterTestDuration'),
-              },
-              {
-                type: 'number',
-                min: 1,
-                max: 172800,
-                message: t('components.createJobForm.durationRangeLimit'),
-              },
-            ]}
-          >
-            <InputNumber
-              min={1}
-              max={172800}
-              style={{ width: '100%' }}
-              placeholder='60'
-            />
-          </Form.Item>
-        </Col>
+      {/* Load mode selector: fixed concurrency vs stepped */}
+      <Form.Item
+        label={t('components.createJobForm.loadMode')}
+        name='load_mode'
+        required
+      >
+        <Radio.Group>
+          <Radio.Button value='fixed'>
+            {t('components.createJobForm.loadModeFixed')}
+          </Radio.Button>
+          <Radio.Button value='stepped'>
+            {t('components.createJobForm.loadModeStepped')}
+          </Radio.Button>
+        </Radio.Group>
+      </Form.Item>
 
-        <Col span={8}>
-          <Form.Item
-            name='concurrent_users'
-            label={
-              <span>
-                {t('components.createJobForm.concurrentUsers')}
-                <Tooltip
-                  title={t('components.createJobForm.concurrentUsersTooltip')}
-                >
-                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                </Tooltip>
-              </span>
-            }
-            rules={[
-              {
-                required: true,
-                message: t(
-                  'components.createJobForm.pleaseEnterConcurrentUsers'
-                ),
-              },
-              {
-                type: 'number',
-                min: 1,
-                max: 5000,
-                message: t(
-                  'components.createJobForm.concurrentUsersRangeLimit'
-                ),
-              },
-            ]}
-          >
-            <InputNumber
-              min={1}
-              max={5000}
-              style={{ width: '100%' }}
-              placeholder='10'
-              onChange={handleConcurrentUsersChange}
-            />
-          </Form.Item>
-        </Col>
+      {/* Fixed concurrency configuration */}
+      {loadMode === 'fixed' && (
+        <Row gutter={24}>
+          <Col span={8}>
+            <Form.Item
+              name='duration'
+              label={
+                <span>
+                  {t('components.createJobForm.testDuration')}
+                  <Tooltip
+                    title={t('components.createJobForm.testDurationTooltip')}
+                  >
+                    <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                  </Tooltip>
+                </span>
+              }
+              rules={[
+                {
+                  required: loadMode === 'fixed',
+                  message: t(
+                    'components.createJobForm.pleaseEnterTestDuration'
+                  ),
+                },
+                {
+                  type: 'number',
+                  min: 1,
+                  max: 172800,
+                  message: t('components.createJobForm.durationRangeLimit'),
+                },
+              ]}
+            >
+              <InputNumber
+                min={1}
+                max={172800}
+                style={{ width: '100%' }}
+                placeholder='60'
+              />
+            </Form.Item>
+          </Col>
 
-        <Col span={8}>
-          <Form.Item
-            name='spawn_rate'
-            label={
-              <span>
-                {t('components.createJobForm.userSpawnRate')}
-                <Tooltip
-                  title={t('components.createJobForm.userSpawnRateTooltip')}
-                >
-                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                </Tooltip>
-              </span>
-            }
-            rules={[
-              {
-                required: true,
-                message: t('components.createJobForm.pleaseEnterSpawnRate'),
-              },
-              {
-                type: 'number',
-                min: 1,
-                max: 1000,
-                message: t('components.createJobForm.spawnRateRangeLimit'),
-              },
-            ]}
-          >
-            <InputNumber
-              min={1}
-              max={1000}
-              style={{ width: '100%' }}
-              placeholder='1'
-              onChange={handleSpawnRateChange}
-            />
-          </Form.Item>
-        </Col>
-      </Row>
+          <Col span={8}>
+            <Form.Item
+              name='concurrent_users'
+              label={
+                <span>
+                  {t('components.createJobForm.concurrentUsers')}
+                  <Tooltip
+                    title={t('components.createJobForm.concurrentUsersTooltip')}
+                  >
+                    <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                  </Tooltip>
+                </span>
+              }
+              rules={[
+                {
+                  required: loadMode === 'fixed',
+                  message: t(
+                    'components.createJobForm.pleaseEnterConcurrentUsers'
+                  ),
+                },
+                {
+                  type: 'number',
+                  min: 1,
+                  max: 5000,
+                  message: t(
+                    'components.createJobForm.concurrentUsersRangeLimit'
+                  ),
+                },
+              ]}
+            >
+              <InputNumber
+                min={1}
+                max={5000}
+                style={{ width: '100%' }}
+                placeholder='10'
+                onChange={handleConcurrentUsersChange}
+              />
+            </Form.Item>
+          </Col>
+
+          <Col span={8}>
+            <Form.Item
+              name='spawn_rate'
+              label={
+                <span>
+                  {t('components.createJobForm.userSpawnRate')}
+                  <Tooltip
+                    title={t('components.createJobForm.userSpawnRateTooltip')}
+                  >
+                    <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                  </Tooltip>
+                </span>
+              }
+              rules={[
+                {
+                  required: loadMode === 'fixed',
+                  message: t('components.createJobForm.pleaseEnterSpawnRate'),
+                },
+                {
+                  type: 'number',
+                  min: 1,
+                  max: 1000,
+                  message: t('components.createJobForm.spawnRateRangeLimit'),
+                },
+              ]}
+            >
+              <InputNumber
+                min={1}
+                max={1000}
+                style={{ width: '100%' }}
+                placeholder='1'
+                onChange={handleSpawnRateChange}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+      )}
+
+      {/* Stepped load configuration */}
+      {loadMode === 'stepped' && (
+        <>
+          <Row gutter={24}>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createJobForm.stepStartUsers')}
+                name='step_start_users'
+                rules={[
+                  {
+                    required: true,
+                    message: t(
+                      'components.createJobForm.stepStartUsersRequired'
+                    ),
+                  },
+                ]}
+              >
+                <InputNumber min={1} max={5000} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createJobForm.stepIncrement')}
+                name='step_increment'
+                rules={[
+                  {
+                    required: true,
+                    message: t(
+                      'components.createJobForm.stepIncrementRequired'
+                    ),
+                  },
+                ]}
+              >
+                <InputNumber min={1} max={5000} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createJobForm.stepDuration')}
+                name='step_duration'
+                tooltip={t('components.createJobForm.stepDurationTip')}
+                rules={[
+                  {
+                    required: true,
+                    message: t('components.createJobForm.stepDurationRequired'),
+                  },
+                ]}
+              >
+                <InputNumber min={5} max={3600} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={24}>
+            <Col span={12}>
+              <Form.Item
+                label={t('components.createJobForm.stepMaxUsers')}
+                name='step_max_users'
+                rules={[
+                  {
+                    required: true,
+                    message: t('components.createJobForm.stepMaxUsersRequired'),
+                  },
+                ]}
+              >
+                <InputNumber min={1} max={10000} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label={t('components.createJobForm.stepSustainDuration')}
+                name='step_sustain_duration'
+                tooltip={t('components.createJobForm.stepSustainDurationTip')}
+                rules={[
+                  {
+                    required: true,
+                    message: t(
+                      'components.createJobForm.stepSustainDurationRequired'
+                    ),
+                  },
+                ]}
+              >
+                <InputNumber min={1} max={172800} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </>
+      )}
 
       {/* Section 5: Warmup Configuration */}
       <div
@@ -3008,11 +3149,11 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       return (
         <Space>
           <Button
+            type='primary'
             icon={<BugOutlined />}
             onClick={handleTestAPI}
             loading={testing}
             disabled={!isFormValidForTest()}
-            className={isFormValidForTest() ? 'test-button-active' : ''}
           >
             {t('components.createJobForm.testIt')}
           </Button>
@@ -3125,6 +3266,12 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           field_mapping: getDefaultFieldMapping('openai-chat'),
           warmup_enabled: true,
           warmup_duration: 120,
+          load_mode: 'fixed',
+          step_start_users: 10,
+          step_increment: 10,
+          step_duration: 30,
+          step_max_users: 100,
+          step_sustain_duration: 60,
         }}
         onFinish={handleSubmit}
         onValuesChange={changedValues => {

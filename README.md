@@ -23,16 +23,16 @@ LMeterX is a professional large language model performance testing platform that
 
 ## ✨ Core Features
 
-- **Broad Framework Compatibility** - Supports mainstream inference frameworks (vLLM, LiteLLM, TRT-LLM) and cloud platforms, ensuring seamless environment migration.
-- **Full Modality & Scenarios** - Supports GPT, Claude, Llama to document parsing models like [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr), covering text, multimodal, and streaming.
-- **Hybrid Protocol Testing** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports standard Chat APIs and business HTTP interfaces, enabling full-stack load testing from base models to upper-level services.
-- **Extreme High-Concurrency** - Leverages multi-process architecture to simulate high-load concurrency, accurately detecting system performance limits and stability.
-- **Built-in Dual-Mode Datasets** - Pre-configured with high-quality self-built datasets and ShareGPT standard sets, supporting one-click invocation to lower data preparation barriers.
-- **Automated Warm-up Mechanism** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports automatic model service warm-up to eliminate cold-start effects, ensuring the accuracy of test data.
-- **Fine-grained Multi-dimensional Metrics** - Real-time collection of TTFT, RPS, TPS, and throughput distribution, providing comprehensive performance measurement.
-- **AI-Driven Data Insights** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - AI-powered analysis reports with multi-model comparison, intuitively identifying optimization directions.
-- **One-stop Web Console** - Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
-- **Enterprise-Grade Security & Scaling** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> - Supports distributed elastic deployment and LDAP/AD integration for high availability and secure enterprise authentication.
+- **Broad Framework Compatibility**: Supports mainstream inference frameworks (vLLM, LiteLLM, TRT-LLM) and cloud platforms, ensuring seamless environment migration.
+- **Full Modality & Scenarios**: Supports GPT, Claude, Llama to document parsing models like [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr), covering text, multimodal, and streaming.
+- **Hybrid Protocol Testing** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports standard Chat APIs and business HTTP interfaces, enabling full-stack load testing from base models to upper-level services.
+- **Multi-mode & High-Concurrency Load** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports fixed/tiered concurrency strategies, supports simulating ultra-high concurrency, and accurately locates performance inflection points and system capacity limits.
+- **Built-in Dual-Mode Datasets**: Pre-configured with high-quality self-built datasets and ShareGPT standard sets, supporting one-click invocation to lower data preparation barriers.
+- **Automated Warm-up Mechanism** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports automatic model service warm-up to eliminate cold-start effects, ensuring the accuracy of test data.
+- **Multi-dimensional indicator visualization** <img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Integrates core indicators such as TTFT, RPS, TPS, and throughput distribution, providing real-time visualization of multi-dimensional performance indicators.
+- **AI-Driven Data Insights** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: AI-powered analysis reports with multi-model comparison, intuitively identifying optimization directions.
+- **One-stop Web Console**: Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
+- **Enterprise-Grade Security & Scaling** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports distributed elastic deployment and LDAP/AD integration for high availability and secure enterprise authentication.
 
 ### Feature Comparison
 | Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |

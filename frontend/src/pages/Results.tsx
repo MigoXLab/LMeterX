@@ -1446,10 +1446,10 @@ const TaskResults: React.FC = () => {
             {isTaskRunning && (
               <Tooltip title={t('pages.results.stopTest', 'Stop Test')}>
                 <Button
-                  danger
                   icon={<StopOutlined />}
                   onClick={handleStopTest}
                   loading={isStopping}
+                  className='modern-button-stop-test'
                 >
                   {t('pages.results.stopTest', 'Stop Test')}
                 </Button>

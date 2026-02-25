@@ -902,14 +902,20 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       } else {
         // For stepped mode, set fixed fields to valid placeholder values
         // Backend will derive actual values from stepped config
-        values.concurrent_users = values.step_max_users || 1;
-        values.spawn_rate = values.step_increment || 1;
+        values.concurrent_users = Math.max(
+          1,
+          Number(values.step_max_users) || 1
+        );
+        values.spawn_rate = Math.max(1, Number(values.step_increment) || 1);
         // Calculate approximate total duration for stepped mode
-        const startU = values.step_start_users || 1;
-        const maxU = values.step_max_users || 1;
-        const incr = values.step_increment || 1;
-        const stepDur = values.step_duration || 30;
-        const sustainDur = values.step_sustain_duration || 60;
+        const startU = Math.max(1, Number(values.step_start_users) || 1);
+        const maxU = Math.max(1, Number(values.step_max_users) || 1);
+        const incr = Math.max(1, Number(values.step_increment) || 1);
+        const stepDur = Math.max(1, Number(values.step_duration) || 30);
+        const sustainDur = Math.max(
+          1,
+          Number(values.step_sustain_duration) || 60
+        );
         const steps = Math.max(1, Math.ceil((maxU - startU) / incr)) + 1;
         values.duration = Math.max(1, steps * stepDur + sustainDur);
       }

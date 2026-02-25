@@ -226,15 +226,21 @@ const CreateCommonJobForm: React.FC<Props> = ({
     } else {
       // For stepped mode, set fixed fields to placeholder values
       // Backend will derive actual values from stepped config
-      payload.concurrent_users = values.step_max_users || 1;
-      payload.spawn_rate = values.step_increment || 1;
+      payload.concurrent_users = Math.max(
+        1,
+        Number(values.step_max_users) || 1
+      );
+      payload.spawn_rate = Math.max(1, Number(values.step_increment) || 1);
       // Calculate approximate total duration for stepped mode
       // steps = ceil((max - start) / increment), total ≈ steps * step_duration + sustain
-      const startU = values.step_start_users || 1;
-      const maxU = values.step_max_users || 1;
-      const incr = values.step_increment || 1;
-      const stepDur = values.step_duration || 30;
-      const sustainDur = values.step_sustain_duration || 60;
+      const startU = Math.max(1, Number(values.step_start_users) || 1);
+      const maxU = Math.max(1, Number(values.step_max_users) || 1);
+      const incr = Math.max(1, Number(values.step_increment) || 1);
+      const stepDur = Math.max(1, Number(values.step_duration) || 30);
+      const sustainDur = Math.max(
+        1,
+        Number(values.step_sustain_duration) || 60
+      );
       const steps = Math.max(1, Math.ceil((maxU - startU) / incr)) + 1;
       payload.duration = Math.max(1, steps * stepDur + sustainDur);
     }

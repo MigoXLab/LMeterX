@@ -307,7 +307,7 @@ class CommonTaskService:
         """Run the common task and return the runner result payload."""
         task_logger = logger.bind(task_id=task.id)
         try:
-            task_logger.info(f" Starting execution for task {task.id}.")
+            task_logger.info(f"Starting execution for task {task.id}.")
             return self.runner.run_locust_process(task)
         except Exception as e:
             task_logger.exception(f" Unexpected error during execution: {e}")

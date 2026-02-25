@@ -109,14 +109,42 @@ const CommonResults: React.FC = () => {
     }
   }, [id]);
 
-  // Poll real-time metrics when task is running and charts tab is active
+  // Poll task status while task is running/pending to detect completion
+  // so polling and stop button can react to status changes automatically.
+  // Uses lightweight /status endpoint instead of full task info.
+  useEffect(() => {
+    if (!id || !taskInfo) return;
+    const isActive =
+      taskInfo.status === 'running' || taskInfo.status === 'pending';
+    if (!isActive) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const statusRes = await commonJobApi.getJobStatus(id);
+        const statusData = statusRes.data as any;
+        if (statusData) {
+          setTaskInfo((prev: any) => ({
+            ...prev,
+            status: statusData.status,
+            error_message: statusData.error_message,
+            updated_at: statusData.updated_at,
+          }));
+        }
+      } catch {
+        // ignore
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [id, taskInfo?.status]);
+
+  // Poll real-time metrics ONLY when task is running and charts tab is active
   // Guard: wait for taskInfo to load before fetching to avoid duplicate
   // fetches caused by taskInfo?.status changing from undefined → actual value.
   useEffect(() => {
     if (!taskInfo) return; // Don't fetch until task info is loaded
 
-    const isRunning =
-      taskInfo.status === 'running' || taskInfo.status === 'pending';
+    const isRunning = taskInfo.status === 'running';
     if (activeTab === 'charts' && id) {
       // Always do an initial fetch when switching to charts tab
       fetchMetrics();
@@ -912,17 +940,15 @@ const CommonResults: React.FC = () => {
             level={3}
           />
           <Space>
-            {activeTab === 'charts' && (
-              <Button
-                icon={<StopOutlined />}
-                onClick={handleStopTest}
-                loading={isStopping}
-                disabled={!isTaskRunning}
-                className='modern-button-stop-test'
-              >
-                {t('pages.results.stopTest', 'Stop Test')}
-              </Button>
-            )}
+            <Button
+              icon={<StopOutlined />}
+              onClick={handleStopTest}
+              loading={isStopping}
+              disabled={!isTaskRunning}
+              className='modern-button-stop-test'
+            >
+              {t('pages.results.stopTest', 'Stop Test')}
+            </Button>
             <Button
               type='primary'
               icon={<DownloadOutlined />}

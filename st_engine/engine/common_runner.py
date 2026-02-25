@@ -102,15 +102,21 @@ class CommonLocustRunner(LocustRunner):
         return cmd
 
     def _start_process(self, cmd, task, task_logger):
-        """Override to inject stepped load env vars when needed."""
+        """Override to inject stepped load env vars and task duration when needed."""
         load_mode = getattr(task, "load_mode", "fixed") or "fixed"
         if load_mode == "stepped":
             # Store env overrides so the parent _start_process picks them up
             if not hasattr(self, "_extra_env"):
                 self._extra_env = {}
             self._extra_env = self._get_stepped_env(task)
+            # Also pass total duration so the locustfile can adjust metrics interval
+            self._extra_env["TASK_DURATION"] = str(
+                self._calc_stepped_total_duration(task)
+            )
         else:
-            self._extra_env = {}
+            self._extra_env = {
+                "TASK_DURATION": str(task.duration),
+            }
         return super()._start_process(cmd, task, task_logger)
 
     def _monitor_and_capture(self, process, task, task_logger):

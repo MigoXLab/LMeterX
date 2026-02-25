@@ -62,9 +62,6 @@ def _ensure_prompt_queue(environment, options, task_logger):
 
     # In warmup mode, skip dataset loading to use original payload
     if _is_warmup_mode(options):
-        task_logger.info(
-            "Warmup mode: skipping dataset loading, using original payload"
-        )
         environment.prompt_queue = queue.Queue()
         return environment.prompt_queue
 
@@ -293,9 +290,9 @@ def on_locust_init(environment, **kwargs):
         environment.global_config = config
         environment.warmup_mode = _is_warmup_mode(options)
         masked_config = mask_sensitive_data(config.__dict__)
-        task_logger.info(f"Loaded task configuration: {masked_config}")
+        task_logger.debug(f"Loaded task configuration: {masked_config}")
         if environment.warmup_mode:
-            task_logger.info(
+            task_logger.debug(
                 "Running in warmup mode - token stats will not be collected"
             )
         global_state.start_time = time.time()

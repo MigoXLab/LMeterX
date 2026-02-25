@@ -22,8 +22,60 @@ from utils.logger import logger
 # This warning appears when verify=False is used for SSL certificate verification
 urllib3.disable_warnings(InsecureRequestWarning)
 
-# ---- Real-time metrics collection interval (seconds) ----
-REALTIME_METRICS_INTERVAL = 2
+# ---- Real-time metrics collection ----
+# Default interval (seconds) used for short tests or when duration is unknown.
+_DEFAULT_METRICS_INTERVAL = 2
+# Maximum number of data points we want to store per task.
+# This caps the table growth regardless of test duration.
+_MAX_METRICS_DATA_POINTS = 1080
+
+
+def _calc_metrics_interval() -> int:
+    """Calculate an adaptive metrics collection interval based on test duration and load mode.
+
+    Strategy:
+    - For short tests (≤5 min): 2 s  → up to 150 data points
+    - For medium tests (5–30 min): 5 s  → up to 360 data points
+    - For long tests (30–120 min): 10 s → up to 720 data points
+    - For very long tests (>2 h): 30 s  → e.g. 24 h → 2880 data points
+
+    In stepped mode the interval is capped at 5 s to preserve step-transition
+    visibility regardless of total duration.
+
+    Returns the interval in seconds.
+    """
+    load_mode = os.environ.get("LOAD_MODE", "fixed")
+    duration_str = os.environ.get("TASK_DURATION", "")
+
+    if not duration_str:
+        return _DEFAULT_METRICS_INTERVAL
+
+    try:
+        duration = int(duration_str)
+    except (ValueError, TypeError):
+        return _DEFAULT_METRICS_INTERVAL
+
+    if duration <= 0:
+        return _DEFAULT_METRICS_INTERVAL
+
+    if load_mode == "stepped":
+        # Stepped mode needs finer granularity to show step transitions clearly
+        if duration <= 300:
+            return 2
+        elif duration <= 1800:
+            return 3
+        else:
+            return 5
+
+    # Fixed concurrency mode — scale interval with duration
+    if duration <= 300:  # ≤ 5 min
+        return 2
+    elif duration <= 1800:  # 5 – 30 min
+        return 5
+    elif duration <= 7200:  # 30 min – 2 h
+        return 10
+    else:  # > 2 h
+        return 30
 
 
 def _parse_kv(json_str: str) -> Dict[str, str]:
@@ -163,18 +215,27 @@ def _collect_realtime_snapshot(environment) -> Dict[str, Any]:
 
 
 def _realtime_metrics_greenlet(environment):
-    """Background greenlet that periodically writes real-time metrics to a JSONL file."""
+    """Background greenlet that periodically writes real-time metrics to a JSONL file.
+
+    The collection interval is dynamically adjusted based on the test duration
+    and load mode (via ``_calc_metrics_interval``), so long-running stability
+    tests produce far fewer data points than short benchmark runs.
+    """
     task_id = getattr(environment.parsed_options, "task_id", "") or os.environ.get(
         "TASK_ID", "unknown"
     )
     metrics_path = _get_realtime_metrics_path(task_id)
     os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
     task_logger = logger.bind(task_id=task_id)
-    task_logger.info(f"Real-time metrics writer started -> {metrics_path}")
+
+    interval = _calc_metrics_interval()
+    task_logger.info(
+        f"Real-time metrics writer started -> {metrics_path} " f"(interval={interval}s)"
+    )
 
     while True:
         try:
-            gevent.sleep(REALTIME_METRICS_INTERVAL)
+            gevent.sleep(interval)
             snapshot = _collect_realtime_snapshot(environment)
             with open(metrics_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(snapshot) + "\n")
@@ -243,7 +304,7 @@ def on_test_stop(environment, **kwargs):
                 locust_stats.append(total_row)
         task_logger.debug(f"locust_stats: {locust_stats}")
         result_file = _write_result_file(task_id, locust_stats)
-        task_logger.info(f"Common task result saved to {result_file}")
+        # task_logger.debug(f"Common task result saved to {result_file}")
     except Exception as e:  # pragma: no cover - defensive
         task_logger.error(f"Failed to aggregate common stats: {e}", exc_info=True)
 
@@ -291,7 +352,7 @@ if _LOAD_MODE == "stepped":
             self.ramp_phase_time = self.num_steps * self.step_duration
             # Total test time
             self.total_time = self.ramp_phase_time + self.step_sustain_duration
-            logger.info(
+            logger.debug(
                 f"SteppedLoadShape initialized: start={self.step_start_users}, "
                 f"increment={self.step_increment}, step_duration={self.step_duration}s, "
                 f"max={self.step_max_users}, sustain={self.step_sustain_duration}s, "
@@ -411,15 +472,15 @@ class CommonApiUser(HttpUser):
                 text_payload,
             )
             # Log the outgoing request parameters at debug level
-            self.task_logger.debug(
-                _format_context(
-                    headers=self.headers,
-                    cookies=self.cookies,
-                    json_payload=json_payload,
-                    text_payload=text_payload,
-                    include_sensitive=True,
-                )
-            )
+            # self.task_logger.debug(
+            #     _format_context(
+            #         headers=self.headers,
+            #         cookies=self.cookies,
+            #         json_payload=json_payload,
+            #         text_payload=text_payload,
+            #         include_sensitive=True,
+            #     )
+            # )
 
             response = self.client.request(
                 self.method,

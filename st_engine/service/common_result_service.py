@@ -10,6 +10,13 @@ from sqlalchemy.orm import Session
 from model.common_task import CommonTaskRealtimeMetric, CommonTaskResult
 from utils.logger import logger
 
+# Maximum number of realtime metric data points persisted per task.
+# If the JSONL file contains more points than this, the data will be
+# downsampled (uniform sampling that preserves first and last points)
+# before insertion, so the chart remains representative while capping
+# database growth.
+_MAX_PERSIST_POINTS = 1080
+
 
 class CommonResultService:
     """Handle insertion of common API task results."""
@@ -92,6 +99,30 @@ class CommonResultService:
             session.rollback()
             raise
 
+    @staticmethod
+    def _downsample(data_points: List[dict], max_points: int) -> List[dict]:
+        """Downsample data points to at most *max_points* using uniform selection.
+
+        The first and last points are always preserved so that the time range
+        of the chart remains accurate.  Intermediate points are selected at
+        evenly spaced indices to give a representative picture without storing
+        every single snapshot.
+        """
+        n = len(data_points)
+        if n <= max_points:
+            return data_points
+
+        # Always keep first and last; pick (max_points - 2) evenly spaced from middle
+        indices = set()
+        indices.add(0)
+        indices.add(n - 1)
+        step = (n - 1) / (max_points - 1)
+        for i in range(1, max_points - 1):
+            indices.add(round(i * step))
+
+        sorted_indices = sorted(indices)
+        return [data_points[i] for i in sorted_indices]
+
     def persist_realtime_metrics(
         self, session: Session, task_id: str, data_points: List[dict]
     ) -> int:
@@ -99,6 +130,11 @@ class CommonResultService:
         Batch-insert real-time metric data points into MySQL.
         The data is pre-read from the JSONL file by the runner before the
         result directory is cleaned up (see CommonLocustRunner._finalize_task).
+
+        If the number of raw data points exceeds ``_MAX_PERSIST_POINTS``,
+        the data is downsampled first to prevent the table from growing
+        unboundedly during long-running stability tests.
+
         Returns the number of rows inserted.
         """
         task_logger = logger.bind(task_id=task_id)
@@ -106,6 +142,14 @@ class CommonResultService:
         if not data_points:
             task_logger.debug("No realtime metric data points to persist.")
             return 0
+
+        original_count = len(data_points)
+        if original_count > _MAX_PERSIST_POINTS:
+            data_points = self._downsample(data_points, _MAX_PERSIST_POINTS)
+            task_logger.info(
+                f"Downsampled realtime metrics from {original_count} to "
+                f"{len(data_points)} points (max={_MAX_PERSIST_POINTS})."
+            )
 
         inserted = 0
         try:

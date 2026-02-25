@@ -776,15 +776,11 @@ const CreateCommonJobForm: React.FC<Props> = ({
 
         <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button
+            type='primary'
             icon={<BugOutlined />}
             onClick={handleTest}
             loading={testing}
             disabled={!isFormReady || testing}
-            style={
-              !isFormReady || testing
-                ? {}
-                : { backgroundColor: '#fa8c16', borderColor: '#fa8c16' }
-            }
           >
             {t('components.createCommonJobForm.test')}
           </Button>

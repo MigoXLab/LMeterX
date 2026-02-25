@@ -3008,11 +3008,11 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       return (
         <Space>
           <Button
+            type='primary'
             icon={<BugOutlined />}
             onClick={handleTestAPI}
             loading={testing}
             disabled={!isFormValidForTest()}
-            className={isFormValidForTest() ? 'test-button-active' : ''}
           >
             {t('components.createJobForm.testIt')}
           </Button>

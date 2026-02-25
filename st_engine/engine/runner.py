@@ -56,7 +56,7 @@ class LocustRunner:
         For LLM API tasks, runs a warmup phase first to avoid cold start interference.
         """
         task_logger = logger.bind(task_id=task.id)
-        task_logger.info(f"Starting Locust task {task.id}")
+        task_logger.debug(f"Starting Locust task {task.id}")
 
         try:
             # Step 1: Prepare environment

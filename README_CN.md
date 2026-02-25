@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/images/logo.png" alt="LMeterX Logo" width="400"/>
+  <img src="docs/images/logo.png" alt="LMeterX Logo" width="300"/>
   <p>
     <a href="https://github.com/MigoXLab/LMeterX/blob/main/LICENSE"><img src="https://img.shields.io/github/license/MigoXLab/LMeterX" alt="License"></a>
     <a href="https://github.com/MigoXLab/LMeterX/stargazers"><img src="https://img.shields.io/github/stars/MigoXLab/LMeterX" alt="GitHub stars"></a>

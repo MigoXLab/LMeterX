@@ -5,7 +5,9 @@ Copyright (c) 2025, All Rights Reserved.
 
 import asyncio
 import json
+import os
 import ssl
+import tempfile
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple, cast
@@ -26,6 +28,7 @@ __all__ = [
     "get_common_task_status_svc",
     "get_common_tasks_for_comparison_svc",
     "compare_common_performance_svc",
+    "get_common_task_realtime_metrics_svc",
 ]
 
 from fastapi import Query, Request
@@ -41,6 +44,7 @@ from model.common_task import (
     CommonTaskCreateReq,
     CommonTaskCreateRsp,
     CommonTaskPagination,
+    CommonTaskRealtimeMetric,
     CommonTaskResponse,
     CommonTaskResult,
     CommonTaskResultRsp,
@@ -66,7 +70,7 @@ def _split_url(target_url: str) -> tuple[str, str]:
 
 
 def _build_task_summary(task: CommonTask) -> Dict[str, Any]:
-    return {
+    summary: Dict[str, Any] = {
         "id": task.id,
         "name": task.name,
         "status": task.status,
@@ -76,15 +80,28 @@ def _build_task_summary(task: CommonTask) -> Dict[str, Any]:
         "concurrent_users": task.concurrent_users,
         "duration": task.duration,
         "spawn_rate": task.spawn_rate,
+        "load_mode": getattr(task, "load_mode", "fixed") or "fixed",
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
+    # Include stepped config when in stepped mode
+    if summary["load_mode"] == "stepped":
+        summary.update(
+            {
+                "step_start_users": getattr(task, "step_start_users", None),
+                "step_increment": getattr(task, "step_increment", None),
+                "step_duration": getattr(task, "step_duration", None),
+                "step_max_users": getattr(task, "step_max_users", None),
+                "step_sustain_duration": getattr(task, "step_sustain_duration", None),
+            }
+        )
+    return summary
 
 
 def _build_task_detail(task: CommonTask) -> Dict[str, Any]:
     headers = json.loads(str(task.headers or "{}"))
     cookies = json.loads(str(task.cookies or "{}"))
-    return {
+    detail = {
         **_build_task_summary(task),
         "api_path": task.api_path,
         "target_host": task.target_host,
@@ -95,6 +112,7 @@ def _build_task_detail(task: CommonTask) -> Dict[str, Any]:
         "curl_command": task.curl_command or "",
         "error_message": task.error_message or "",
     }
+    return detail
 
 
 def _prepare_request_body(
@@ -254,6 +272,7 @@ async def create_common_task_svc(
         if not settings.LDAP_ENABLED:
             created_by = created_by or "-"
 
+        load_mode = body.load_mode or "fixed"
         new_task = CommonTask(
             id=task_id,
             name=body.name,
@@ -271,6 +290,14 @@ async def create_common_task_svc(
             concurrent_users=body.concurrent_users,
             spawn_rate=spawn_rate,
             duration=body.duration,
+            load_mode=load_mode,
+            step_start_users=body.step_start_users if load_mode == "stepped" else None,
+            step_increment=body.step_increment if load_mode == "stepped" else None,
+            step_duration=body.step_duration if load_mode == "stepped" else None,
+            step_max_users=body.step_max_users if load_mode == "stepped" else None,
+            step_sustain_duration=(
+                body.step_sustain_duration if load_mode == "stepped" else None
+            ),
             error_message="",
         )
         db.add(new_task)
@@ -698,7 +725,7 @@ async def _extract_common_task_metrics(
             "success_rate": float(success_rate),
             "rps": float(selected.rps or 0.0),
             "avg_response_time": float(selected.avg_latency or 0.0) / 1000.0,
-            "p90_response_time": float(selected.p90_latency or 0.0) / 1000.0,
+            "p95_response_time": float(selected.p95_latency or 0.0) / 1000.0,
             "min_response_time": float(selected.min_latency or 0.0) / 1000.0,
             "max_response_time": float(selected.max_latency or 0.0) / 1000.0,
             "avg_content_length": float(selected.avg_content_length or 0.0),
@@ -706,6 +733,90 @@ async def _extract_common_task_metrics(
     except Exception as e:
         logger.error("Failed to extract common metrics for task {}: {}", task_id, e)
         return None
+
+
+def _read_jsonl_metrics(task_id: str, since: float) -> List[Dict[str, Any]]:
+    """Read real-time metrics from the JSONL file (used for running tasks)."""
+    metrics_path = os.path.join(
+        tempfile.gettempdir(), "locust_result", task_id, "realtime_metrics.jsonl"
+    )
+    if not os.path.exists(metrics_path):
+        return []
+
+    data_points: List[Dict[str, Any]] = []
+    try:
+        with open(metrics_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    point = json.loads(line)
+                    ts = point.get("timestamp", 0)
+                    if ts > since:
+                        data_points.append(point)
+                except json.JSONDecodeError:
+                    continue
+    except Exception as e:
+        logger.warning("Failed to read realtime metrics JSONL for {}: {}", task_id, e)
+    return data_points
+
+
+async def _read_db_metrics(session, task_id: str, since: float) -> List[Dict[str, Any]]:
+    """Read persisted real-time metrics from the database (used for completed tasks)."""
+    try:
+        stmt = (
+            select(CommonTaskRealtimeMetric)
+            .where(CommonTaskRealtimeMetric.task_id == task_id)
+            .where(CommonTaskRealtimeMetric.timestamp > since)
+            .order_by(CommonTaskRealtimeMetric.timestamp.asc())
+        )
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+        return [
+            {
+                "timestamp": float(r.timestamp),
+                "current_users": int(r.current_users),
+                "current_rps": float(r.current_rps),
+                "current_fail_per_sec": float(r.current_fail_per_sec),
+                "avg_response_time": float(r.avg_response_time),
+                "min_response_time": float(r.min_response_time),
+                "max_response_time": float(r.max_response_time),
+                "median_response_time": float(r.median_response_time),
+                "p95_response_time": float(r.p95_response_time),
+                "total_requests": int(r.total_requests),
+                "total_failures": int(r.total_failures),
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        logger.warning("Failed to read realtime metrics from DB for {}: {}", task_id, e)
+        return []
+
+
+async def get_common_task_realtime_metrics_svc(
+    request: Request, task_id: str, since: float = 0.0
+) -> Dict[str, Any]:
+    """
+    Hybrid read strategy for real-time metrics:
+    1. Try JSONL file first (available while the task is running)
+    2. Fall back to database (persisted after task finishes)
+    This ensures charts work both during and after the test.
+    """
+    if not task_id:
+        return {"status": "error", "error": "task_id is required", "data": []}
+
+    # Strategy: try JSONL first (faster, most up-to-date for running tasks)
+    data_points = _read_jsonl_metrics(task_id, since)
+
+    if data_points:
+        return {"status": "ok", "data": data_points}
+
+    # Fallback: read from database (for completed/stopped/failed tasks)
+    session = request.state.db
+    data_points = await _read_db_metrics(session, task_id, since)
+
+    return {"status": "ok", "data": data_points}
 
 
 async def compare_common_performance_svc(

@@ -23,7 +23,7 @@ class TaskResult(Base):
     min_latency = Column(Float, default=0, comment="Minimum response time")
     max_latency = Column(Float, default=0, comment="Maximum response time")
     median_latency = Column(Float, default=0, comment="Median response time")
-    p90_latency = Column(Float, default=0, comment="90th percentile response time")
+    p95_latency = Column(Float, default=0, comment="95th percentile response time")
     rps = Column(Float, default=0, comment="Requests per second")
     avg_content_length = Column(
         Float, default=0, comment="Average output character length"

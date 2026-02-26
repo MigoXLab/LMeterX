@@ -62,7 +62,7 @@
   --shadow-brand: 0 4px 14px rgba(102, 126, 234, 0.35);
 
   /* Spacing */
-  --page-padding-x: 80px;
+  --page-padding-x: 120px;
   --page-padding-y: 32px;
 }
 
@@ -331,10 +331,12 @@ body {
 .unified-tabs {
   margin-bottom: 0;
   padding: 0;
+  margin-top: 0;
 }
 
 .unified-tabs .ant-tabs-nav {
   margin-bottom: 20px !important;
+  margin-top: 0 !important;
   padding: 0;
 }
 
@@ -449,6 +451,35 @@ body {
     rgba(148, 112, 184, 0.5) 100%
   ) !important;
   border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Orange variant for stop test button */
+.modern-button-stop-test.ant-btn,
+.modern-button-stop-test.ant-btn-default,
+.modern-button-stop-test {
+  border-radius: var(--radius-md) !important;
+  background: #fa8c16 !important;
+  border-color: #fa8c16 !important;
+  color: #fff !important;
+  font-weight: 500 !important;
+  box-shadow: 0 3px 10px rgba(250, 140, 22, 0.25) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.modern-button-stop-test:hover {
+  background: #d87a10 !important;
+  border-color: #d87a10 !important;
+  box-shadow: 0 5px 16px rgba(250, 140, 22, 0.35) !important;
+  transform: translateY(-1px);
+}
+
+.modern-button-stop-test:disabled,
+.modern-button-stop-test[disabled] {
+  background: rgba(250, 140, 22, 0.4) !important;
+  border-color: transparent !important;
   color: rgba(255, 255, 255, 0.7) !important;
   box-shadow: none !important;
   cursor: not-allowed;
@@ -1148,7 +1179,7 @@ body {
 }
 
 .page-header-wrapper {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .page-header {
@@ -1176,8 +1207,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 24px;
-  margin-bottom: 16px;
+  margin-top: 20px;
+  margin-bottom: 20px;
   gap: 16px;
   flex-wrap: wrap;
 }
@@ -1213,13 +1244,13 @@ body {
   border-radius: 0;
   border: none;
   overflow: visible;
-  padding-top: 16px;
+  padding-top: 0;
 }
 
 .results-section {
   background: var(--color-bg);
   border-radius: 0;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   border: none;
   overflow: visible;
   transition: all 0.2s ease;
@@ -1233,7 +1264,7 @@ body {
 
 .unified-section {
   border-radius: 0 !important;
-  margin-bottom: 32px !important;
+  margin-bottom: 20px !important;
   border: none !important;
 }
 
@@ -1256,10 +1287,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0 16px 0;
-  border-bottom: 1px solid var(--color-border-light);
+  padding: 0;
   background: var(--color-bg);
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .section-content {
@@ -2242,7 +2272,7 @@ body.api-test-modal-open {
   align-items: center;
   gap: 8px;
   margin-bottom: 20px;
-  padding-bottom: 12px;
+  padding-bottom: 0;
   border-bottom: 1px solid var(--color-border-light);
 }
 
@@ -2286,11 +2316,11 @@ body.api-test-modal-open {
   }
 
   .page-container {
-    padding: 24px 40px;
+    padding: 24px 60px;
   }
 
   .header-inner {
-    padding: 0 40px;
+    padding: 0 60px;
   }
 
   .page-header-card,
@@ -2305,11 +2335,11 @@ body.api-test-modal-open {
   }
 
   .page-container {
-    padding: 16px 24px;
+    padding: 16px 32px;
   }
 
   .header-inner {
-    padding: 0 24px;
+    padding: 0 32px;
   }
 
   .page-header-card,

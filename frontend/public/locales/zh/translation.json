@@ -544,7 +544,7 @@
       "testResponse": "响应内容",
       "stream": "流式",
       "nonStreaming": "非流式",
-      "chunks": "块",
+      "chunks": "chunks",
       "fileSizeExceedsLimit": "文件大小超过10MB限制",
       "fileSizeExceedsLimitWithSize": "文件大小超过10MB限制。当前大小：{{size}}MB",
       "fileSelected": "{{fileName}}文件已选择",

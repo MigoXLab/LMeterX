@@ -25,23 +25,24 @@ LMeterX is a professional large language model performance testing platform that
 
 - **Broad Framework Compatibility**: Supports mainstream inference frameworks (vLLM, LiteLLM, TRT-LLM) and cloud platforms, ensuring seamless environment migration.
 - **Full Modality & Scenarios**: Supports GPT, Claude, Llama to document parsing models like [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr), covering text, multimodal, and streaming.
-- **Hybrid Protocol Testing** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports standard Chat APIs and business HTTP interfaces, enabling full-stack load testing from base models to upper-level services.
-- **Multi-mode & High-Concurrency Load** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports fixed/stepped concurrency strategies, supports simulating ultra-high concurrency, and accurately locates performance inflection points and system capacity limits.
+- **Hybrid Protocol Testing**: Supports standard Chat APIs and business HTTP interfaces&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />, enabling full-stack load testing from base models to upper-level services.
+- **Multi-mode & High-Concurrency Load**: Supports fixed/stepped concurrency&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> strategies, supports simulating ultra-high concurrency, and accurately locates performance inflection points and system capacity limits.
 - **Built-in Dual-Mode Datasets**: Pre-configured with high-quality self-built datasets and ShareGPT standard sets, supporting one-click invocation to lower data preparation barriers.
 - **Automated Warm-up Mechanism** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports automatic model service warm-up to eliminate cold-start effects, ensuring the accuracy of test data.
-- **Multi-dimensional Indicator Visualization** <img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Integrates core indicators such as TTFT, RPS, TPS, and throughput distribution, supporting real-time tracking and visualization of performance data.
+- **Multi-dimensional Indicator Visualization**: Integrates core indicators such as TTFT, RPS, TPS, and throughput distribution, supporting real-time tracking and visualization of performance data<img src="docs/images/badge-new.svg" alt="NEW" height="16" />.
 - **Engine Resource Monitoring** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports real-time monitoring of the load testing machine's CPU, memory, and network bandwidth, accurately identifying local resource bottlenecks.
-- **AI-Driven Data Insights** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: AI-powered analysis reports with multi-model comparison, intuitively identifying optimization directions.
+- **AI-Driven Data Insights**: AI-powered analysis reports &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> with multi-model comparison, intuitively identifying optimization directions.
 - **One-stop Web Console**: Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
-- **Enterprise-Grade Security & Scaling** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports distributed elastic deployment and LDAP/AD integration for high availability and secure enterprise authentication.
+- **Enterprise-Grade Security & Scaling**: Supports distributed elastic deployment and LDAP/AD&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />integration for high availability and secure enterprise authentication.
 
 ### Feature Comparison
 | Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |
 |----------------------|-------------------------------------------------------------------------|---------------------------------------------------------------------------|----------------------------------------------------------|
 | Usage                | Web UI for full-lifecycle task creation, monitoring & stop (load-test) | CLI for ModelScope ecosystem (eval & load-test)                          | CLI, Ray-based (load-test)                              |
-| Concurrency & Stress | Multi-process / multi-task, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
+| Concurrency & Stress | Multi-process / multi-task, fix/stepped load, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
 | Test Report          | Multi-model / multi-version comparison, AI analysis, visual dashboard   | Basic report + visual charts (requires gradio, plotly, etc.)             | Simple report                                            |
 | Model & Data Support | OpenAI-compatible, custom data & model interfaces                       | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
+Performance and Resource Monitoring | Supports real-time monitoring of performance metrics and load testing machine resource status. | - | - |
 | Deployment & Scaling | Docker / K8s ready, easy horizontal scaling                             | `pip` install or source code                                             | Source code only                                         |
 
 ## 🏗️ System Architecture

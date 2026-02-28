@@ -176,7 +176,7 @@ class TaskCreateReq(BaseModel):
         ..., ge=1, le=5000, description="Number of concurrent users (1-5000)"
     )
     spawn_rate: int = Field(
-        ge=1, le=100, description="Number of users to spawn per second (1-100)"
+        ge=1, le=1000, description="Number of users to spawn per second (1-1000)"
     )
     chat_type: Optional[int] = Field(
         default=0,
@@ -619,6 +619,7 @@ class Task(Base):
     field_mapping = Column(Text, nullable=True)
     api_type = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
+    engine_id = Column(String(64), nullable=True)
     test_data = Column(Text, nullable=True)
     is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
@@ -699,25 +700,3 @@ class TaskResult(Base):
                 else 0.0
             ),
         )
-
-
-class TaskRealtimeMetric(Base):
-    """SQLAlchemy model for real-time performance metrics collected during LLM load tests."""
-
-    __tablename__ = "task_realtime_metrics"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(String(40), nullable=False, index=True)
-    timestamp = Column(Float, nullable=False)
-    current_users = Column(Integer, nullable=False, default=0)
-    current_rps = Column(Float, nullable=False, default=0.0)
-    current_fail_per_sec = Column(Float, nullable=False, default=0.0)
-    avg_response_time = Column(Float, nullable=False, default=0.0)
-    min_response_time = Column(Float, nullable=False, default=0.0)
-    max_response_time = Column(Float, nullable=False, default=0.0)
-    median_response_time = Column(Float, nullable=False, default=0.0)
-    p95_response_time = Column(Float, nullable=False, default=0.0)
-    total_requests = Column(Integer, nullable=False, default=0)
-    total_failures = Column(Integer, nullable=False, default=0)
-    metrics_detail = Column(Text, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())

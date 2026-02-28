@@ -137,6 +137,8 @@
       "modelName": "Model Name",
       "concurrentUsers": "Concurrent Users",
       "testDuration": "Test Duration",
+      "engineId": "Engine ID",
+      "viewEngineMonitor": "View Engine Resource Monitor",
       "builtInDataset": "Built-in Dataset",
       "customDataset": "Custom Dataset",
       "datasetOptionTextSelfBuilt": "Text-Only · Self-built",
@@ -209,13 +211,21 @@
     },
     "systemMonitor": {
       "title": "System Monitor",
-      "description": "View system logs and runtime status",
+      "description": "View system resource usage and runtime status",
+      "engineResources": "Resource Monitoring",
+      "selectEngine": "Select Load Test Engine",
       "cpuUsage": "CPU Usage",
       "memoryUsage": "Memory Usage",
+      "memUsed": "Used",
+      "memTotal": "Total",
       "diskUsage": "Disk Usage",
-      "networkTraffic": "Network Traffic",
+      "networkTraffic": "Network Bandwidth",
+      "netSent": "Net Sent",
+      "netRecv": "Net Received",
       "systemLoad": "System Load",
-      "uptime": "Uptime"
+      "uptime": "Uptime",
+      "noEngineData": "No engine metrics data available",
+      "fetchFailed": "Failed to fetch metrics"
     },
     "systemConfig": {
       "title": "System Configuration",

@@ -7,16 +7,47 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: lmeterx123
       MYSQL_DATABASE: lmeterx
+      TZ: Asia/Shanghai
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --init-connect='SET NAMES utf8mb4'
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --init-connect='SET NAMES utf8mb4' --default-time-zone='+08:00'
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-plmeterx123"]
       timeout: 20s
       retries: 10
+
+  # VictoriaMetrics - lightweight time-series database for monitoring metrics
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    container_name: lmeterx-victoria-metrics
+    restart: unless-stopped
+    ports:
+      - "8428:8428"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - vm_data:/victoria-metrics-data
+    command:
+      - "-retentionPeriod=7d"
+      - "-search.maxUniqueTimeseries=50000"
+      - "-memory.allowedPercent=60"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # backend service
   backend:
@@ -27,13 +58,17 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      victoria-metrics:
+        condition: service_healthy
     environment:
+      - TZ=Asia/Shanghai
       - DATABASE_URL=mysql://root:lmeterx123@mysql:3306/lmeterx
       - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
       - DB_PASSWORD=lmeterx123
       - DB_NAME=lmeterx
+      - VICTORIA_METRICS_URL=http://victoria-metrics:8428
       # ================= LDAP Authentication Configuration =================
       # Set to 'on' to enable LDAP authentication
       - LDAP_ENABLED=off
@@ -71,17 +106,24 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      victoria-metrics:
+        condition: service_healthy
     environment:
+      TZ: Asia/Shanghai
       DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: root
       DB_PASSWORD: lmeterx123
       DB_NAME: lmeterx
+      VICTORIA_METRICS_URL: "http://victoria-metrics:8428"
+      # automatically gets a unique ID derived from its container hostname.
+      # To use a fixed ID (single-instance only), uncomment the line below:
+      # ENGINE_ID: "engine-01"
       # Multi-process configuration
       ENABLE_MULTIPROCESS: auto
-      LOCUST_CPU_CORES: 4.0
+      LOCUST_CPU_CORES: 2.0                  # Must match deploy.resources.limits.cpus
       MULTIPROCESS_THRESHOLD: 1000           # Enable multiprocess only for 1000+ users
-      MIN_USERS_PER_PROCESS: 500             # Each process handles at least 600 users
+      MIN_USERS_PER_PROCESS: 500             # Each process handles at least 500 users
       # Process management and stability
       PYTHONUNBUFFERED: 1                    # Ensure immediate log output
       LOCUST_WORKER_HEARTBEAT_INTERVAL: 3    # Worker heartbeat interval (seconds)
@@ -103,7 +145,7 @@ services:
           memory: 4G
         reservations:
           cpus: '1.0'
-          memory: 1G
+          memory: 2G
     healthcheck:
       test: [ "CMD", "curl", "-s", "-f", "http://localhost:5002/health" ]
       interval: 10s
@@ -124,6 +166,7 @@ services:
     ports:
       - "8080:80"
     environment:
+      - TZ=Asia/Shanghai
       - VITE_API_BASE_URL=/api
       # Set to 'on' to enable LDAP login UI (must match backend LDAP_ENABLED)
       - VITE_LDAP_ENABLED=off
@@ -137,6 +180,7 @@ services:
       - ./upload_files:/usr/share/nginx/html/uploads
 volumes:
   mysql_data:
+  vm_data:
 
 networks:
   default:

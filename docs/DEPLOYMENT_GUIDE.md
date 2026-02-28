@@ -498,6 +498,93 @@ docker stats $(docker-compose ps -q)
    ```
 ## 📊 Monitoring and Logging
 
+### VictoriaMetrics Configuration
+
+LMeterX embeds [VictoriaMetrics](https://victoriametrics.com/) as a lightweight, high-performance time-series database for storing real-time performance metrics and engine resource monitoring data (CPU, memory, network bandwidth).
+
+#### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VICTORIA_METRICS_URL` | `http://victoria-metrics:8428` | VictoriaMetrics endpoint (set on both backend and engine) |
+| `RESOURCE_COLLECT_INTERVAL` | `2` | Engine resource collection interval in seconds |
+| `ENGINE_ID` | auto (from hostname) | Fixed engine identity label; useful for single-instance setups |
+| `ENGINE_POD_NAME` | — | Kubernetes Pod name; takes priority over hostname when set |
+
+#### Docker Compose Service Definition
+
+```yaml
+victoria-metrics:
+  image: victoriametrics/victoria-metrics:v1.106.1
+  container_name: lmeterx-victoria-metrics
+  restart: unless-stopped
+  ports:
+    - "8428:8428"           # HTTP API, Prometheus remote-write & built-in UI
+  volumes:
+    - vm_data:/victoria-metrics-data   # Persistent storage for time-series data
+  command:
+    - "-retentionPeriod=7d"               # Data retention period (default: 7 days)
+    - "-search.maxUniqueTimeseries=50000" # Max unique time series for ad-hoc queries
+    - "-memory.allowedPercent=60"         # Percentage of available RAM used for cache
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 2G
+      reservations:
+        cpus: '0.5'
+        memory: 1G
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 10s
+```
+
+#### Key Tuning Parameters
+
+| Parameter | Recommended | Description |
+|-----------|-------------|-------------|
+| `-retentionPeriod` | `7d` – `30d` | How long raw data is kept. Increase for long-term trend analysis. |
+| `-search.maxUniqueTimeseries` | `50000` | Raise if you run many parallel test tasks simultaneously. |
+| `-memory.allowedPercent` | `40` – `70` | Lower to `40` on memory-constrained hosts; raise to `70` for query-heavy workloads. |
+
+#### Verifying VictoriaMetrics
+
+```bash
+# Health check
+curl http://localhost:8428/health
+
+# Query the last 5 minutes of engine CPU metrics
+curl "http://localhost:8428/api/v1/query_range?query=engine_cpu_percent&start=-5m&step=15s"
+
+# View all available metric names
+curl "http://localhost:8428/api/v1/label/__name__/values"
+```
+
+#### Metrics Reference
+
+| Metric Name | Labels | Description |
+|-------------|--------|-------------|
+| `engine_cpu_percent` | `engine_id` | Engine CPU utilization (%) relative to allocated cores |
+| `engine_cpu_limit_cores` | `engine_id` | CPU core limit for the engine container |
+| `engine_memory_used_bytes` | `engine_id` | Engine memory usage in bytes |
+| `engine_memory_total_bytes` | `engine_id` | Engine memory limit in bytes |
+| `engine_memory_percent` | `engine_id` | Engine memory utilization (%) |
+| `engine_network_sent_bytes_per_sec` | `engine_id` | Network outbound bandwidth (bytes/s) |
+| `engine_network_recv_bytes_per_sec` | `engine_id` | Network inbound bandwidth (bytes/s) |
+| `engine_network_sent_bytes_total` | `engine_id` | Cumulative bytes sent |
+| `engine_network_recv_bytes_total` | `engine_id` | Cumulative bytes received |
+| `lmeterx_current_users` | `task_id`, `task_type`, `engine_id` | Active virtual users |
+| `lmeterx_current_rps` | `task_id`, `task_type`, `engine_id` | Real-time requests per second |
+| `lmeterx_avg_response_time` | `task_id`, `task_type`, `engine_id` | Average response time (ms) |
+| `lmeterx_p95_response_time` | `task_id`, `task_type`, `engine_id` | 95th percentile response time (ms) |
+| `lmeterx_total_requests` | `task_id`, `task_type`, `engine_id` | Cumulative request count |
+| `lmeterx_total_failures` | `task_id`, `task_type`, `engine_id` | Cumulative failure count |
+
+> **Multi-engine deployments**: Each engine instance automatically resolves a unique `engine_id` from its container hostname. Override with `ENGINE_ID` (Docker Compose) or `ENGINE_POD_NAME` (Kubernetes) for a fixed, human-readable identifier.
+
 ### Log Management
 
 ```bash

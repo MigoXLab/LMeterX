@@ -1,114 +1,58 @@
 """
-Shared real-time metrics collection utilities for Locust load tests.
-
-This module provides functions that are shared between the LLM API locustfile
-and the common API locustfile to avoid code duplication.
-
 Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import json
 import os
-import tempfile
 import time
 from typing import Any, Dict
 
 import gevent
 
 from utils.logger import logger
+from utils.vm_push import push_realtime_perf_metrics
 
 # Default interval (seconds) used for short tests or when duration is unknown.
 _DEFAULT_METRICS_INTERVAL = 2
-# Maximum number of data points we want to store per task.
-_MAX_METRICS_DATA_POINTS = 1080
 
 
-def calc_metrics_interval(*, is_llm: bool = False) -> int:
+def calc_metrics_interval() -> int:
     """Calculate an adaptive metrics collection interval based on test duration and load mode.
-
-    Common (business) API strategy:
-    - Short tests (≤5 min): 2 s
-    - Medium tests (5–30 min): 5 s
-    - Long tests (30–120 min): 10 s
-    - Very long tests (>2 h): 30 s
-
-    LLM API strategy (larger intervals because LLM requests are long-running
-    streaming connections — single-request latency is typically seconds to
-    tens of seconds, so very frequent snapshots add noise without value):
-    - Short tests (≤5 min): 5 s
-    - Medium tests (5–30 min): 10 s
-    - Long tests (30–120 min): 15 s
-    - Very long tests (>2 h): 30 s
-
-    In stepped mode the interval is capped at 5 s (common) / 8 s (LLM) to
-    preserve step-transition visibility.
-
-    Args:
-        is_llm: When *True*, use the wider LLM interval strategy.
 
     Returns the interval in seconds.
     """
     load_mode = os.environ.get("LOAD_MODE", "fixed")
     duration_str = os.environ.get("TASK_DURATION", "")
 
-    default_interval = 5 if is_llm else _DEFAULT_METRICS_INTERVAL
-
     if not duration_str:
-        return default_interval
+        return _DEFAULT_METRICS_INTERVAL
 
     try:
         duration = int(duration_str)
     except (ValueError, TypeError):
-        return default_interval
+        return _DEFAULT_METRICS_INTERVAL
 
     if duration <= 0:
-        return default_interval
+        return _DEFAULT_METRICS_INTERVAL
 
     if load_mode == "stepped":
-        if is_llm:
-            # LLM stepped: wider intervals but still show transitions
-            if duration <= 300:
-                return 5
-            elif duration <= 1800:
-                return 6
-            else:
-                return 8
-        # Common API stepped
-        if duration <= 300:
+        # Stepped mode: tighter intervals to preserve step-transition visibility
+        if duration <= 1800:  # ≤ 30 min
             return 2
-        elif duration <= 1800:
+        elif duration <= 3600:  # 30 – 60 min
             return 3
-        else:
+        else:  # > 60 min
             return 5
 
-    if is_llm:
-        # LLM fixed concurrency — wider intervals
-        if duration <= 300:  # ≤ 5 min
-            return 5
-        elif duration <= 1800:  # 5 – 30 min
-            return 10
-        elif duration <= 7200:  # 30 min – 2 h
-            return 15
-        else:  # > 2 h
-            return 30
-
-    # Common API fixed concurrency — original intervals
-    if duration <= 300:  # ≤ 5 min
+    # Fixed concurrency — unified intervals for both common & LLM API
+    if duration <= 600:  # ≤ 10 min
         return 2
-    elif duration <= 1800:  # 5 – 30 min
+    elif duration <= 1800:  # 10 – 30 min
+        return 3
+    elif duration <= 7200:  # 30min – 2h
         return 5
-    elif duration <= 7200:  # 30 min – 2 h
+    else:  # > 2h
         return 10
-    else:  # > 2 h
-        return 30
-
-
-def get_realtime_metrics_path(task_id: str) -> str:
-    """Return the path for the real-time metrics JSONL file."""
-    return os.path.join(
-        tempfile.gettempdir(), "locust_result", task_id, "realtime_metrics.jsonl"
-    )
 
 
 def collect_realtime_snapshot(
@@ -162,31 +106,28 @@ def collect_realtime_snapshot(
     return snapshot
 
 
-def realtime_metrics_greenlet(
-    environment, *, include_entries: bool = False, is_llm: bool = False
-):
-    """Background greenlet that periodically writes real-time metrics to a JSONL file.
+def realtime_metrics_greenlet(environment, *, include_entries: bool = False):
+    """Background greenlet that periodically collects real-time metrics and
+    pushes them to VictoriaMetrics.
 
     The collection interval is dynamically adjusted based on the test duration
     and load mode (via ``calc_metrics_interval``), so long-running stability
     tests produce far fewer data points than short benchmark runs.
 
     Args:
+        environment: The Locust Environment instance providing runner and stats.
         include_entries: Forwarded to ``collect_realtime_snapshot`` to add
             per-metric detail (used by LLM API tests).
-        is_llm: When *True*, use wider collection intervals suitable for
-            LLM API tests where single-request latency is much higher.
     """
     task_id = getattr(environment.parsed_options, "task_id", "") or os.environ.get(
         "TASK_ID", "unknown"
     )
-    metrics_path = get_realtime_metrics_path(task_id)
-    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
     task_logger = logger.bind(task_id=task_id)
 
-    interval = calc_metrics_interval(is_llm=is_llm)
+    task_type = "llm" if include_entries else "common"
+    interval = calc_metrics_interval()
     task_logger.info(
-        f"Real-time metrics writer started -> {metrics_path} (interval={interval}s)"
+        f"Real-time metrics collector started (interval={interval}s, sink=VictoriaMetrics)"
     )
 
     while True:
@@ -195,9 +136,13 @@ def realtime_metrics_greenlet(
             snapshot = collect_realtime_snapshot(
                 environment, include_entries=include_entries
             )
-            with open(metrics_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(snapshot) + "\n")
+
+            # Push to VictoriaMetrics (fire-and-forget)
+            try:
+                push_realtime_perf_metrics(task_id, task_type, snapshot)
+            except Exception as e:
+                task_logger.debug(f"VM push failure (non-fatal): {e}")
         except gevent.GreenletExit:
             break
         except Exception as e:  # pragma: no cover
-            task_logger.debug(f"Realtime metrics write error: {e}")
+            task_logger.debug(f"Realtime metrics push error: {e}")

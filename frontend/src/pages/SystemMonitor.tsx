@@ -4,19 +4,53 @@
  * @author Charm
  * @copyright 2025
  * */
-import { MonitorOutlined } from '@ant-design/icons';
+import { DashboardOutlined, MonitorOutlined } from '@ant-design/icons';
 import { Tabs } from 'antd';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
+import EngineResources from '../components/EngineResources';
 import SystemLogs from '../components/SystemLogs';
 import { PageHeader } from '../components/ui/PageHeader';
 
+const SYSTEM_MONITOR_TAB_STORAGE_KEY = 'system-monitor-active-tab';
+const VALID_TABS = new Set(['engine-resources', 'engine-logs', 'backend-logs']);
+
 const SystemMonitor: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('engine-logs');
+  const [searchParams] = useSearchParams();
+  // Read engine_id from URL query params (e.g. /system-monitor?engine_id=xxx)
+  const urlEngineId = useMemo(
+    () => searchParams.get('engine_id') || undefined,
+    [searchParams]
+  );
+  const [activeTab, setActiveTab] = useState(() => {
+    // If engine_id is in URL, default to engine-resources tab
+    if (urlEngineId) return 'engine-resources';
+    if (typeof window === 'undefined') return 'engine-resources';
+    const saved = window.localStorage.getItem(SYSTEM_MONITOR_TAB_STORAGE_KEY);
+    return saved && VALID_TABS.has(saved) ? saved : 'engine-resources';
+  });
   const { t } = useTranslation();
 
   // Define tabs using the items attribute
   const tabItems = [
+    {
+      key: 'engine-resources',
+      label: (
+        <span className='tab-label'>
+          <DashboardOutlined className='tab-icon' />
+          {t('pages.systemMonitor.engineResources', {
+            defaultValue: 'Engine Resources',
+          })}
+        </span>
+      ),
+      children: (
+        <EngineResources
+          isActive={activeTab === 'engine-resources'}
+          initialEngineId={urlEngineId}
+        />
+      ),
+    },
     {
       key: 'engine-logs',
       label: (
@@ -55,8 +89,6 @@ const SystemMonitor: React.FC = () => {
         />
       ),
     },
-
-    // More monitoring tabs can be added here, such as CPU usage, memory usage, etc.
   ];
 
   return (
@@ -72,7 +104,12 @@ const SystemMonitor: React.FC = () => {
       <div className='jobs-content-wrapper'>
         <Tabs
           activeKey={activeTab}
-          onChange={setActiveTab}
+          onChange={key => {
+            setActiveTab(key);
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem(SYSTEM_MONITOR_TAB_STORAGE_KEY, key);
+            }
+          }}
           items={tabItems}
           className='unified-tabs'
         />

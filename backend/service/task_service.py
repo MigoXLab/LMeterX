@@ -7,7 +7,6 @@ import asyncio
 import json
 import os
 import ssl
-import tempfile
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
@@ -29,7 +28,6 @@ from model.task import (
     Task,
     TaskCreateReq,
     TaskCreateRsp,
-    TaskRealtimeMetric,
     TaskResponse,
     TaskResult,
     TaskResultItem,
@@ -109,6 +107,7 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
         "step_duration": task.step_duration,
         "step_max_users": task.step_max_users,
         "step_sustain_duration": task.step_sustain_duration,
+        "engine_id": task.engine_id,
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -148,6 +147,7 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "step_duration": task.step_duration,
         "step_max_users": task.step_max_users,
         "step_sustain_duration": task.step_sustain_duration,
+        "engine_id": task.engine_id,
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -176,6 +176,7 @@ def _build_common_task_detail(task: CommonTask) -> Dict[str, Any]:
         "api_type": "common-api",
         "test_data": task.request_body or "",
         "error_message": task.error_message,
+        "engine_id": getattr(task, "engine_id", None),
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -926,95 +927,21 @@ async def compare_performance_svc(
         )
 
 
-def _read_jsonl_metrics(task_id: str, since: float) -> List[Dict[str, Any]]:
-    """Read real-time metrics from the JSONL file (used for running tasks)."""
-    metrics_path = os.path.join(
-        tempfile.gettempdir(), "locust_result", task_id, "realtime_metrics.jsonl"
-    )
-    if not os.path.exists(metrics_path):
-        return []
-
-    data_points: List[Dict[str, Any]] = []
-    try:
-        with open(metrics_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    point = json.loads(line)
-                    ts = point.get("timestamp", 0)
-                    if ts > since:
-                        data_points.append(point)
-                except json.JSONDecodeError:
-                    continue
-    except Exception as e:
-        logger.warning("Failed to read realtime metrics JSONL for {}: {}", task_id, e)
-    return data_points
-
-
-async def _read_db_metrics(session, task_id: str, since: float) -> List[Dict[str, Any]]:
-    """Read real-time metrics from database (for completed/stopped/failed tasks)."""
-    try:
-        stmt = (
-            select(TaskRealtimeMetric)
-            .where(TaskRealtimeMetric.task_id == task_id)
-            .where(TaskRealtimeMetric.timestamp > since)
-            .order_by(TaskRealtimeMetric.timestamp.asc())
-        )
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
-        points = []
-        for r in rows:
-            point: Dict[str, Any] = {
-                "timestamp": float(r.timestamp),
-                "current_users": int(r.current_users),
-                "current_rps": float(r.current_rps),
-                "current_fail_per_sec": float(r.current_fail_per_sec),
-                "avg_response_time": float(r.avg_response_time),
-                "min_response_time": float(r.min_response_time),
-                "max_response_time": float(r.max_response_time),
-                "median_response_time": float(r.median_response_time),
-                "p95_response_time": float(r.p95_response_time),
-                "total_requests": int(r.total_requests),
-                "total_failures": int(r.total_failures),
-            }
-            # Include per-metric detail when available
-            if r.metrics_detail:
-                try:
-                    point["metrics"] = json.loads(r.metrics_detail)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            points.append(point)
-        return points
-    except Exception as e:
-        logger.warning("Failed to read DB realtime metrics for {}: {}", task_id, e)
-        return []
-
-
 async def get_task_realtime_metrics_svc(
     request: Request, task_id: str, since: float = 0.0
 ) -> Dict[str, Any]:
-    """
-    Hybrid read strategy for real-time metrics:
-    1. Try JSONL file first (available while the task is running)
-    2. Fall back to database (persisted after task finishes)
-    This ensures charts work both during and after the test.
-    """
+    """Query real-time performance metrics for a task from VictoriaMetrics."""
     if not task_id:
         return {"status": "error", "error": "task_id is required", "data": []}
 
-    # Strategy: try JSONL first (faster, most up-to-date for running tasks)
-    data_points = _read_jsonl_metrics(task_id, since)
+    try:
+        from service.monitoring_service import get_task_perf_metrics_from_vm
 
-    if data_points:
+        data_points = await get_task_perf_metrics_from_vm(task_id, since)
         return {"status": "ok", "data": data_points}
-
-    # Fallback: read from database (for completed/stopped/failed tasks)
-    session = request.state.db
-    data_points = await _read_db_metrics(session, task_id, since)
-
-    return {"status": "ok", "data": data_points}
+    except Exception as e:
+        logger.warning("VM realtime metrics query failed for {}: {}", task_id, e)
+        return {"status": "ok", "data": []}
 
 
 def _prepare_cookies_from_headers(body: TaskCreateReq) -> Dict[str, str]:

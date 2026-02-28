@@ -7,7 +7,6 @@ import json
 import os
 import queue
 import tempfile
-import time
 from typing import Any, Dict, Optional
 
 import gevent
@@ -144,7 +143,21 @@ def init_parser(parser):
 
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
-    """Log test start and spawn real-time metrics greenlet."""
+    """Log test start and spawn real-time metrics greenlet.
+
+    In multiprocess mode (``--processes N``), only the **master** process
+    reports metrics.  Worker processes are skipped because:
+    1. The master's ``runner.user_count`` already reflects the total across
+       all workers, while each worker only sees its own subset.
+    2. All processes share identical VictoriaMetrics labels so worker pushes
+       would overwrite the master's correct aggregated values.
+    """
+    # Only collect metrics on master (multiprocess) or local (single-process).
+    from locust.runners import WorkerRunner
+
+    if isinstance(environment.runner, WorkerRunner):
+        return
+
     task_id = environment.parsed_options.task_id or os.environ.get("TASK_ID", "unknown")
     task_logger = logger.bind(task_id=task_id)
     load_mode = os.environ.get("LOAD_MODE", "fixed")
@@ -182,9 +195,8 @@ def on_test_stop(environment, **kwargs):
             total_row = _build_stat_row(task_id, "total", total_stat)
             if total_row:
                 locust_stats.append(total_row)
-        task_logger.debug(f"locust_stats: {locust_stats}")
+        # task_logger.debug(f"locust_stats: {locust_stats}")
         result_file = _write_result_file(task_id, locust_stats)
-        # task_logger.debug(f"Common task result saved to {result_file}")
     except Exception as e:  # pragma: no cover - defensive
         task_logger.error(f"Failed to aggregate common stats: {e}", exc_info=True)
 

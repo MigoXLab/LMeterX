@@ -362,6 +362,7 @@ class CommonTask(Base):
     log_file = Column(Text, nullable=True)
     result_file = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
+    engine_id = Column(String(64), nullable=True)
     is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -422,24 +423,3 @@ class CommonTaskResult(Base):
             ),
             created_at=self.created_at.isoformat() if self.created_at else "",
         )
-
-
-class CommonTaskRealtimeMetric(Base):
-    """SQLAlchemy model for real-time performance metrics collected during load tests."""
-
-    __tablename__ = "common_task_realtime_metrics"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(String(40), nullable=False, index=True)
-    timestamp = Column(Float, nullable=False)
-    current_users = Column(Integer, nullable=False, default=0)
-    current_rps = Column(Float, nullable=False, default=0.0)
-    current_fail_per_sec = Column(Float, nullable=False, default=0.0)
-    avg_response_time = Column(Float, nullable=False, default=0.0)
-    min_response_time = Column(Float, nullable=False, default=0.0)
-    max_response_time = Column(Float, nullable=False, default=0.0)
-    median_response_time = Column(Float, nullable=False, default=0.0)
-    p95_response_time = Column(Float, nullable=False, default=0.0)
-    total_requests = Column(Integer, nullable=False, default=0)
-    total_failures = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, server_default=func.now())

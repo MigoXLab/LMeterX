@@ -11,3 +11,4 @@ fastapi
 uvicorn
 psutil>=5.9.0
 orjson
+requests>=2.31.0

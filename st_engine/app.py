@@ -18,6 +18,7 @@ from service.poller import (
     task_stop_poller,
 )
 from utils.logger import logger
+from utils.resource_collector import start_resource_collector, stop_resource_collector
 
 
 def start_polling():
@@ -84,10 +85,21 @@ async def lifespan(app: FastAPI):
         # Start background polling tasks if the database is initialized
         start_polling()
 
+    # Start system resource collector (pushes CPU/Memory/Network to VictoriaMetrics)
+    try:
+        start_resource_collector()
+        logger.info("System resource collector started successfully.")
+    except Exception as e:
+        logger.warning(f"Failed to start resource collector (non-fatal): {e}")
+
     yield
 
     # Executed on application shutdown
     logger.info("Performance testing engine is shutting down.")
+    try:
+        stop_resource_collector()
+    except Exception as e:
+        logger.debug(f"Ignored error stopping resource collector during shutdown: {e}")
 
 
 app = FastAPI(lifespan=lifespan)

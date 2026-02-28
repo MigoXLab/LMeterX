@@ -25,22 +25,24 @@ LMeterX is a professional large language model performance testing platform that
 
 - **Broad Framework Compatibility**: Supports mainstream inference frameworks (vLLM, LiteLLM, TRT-LLM) and cloud platforms, ensuring seamless environment migration.
 - **Full Modality & Scenarios**: Supports GPT, Claude, Llama to document parsing models like [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr), covering text, multimodal, and streaming.
-- **Hybrid Protocol Testing** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports standard Chat APIs and business HTTP interfaces, enabling full-stack load testing from base models to upper-level services.
-- **Multi-mode & High-Concurrency Load** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports fixed/stepped concurrency strategies, supports simulating ultra-high concurrency, and accurately locates performance inflection points and system capacity limits.
+- **Hybrid Protocol Testing**: Supports standard Chat APIs and business HTTP interfaces&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />, enabling full-stack load testing from base models to upper-level services.
+- **Multi-mode & High-Concurrency Load**: Supports fixed/stepped concurrency&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> strategies, supports simulating ultra-high concurrency, and accurately locates performance inflection points and system capacity limits.
 - **Built-in Dual-Mode Datasets**: Pre-configured with high-quality self-built datasets and ShareGPT standard sets, supporting one-click invocation to lower data preparation barriers.
 - **Automated Warm-up Mechanism** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports automatic model service warm-up to eliminate cold-start effects, ensuring the accuracy of test data.
-- **Multi-dimensional Indicator Visualization** <img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Integrates core indicators such as TTFT, RPS, TPS, and throughput distribution, providing real-time visualization of multi-dimensional performance indicators.
-- **AI-Driven Data Insights** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: AI-powered analysis reports with multi-model comparison, intuitively identifying optimization directions.
+- **Multi-dimensional Indicator Visualization**: Integrates core indicators such as TTFT, RPS, TPS, and throughput distribution, supporting real-time tracking and visualization of performance data<img src="docs/images/badge-new.svg" alt="NEW" height="16" />.
+- **Engine Resource Monitoring** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports real-time monitoring of the load testing machine's CPU, memory, and network bandwidth, accurately identifying local resource bottlenecks.
+- **AI-Driven Data Insights**: AI-powered analysis reports &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> with multi-model comparison, intuitively identifying optimization directions.
 - **One-stop Web Console**: Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
-- **Enterprise-Grade Security & Scaling** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports distributed elastic deployment and LDAP/AD integration for high availability and secure enterprise authentication.
+- **Enterprise-Grade Security & Scaling**: Supports distributed elastic deployment and LDAP/AD&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />integration for high availability and secure enterprise authentication.
 
 ### Feature Comparison
 | Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |
 |----------------------|-------------------------------------------------------------------------|---------------------------------------------------------------------------|----------------------------------------------------------|
 | Usage                | Web UI for full-lifecycle task creation, monitoring & stop (load-test) | CLI for ModelScope ecosystem (eval & load-test)                          | CLI, Ray-based (load-test)                              |
-| Concurrency & Stress | Multi-process / multi-task, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
+| Concurrency & Stress | Multi-process / multi-task, fix/stepped load, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
 | Test Report          | Multi-model / multi-version comparison, AI analysis, visual dashboard   | Basic report + visual charts (requires gradio, plotly, etc.)             | Simple report                                            |
 | Model & Data Support | OpenAI-compatible, custom data & model interfaces                       | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
+Performance and Resource Monitoring | Supports real-time monitoring of performance metrics and load testing machine resource status. | - | - |
 | Deployment & Scaling | Docker / K8s ready, easy horizontal scaling                             | `pip` install or source code                                             | Source code only                                         |
 
 ## 🏗️ System Architecture
@@ -184,6 +186,39 @@ deploy:
       memory: 2G        # Memory limit — adjust based on actual load (minimum recommended: 2G)
 ```
 
+### VictoriaMetrics Configuration
+
+LMeterX uses [VictoriaMetrics](https://victoriametrics.com/) as a lightweight, high-performance time-series database to store real-time performance metrics and engine resource monitoring data (CPU, memory, network bandwidth).
+
+```bash
+# ================= VictoriaMetrics Configuration =================
+# VictoriaMetrics service endpoint (used by backend and engine)
+VICTORIA_METRICS_URL=http://victoria-metrics:8428
+
+# Engine resource collection interval in seconds (default: 2s)
+RESOURCE_COLLECT_INTERVAL=2
+```
+
+Key parameters in `docker-compose.yml`:
+
+```yaml
+victoria-metrics:
+  image: victoriametrics/victoria-metrics:v1.106.1
+  ports:
+    - "8428:8428"           # HTTP API & UI port
+  command:
+    - "-retentionPeriod=7d"               # Data retention period (default: 7 days)
+    - "-search.maxUniqueTimeseries=50000" # Max unique time series for query
+    - "-memory.allowedPercent=60"         # Percentage of available RAM for cache
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 2G
+```
+
+> **Note**: VictoriaMetrics supports cgroup v1 and v2 for container-aware resource metrics. In multi-engine deployments, each engine instance is identified by a unique `engine_id` label (auto-resolved from hostname or `ENGINE_ID` / `ENGINE_POD_NAME` environment variables).
+
 ## 🤝 Development Guide
 
 > We welcome all forms of contributions! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details.
@@ -207,9 +242,6 @@ LMeterX adopts a modern technology stack to ensure system reliability and mainta
 6. **Actively Participate in Review**: Actively respond to feedback during the review process
 
 ## 🗺️ Development Roadmap
-
-### In Development
-- [ ] Support for client resource monitoring
 
 ### Planned
 - [ ] CLI command-line tool

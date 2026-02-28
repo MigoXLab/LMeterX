@@ -257,5 +257,4 @@ def normalize_relative_upload_path(file_path: str, base_upload_dir: str) -> str:
     if file_path.startswith(root_prefix):
         return file_path.replace(root_prefix, "", 1)
 
-    logger.debug("Returning original path without normalization: {}", file_path)
     return file_path

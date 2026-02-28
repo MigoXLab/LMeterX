@@ -33,7 +33,7 @@ class CommonLocustRunner(LocustRunner):
             "--host",
             task.target_host,
             "--headless",
-            "--only-summary",
+            # "--only-summary",
             "--api_path",
             task.api_path,
             "--method",

@@ -158,7 +158,9 @@ def test_parse_absolute_path_image(temp_image_file):
     result = parse_data_line(line, 1)
     assert result is not None
     assert result.prompt == "Test prompt"
-    assert result.image_base64 != ""
+    # Image is now lazily encoded at request time; parse_data_line only stores the path
+    assert result.image_path == temp_image_file
+    assert result.image_base64 == ""
     assert result.image_url == ""
 
 

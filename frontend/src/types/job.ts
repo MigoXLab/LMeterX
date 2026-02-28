@@ -53,6 +53,7 @@ export interface Job {
   step_sustain_duration?: number;
   created_by?: string;
   test_data?: string;
+  engine_id?: string;
   status:
     | 'pending'
     | 'running'
@@ -95,6 +96,7 @@ export interface CommonJob {
   step_max_users?: number;
   step_sustain_duration?: number;
   created_by?: string;
+  engine_id?: string;
   status:
     | 'pending'
     | 'running'

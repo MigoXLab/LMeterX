@@ -35,6 +35,7 @@ from utils.logger import (  # type: ignore[attr-defined]
     logger,
     remove_task_log_sink,
 )
+from utils.vm_push import ENGINE_ID
 
 
 class CommonTaskService:
@@ -137,7 +138,9 @@ class CommonTaskService:
                 task_logger = logger.bind(task_id=task.id)
                 task_logger.info(f" Claimed and locked new task {task.id}.")
                 task.status = "locked"  # type: ignore
+                task.engine_id = ENGINE_ID  # type: ignore # Bind engine instance
                 session.commit()
+                task_logger.info(f"Task {task.id} bound to engine_id={ENGINE_ID}")
                 return task
             return None
         except (OperationalError, pymysql.err.OperationalError) as e:
@@ -335,20 +338,6 @@ class CommonTaskService:
                     exc_info=True,
                 )
 
-    def _persist_task_realtime_metrics(
-        self, session: Session, task: CommonTask, run_result: dict, task_logger
-    ):
-        """Persist real-time metrics to DB (non-fatal on failure)."""
-        realtime_data = run_result.get("realtime_metrics_data", [])
-        try:
-            self.result_service.persist_realtime_metrics(
-                session, task.id, realtime_data
-            )
-        except Exception as metrics_err:
-            task_logger.warning(
-                f"Non-fatal: failed to persist realtime metrics: {metrics_err}"
-            )
-
     def _resolve_task_status(
         self, session: Session, task: CommonTask, run_result: dict, task_logger
     ):
@@ -445,7 +434,6 @@ class CommonTaskService:
             run_result = self.start_task(task)
 
             self._safe_refresh_task(session, task, task_logger)
-            self._persist_task_realtime_metrics(session, task, run_result, task_logger)
             self._resolve_task_status(session, task, run_result, task_logger)
         except (OperationalError, pymysql.err.OperationalError) as e:
             self._handle_pipeline_db_error(session, task, task_logger, e)

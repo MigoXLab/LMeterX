@@ -40,6 +40,7 @@ CREATE TABLE `tasks` (
   `headers` json DEFAULT NULL,
   `cookies` json DEFAULT NULL,
   `error_message` text COLLATE utf8mb4_unicode_ci,
+  `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Engine instance ID that executed this task',
   `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Soft delete flag: 0=active, 1=deleted',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -51,7 +52,8 @@ CREATE TABLE `tasks` (
   KEY `idx_created_at` (`created_at`),
   KEY `idx_model` (`model`),
   KEY `idx_model_concurrent_status` (`model`, `concurrent_users`, `status`, `created_at`),
-  KEY `idx_is_deleted` (`is_deleted`)
+  KEY `idx_is_deleted` (`is_deleted`),
+  KEY `idx_engine_id` (`engine_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -83,31 +85,6 @@ CREATE TABLE `task_results` (
 ) ENGINE=InnoDB AUTO_INCREMENT=262 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
--- Table structure for task_realtime_metrics
--- ----------------------------
-DROP TABLE IF EXISTS `task_realtime_metrics`;
-CREATE TABLE `task_realtime_metrics` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `task_id` varchar(40) NOT NULL COMMENT 'task id',
-  `timestamp` double NOT NULL COMMENT 'unix timestamp of the metric snapshot',
-  `current_users` int(11) NOT NULL DEFAULT '0' COMMENT 'concurrent users at this moment',
-  `current_rps` float NOT NULL DEFAULT '0' COMMENT 'requests per second',
-  `current_fail_per_sec` float NOT NULL DEFAULT '0' COMMENT 'failures per second',
-  `avg_response_time` float NOT NULL DEFAULT '0' COMMENT 'average response time (ms)',
-  `min_response_time` float NOT NULL DEFAULT '0' COMMENT 'min response time (ms)',
-  `max_response_time` float NOT NULL DEFAULT '0' COMMENT 'max response time (ms)',
-  `median_response_time` float NOT NULL DEFAULT '0' COMMENT 'median response time (ms)',
-  `p95_response_time` float NOT NULL DEFAULT '0' COMMENT 'p95 response time (ms)',
-  `total_requests` int(11) NOT NULL DEFAULT '0' COMMENT 'cumulative request count',
-  `total_failures` int(11) NOT NULL DEFAULT '0' COMMENT 'cumulative failure count',
-  `metrics_detail` text DEFAULT NULL COMMENT 'JSON dict of per-metric stats',
-  `created_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'row insertion time',
-  PRIMARY KEY (`id`),
-  KEY `idx_task_rt_metrics_task_id` (`task_id`),
-  KEY `idx_task_rt_metrics_task_ts` (`task_id`, `timestamp`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ----------------------------
 -- Table structure for common_tasks
 -- ----------------------------
 DROP TABLE IF EXISTS `common_tasks`;
@@ -137,6 +114,7 @@ CREATE TABLE `common_tasks` (
   `log_file` longtext COLLATE utf8mb4_unicode_ci,
   `result_file` longtext COLLATE utf8mb4_unicode_ci,
   `error_message` text COLLATE utf8mb4_unicode_ci,
+  `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Engine instance ID that executed this task',
   `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Soft delete flag: 0=active, 1=deleted',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -145,7 +123,8 @@ CREATE TABLE `common_tasks` (
   KEY `idx_common_created_by` (`created_by`),
   KEY `idx_common_name` (`name`),
   KEY `idx_common_created` (`created_at`),
-  KEY `idx_is_deleted` (`is_deleted`)
+  KEY `idx_is_deleted` (`is_deleted`),
+  KEY `idx_common_engine_id` (`engine_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -171,30 +150,6 @@ CREATE TABLE `common_task_results` (
   KEY `idx_common_task_id` (`task_id`),
   KEY `idx_common_task_metric_created` (`task_id`, `metric_type`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ----------------------------
--- Table structure for common_task_realtime_metrics
--- ----------------------------
-DROP TABLE IF EXISTS `common_task_realtime_metrics`;
-CREATE TABLE `common_task_realtime_metrics` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `task_id` varchar(40) NOT NULL COMMENT 'task id',
-  `timestamp` double NOT NULL COMMENT 'unix timestamp of the metric snapshot',
-  `current_users` int(11) NOT NULL DEFAULT '0' COMMENT 'concurrent users at this moment',
-  `current_rps` float NOT NULL DEFAULT '0' COMMENT 'requests per second',
-  `current_fail_per_sec` float NOT NULL DEFAULT '0' COMMENT 'failures per second',
-  `avg_response_time` float NOT NULL DEFAULT '0' COMMENT 'average response time (ms)',
-  `min_response_time` float NOT NULL DEFAULT '0' COMMENT 'min response time (ms)',
-  `max_response_time` float NOT NULL DEFAULT '0' COMMENT 'max response time (ms)',
-  `median_response_time` float NOT NULL DEFAULT '0' COMMENT 'median response time (ms)',
-  `p95_response_time` float NOT NULL DEFAULT '0' COMMENT 'p95 response time (ms)',
-  `total_requests` int(11) NOT NULL DEFAULT '0' COMMENT 'cumulative request count',
-  `total_failures` int(11) NOT NULL DEFAULT '0' COMMENT 'cumulative failure count',
-  `created_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'row insertion time',
-  PRIMARY KEY (`id`),
-  KEY `idx_rt_metrics_task_id` (`task_id`),
-  KEY `idx_rt_metrics_task_ts` (`task_id`, `timestamp`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ----------------------------
 -- Table structure for test_insights

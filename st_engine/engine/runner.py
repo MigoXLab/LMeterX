@@ -93,7 +93,6 @@ class LocustRunner:
         For LLM API tasks, runs a warmup phase first to avoid cold start interference.
         """
         task_logger = logger.bind(task_id=task.id)
-        task_logger.debug(f"Starting Locust task {task.id}")
 
         try:
             # Step 1: Prepare environment
@@ -459,7 +458,7 @@ class LocustRunner:
             "--stop-timeout",
             f"{LOCUST_STOP_TIMEOUT}s",
             "--headless",
-            "--only-summary",
+            # "--only-summary",
             "--api_path",
             task.api_path or "/chat/completions",
             "--headers",
@@ -679,46 +678,40 @@ class LocustRunner:
         stderr: str,
         task_logger,
     ) -> dict:
-        """Load result and perform cleanup.
-
-        Also reads realtime metrics JSONL before the result directory is
-        deleted, so that ``process_task_pipeline`` can persist the data.
-        """
-        # Pre-read realtime metrics JSONL before directory cleanup
-        metrics_path = os.path.join(
-            tempfile.gettempdir(), "locust_result", task.id, "realtime_metrics.jsonl"
+        """Load result and perform cleanup."""
+        # Check if task was manually stopped (killed by signal or marked as stopped)
+        was_stopped = task.id in self._stopped_task_ids or (
+            process.returncode is not None and process.returncode < 0
         )
-        realtime_metrics_data: List[dict] = []
-        if os.path.exists(metrics_path):
-            try:
-                with open(metrics_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            realtime_metrics_data.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            continue
-                task_logger.info(
-                    f"Read {len(realtime_metrics_data)} realtime metric points "
-                    f"from JSONL before directory cleanup."
-                )
-            except Exception as e:
-                task_logger.warning(f"Failed to pre-read realtime metrics JSONL: {e}")
 
         result_file = os.path.join(
             tempfile.gettempdir(), "locust_result", task.id, "result.json"
         )
 
         if not os.path.exists(result_file):
-            error_msg = f"Result file not found: {result_file}"
-            task_logger.error(error_msg)
-            locust_result = {}
-            status = "FAILED"
+            if was_stopped:
+                # Task was manually stopped – the process was killed before it
+                # could write result.json.  This is expected behaviour, not an error.
+                task_logger.info(
+                    f"Task was stopped (exit code {process.returncode}). "
+                    f"No result file expected."
+                )
+                locust_result = {}
+                status = "STOPPED"
+            else:
+                error_msg = f"Result file not found: {result_file}"
+                task_logger.error(error_msg)
+                locust_result = {}
+                status = "FAILED"
         else:
             locust_result = self._load_locust_result(result_file, task.id, task_logger)
-            status = "COMPLETED" if process.returncode == 0 else "FAILED_REQUESTS"
+            if was_stopped:
+                # Stopped but managed to write partial results
+                status = "STOPPED"
+            elif process.returncode == 0:
+                status = "COMPLETED"
+            else:
+                status = "FAILED_REQUESTS"
             if status == "FAILED_REQUESTS":
                 task_logger.warning(
                     f"Locust test completed with failures (exit code {process.returncode})"
@@ -733,7 +726,6 @@ class LocustRunner:
             "stderr": stderr,
             "return_code": process.returncode,
             "locust_result": locust_result,
-            "realtime_metrics_data": realtime_metrics_data,
         }
 
     def _cleanup_task(self, task: Task, process: subprocess.Popen, task_logger) -> None:

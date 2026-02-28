@@ -98,7 +98,7 @@ def _register_master_message_handlers(environment, task_logger):
                 completion_tokens=data.get("completion_tokens", 0),
                 total_tokens=data.get("total_tokens", 0),
             )
-            task_logger.debug(f"[Master] Received stats from worker: {data}")
+            # task_logger.debug(f"[Master] Received stats from worker: {data}")
 
         runner.register_message("token_stats", on_token_stats)
     except Exception as exc:
@@ -312,8 +312,23 @@ def on_test_start(environment, **kwargs):
     """Spawn real-time metrics greenlet when the test starts.
 
     Metrics are NOT collected during warmup mode to keep warmup lightweight.
+
+    In multiprocess mode (``--processes N``), only the **master** process
+    reports metrics.  Worker processes are skipped because:
+    1. The master's ``runner.user_count`` already reflects the total across
+       all workers, while each worker only sees its own subset.
+    2. All processes share identical VictoriaMetrics labels so worker pushes
+       would overwrite the master's correct aggregated values.
     """
     if getattr(environment, "warmup_mode", False):
+        return
+
+    # Only collect metrics on master (multiprocess) or local (single-process).
+    # Worker processes must NOT push metrics to avoid overwriting aggregated
+    # values from the master with partial per-worker values.
+    from locust.runners import WorkerRunner
+
+    if isinstance(environment.runner, WorkerRunner):
         return
 
     task_id = getattr(environment.parsed_options, "task_id", "") or os.environ.get(
@@ -325,9 +340,8 @@ def on_test_start(environment, **kwargs):
 
     # Spawn background greenlet for real-time metrics collection
     # include_entries=True  -> capture per-metric detail for LLM charts
-    # is_llm=True           -> use wider collection intervals (LLM requests are long-running)
     environment._realtime_greenlet = gevent.spawn(
-        realtime_metrics_greenlet, environment, include_entries=True, is_llm=True
+        realtime_metrics_greenlet, environment, include_entries=True
     )
 
 
@@ -494,7 +508,7 @@ class LLMTestUser(HttpUser):
                     usage, ["output", "completion"]
                 )
                 total_tokens = extract_token_from_usage(usage, ["total", "all"])
-                logger.debug(f"usage: {usage}")
+                # logger.debug(f"usage: {usage}")
 
             # Step 2: Per-field partial fallback — count only the missing fields
             # If input_tokens is missing, count from user_prompt
@@ -584,7 +598,7 @@ class LLMTestUser(HttpUser):
         base_request_kwargs, user_prompt = self.request_handler.prepare_request_kwargs(
             prompt_data
         )
-        self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
+        # self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
         if not base_request_kwargs:
             self.task_logger.error(
                 "Failed to generate request arguments. Skipping task."
@@ -605,7 +619,7 @@ class LLMTestUser(HttpUser):
                         self.client, base_request_kwargs, start_time
                     )
                 )
-                self.task_logger.debug(f"chat_request- content: {content}")
+                # self.task_logger.debug(f"chat_request- content: {content}")
             else:
                 reasoning_content, content, usage = (
                     self.stream_handler.handle_non_stream_request(

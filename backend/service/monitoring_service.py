@@ -3,6 +3,7 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import asyncio
 import math
 import os
 import time
@@ -245,11 +246,14 @@ async def get_engine_resource_metrics(
         "network_recv_bytes_per_sec": f"engine_network_recv_bytes_per_sec{{{label_filter}}}",
     }
 
-    result: Dict[str, Any] = {}
-    for key, query in queries.items():
-        raw = await _vm_query_range(query, start, end, step)
-        result[key] = _extract_series(raw, max_points)
+    keys = list(queries.keys())
+    raw_results = await asyncio.gather(
+        *(_vm_query_range(queries[k], start, end, step) for k in keys)
+    )
 
+    result: Dict[str, Any] = {
+        key: _extract_series(raw, max_points) for key, raw in zip(keys, raw_results)
+    }
     return result
 
 
@@ -293,11 +297,18 @@ async def _query_base_metrics(
     end: float,
     step: str,
 ) -> Dict[str, List[Tuple[float, float]]]:
-    """Query base performance metrics and return parsed time-series."""
+    """Query base performance metrics and return parsed time-series.
+
+    All metric queries are executed concurrently via ``asyncio.gather``
+    to minimise total latency.
+    """
+    queries = [f"{metric_name}{{{label_filter}}}" for metric_name in _BASE_METRIC_NAMES]
+    raw_results = await asyncio.gather(
+        *(_vm_query_range(q, start, end, step) for q in queries)
+    )
+
     all_series: Dict[str, List[Tuple[float, float]]] = {}
-    for metric_name in _BASE_METRIC_NAMES:
-        query = f"{metric_name}{{{label_filter}}}"
-        raw = await _vm_query_range(query, start, end, step)
+    for metric_name, raw in zip(_BASE_METRIC_NAMES, raw_results):
         if raw:
             values = raw[0].get("values", [])
             points: List[Tuple[float, float]] = []
@@ -317,11 +328,20 @@ async def _query_entry_metrics(
     end: float,
     step: str,
 ) -> Dict[str, Dict[str, Dict[float, float]]]:
-    """Query per-entry detail metrics (LLM API only)."""
+    """Query per-entry detail metrics (LLM API only).
+
+    All sub-key queries are executed concurrently via ``asyncio.gather``
+    to minimise total latency.
+    """
+    queries = [
+        f"lmeterx_entry_{sub_key}{{{label_filter}}}" for sub_key in _ENTRY_SUB_KEYS
+    ]
+    raw_results = await asyncio.gather(
+        *(_vm_query_range(q, start, end, step) for q in queries)
+    )
+
     entry_data: Dict[str, Dict[str, Dict[float, float]]] = {}
-    for sub_key in _ENTRY_SUB_KEYS:
-        query = f"lmeterx_entry_{sub_key}{{{label_filter}}}"
-        raw = await _vm_query_range(query, start, end, step)
+    for sub_key, raw in zip(_ENTRY_SUB_KEYS, raw_results):
         for series in raw:
             metric_name_label = series.get("metric", {}).get("metric_name", "")
             if not metric_name_label:

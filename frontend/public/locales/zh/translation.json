@@ -2,7 +2,7 @@
   "sidebar": {
     "testTasks": "测试任务",
     "perfCompare": "性能对比",
-    "monitorHub": "监控中心",
+    "monitorHub": "系统监控",
     "systemConfig": "系统配置"
   },
   "header": {
@@ -194,6 +194,7 @@
       "chartConcurrentUsers": "并发用户数",
       "chartsWaiting": "等待实时指标数据...",
       "chartsNoData": "该任务暂无实时指标数据。",
+      "refreshCharts": "刷新",
       "metricExplanations": {
         "Time_to_first_output_token": "输出第一个Token的时间（content字段）",
         "Time_to_output_completion": "最终答案的生成时间",

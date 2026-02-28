@@ -6,6 +6,7 @@ import {
   DownloadOutlined,
   ExclamationCircleOutlined,
   FileTextOutlined,
+  ReloadOutlined,
   StopOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
@@ -720,6 +721,24 @@ const CommonResults: React.FC = () => {
     [t]
   );
 
+  // Handle manual refresh of real-time metrics
+  const [isRefreshingMetrics, setIsRefreshingMetrics] = useState(false);
+  const handleRefreshMetrics = useCallback(async () => {
+    if (!id) return;
+    setIsRefreshingMetrics(true);
+    try {
+      // Reset to task creation time for a full re-fetch
+      const createdTs = taskInfo?.created_at
+        ? new Date(taskInfo.created_at).getTime() / 1000
+        : 0;
+      lastMetricTs.current = createdTs;
+      setMetricsData([]);
+      await fetchMetrics();
+    } finally {
+      setIsRefreshingMetrics(false);
+    }
+  }, [id, taskInfo?.created_at, fetchMetrics]);
+
   // Render the Charts tab content
   const renderChartsContent = () => {
     if (metricsData.length === 0) {
@@ -1125,6 +1144,15 @@ const CommonResults: React.FC = () => {
                 >
                   {t('pages.results.viewLogs')}
                 </Button>
+                {activeTab === 'charts' && (
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={handleRefreshMetrics}
+                    loading={isRefreshingMetrics}
+                  >
+                    {t('pages.results.refreshCharts', 'Refresh')}
+                  </Button>
+                )}
               </Space>
             }
             items={[

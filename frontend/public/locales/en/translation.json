@@ -2,7 +2,7 @@
   "sidebar": {
     "testTasks": "Test Tasks",
     "perfCompare": "Perf Insight",
-    "monitorHub": "Monitor Hub",
+    "monitorHub": "System Monitor",
     "systemConfig": "System Config"
   },
   "header": {
@@ -193,6 +193,7 @@
       "chartConcurrentUsers": "Concurrent Users",
       "chartsWaiting": "Waiting for real-time metrics data...",
       "chartsNoData": "No real-time metrics data available for this task.",
+      "refreshCharts": "Refresh",
       "metricExplanations": {
         "Time_to_first_output_token": "Time to output the first token in the final answer (content field)",
         "Time_to_output_completion": "Generation time for the final answer",

@@ -74,7 +74,7 @@ async def get_task_metrics(
             since=since,
             max_points=max_points,
         )
-        return {"status": "ok", "data": data_points}
+        return {"status": "success", "data": data_points}
     except Exception as e:
         logger.error("Failed to get task metrics from VM: {}", e, exc_info=True)
         return {"status": "error", "data": [], "error": str(e)}

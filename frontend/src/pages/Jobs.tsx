@@ -468,11 +468,27 @@ const JobsPage: React.FC = () => {
         ellipsis: true,
         render: (name: string, record: Job) => (
           <div className='table-cell-with-copy'>
-            <Tooltip title={name}>
-              <Text className='table-cell-text' ellipsis>
-                {name}
-              </Text>
-            </Tooltip>
+            <div className='table-cell-text'>
+              <Tooltip title={name} placement='top'>
+                <span
+                  className='table-cell-text-inner table-cell-link'
+                  role='link'
+                  tabIndex={0}
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(`/results/${record.id}`, '_blank');
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation();
+                      window.open(`/results/${record.id}`, '_blank');
+                    }
+                  }}
+                >
+                  {name}
+                </span>
+              </Tooltip>
+            </div>
             {canManage(record.created_by) && (
               <div className='table-cell-action'>
                 <Button
@@ -490,29 +506,6 @@ const JobsPage: React.FC = () => {
           </div>
         ),
       },
-      // Commented out: API URL column - temporarily hidden
-      // {
-      //   title: t('pages.jobs.targetUrl'),
-      //   dataIndex: 'target_host',
-      //   key: 'target_host',
-      //   ellipsis: true,
-      //   render: (target_host: string, record: Job) => {
-      //     const apiPath = record.api_path || '/chat/completions';
-      //     const fullUrl = target_host + apiPath;
-      //     return (
-      //       <div className='table-cell-with-copy'>
-      //         <Tooltip title={fullUrl} placement='topLeft'>
-      //           <Text className='table-cell-text' ellipsis>
-      //             {fullUrl}
-      //           </Text>
-      //         </Tooltip>
-      //         <div className='table-cell-action'>
-      //           <CopyButton text={fullUrl} />
-      //         </div>
-      //       </div>
-      //     );
-      //   },
-      // },
       {
         title: t('pages.jobs.model'),
         dataIndex: 'model',
@@ -764,11 +757,27 @@ const JobsPage: React.FC = () => {
         ellipsis: true,
         render: (name: string, record: CommonJob) => (
           <div className='table-cell-with-copy'>
-            <Tooltip title={name}>
-              <Text className='table-cell-text' ellipsis>
-                {name}
-              </Text>
-            </Tooltip>
+            <div className='table-cell-text'>
+              <Tooltip title={name} placement='top'>
+                <span
+                  className='table-cell-text-inner table-cell-link'
+                  role='link'
+                  tabIndex={0}
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(`/common-results/${record.id}`, '_blank');
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation();
+                      window.open(`/common-results/${record.id}`, '_blank');
+                    }
+                  }}
+                >
+                  {name}
+                </span>
+              </Tooltip>
+            </div>
             {canManage(record.created_by) && (
               <div className='table-cell-action'>
                 <Button
@@ -786,44 +795,6 @@ const JobsPage: React.FC = () => {
           </div>
         ),
       },
-      // Commented out: API URL column - temporarily hidden
-      // {
-      //   title: t('pages.jobs.targetUrl'),
-      //   dataIndex: 'target_url',
-      //   key: 'target_url',
-      //   ellipsis: true,
-      //   render: (target_url: string) => (
-      //     <div className='table-cell-with-copy'>
-      //       <Tooltip title={target_url} placement='topLeft'>
-      //         <Text className='table-cell-text' ellipsis>
-      //           {target_url}
-      //         </Text>
-      //       </Tooltip>
-      //       <div className='table-cell-action'>
-      //         <CopyButton text={target_url} />
-      //       </div>
-      //     </div>
-      //   ),
-      // },
-      // {
-      //   title: t('pages.jobs.method'),
-      //   dataIndex: 'method',
-      //   key: 'method',
-      //   align: 'center',
-      // },
-      // {
-      //   title: t('pages.jobs.concurrentUsers'),
-      //   dataIndex: 'concurrent_users',
-      //   key: 'concurrent_users',
-      //   align: 'center',
-      // },
-      // {
-      //   title: t('pages.jobs.duration'),
-      //   dataIndex: 'duration',
-      //   key: 'duration',
-      //   align: 'center',
-      //   render: (duration: number) => `${duration || 0}s`,
-      // },
       {
         title: t('pages.jobs.loadConfig'),
         key: 'load_config',

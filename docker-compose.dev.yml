@@ -34,6 +34,7 @@ services:
       - "-retentionPeriod=7d"
       - "-search.maxUniqueTimeseries=50000"
       - "-memory.allowedPercent=60"
+      - "-search.latencyOffset=1s"
     deploy:
       resources:
         limits:

@@ -18,6 +18,9 @@ interface AntdPagination {
 
 const VITE_API_BASE_URL = getApiBaseUrl();
 
+/** Polling interval when active tasks exist (ms) */
+const ACTIVE_POLLING_INTERVAL = 5000;
+
 const buildAuthHeaders = () => {
   const token = getToken();
   return token
@@ -27,6 +30,11 @@ const buildAuthHeaders = () => {
       }
     : {};
 };
+
+const isActiveStatus = (status?: string) =>
+  ['running', 'pending', 'created', 'queued'].includes(
+    status?.toLowerCase() || ''
+  );
 
 export const useJobs = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
@@ -51,6 +59,12 @@ export const useJobs = (messageApi: MessageInstance) => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const fetchingRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
+
+  // Use ref to always access the latest jobs in polling callbacks (avoid stale closure)
+  const jobsRef = useRef<Job[]>(jobs);
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
 
   const fetchJobs = useCallback(
     async (isManualRefresh = false) => {
@@ -129,12 +143,13 @@ export const useJobs = (messageApi: MessageInstance) => {
     ]
   );
 
+  /**
+   * Lightweight status-only poll.
+   * Reads jobs from ref so the callback never goes stale inside setInterval.
+   */
   const fetchJobStatuses = useCallback(async () => {
-    const hasRunningTasks = jobs.some(job =>
-      ['running', 'pending', 'created', 'queued'].includes(
-        job.status?.toLowerCase() || ''
-      )
-    );
+    const currentJobs = jobsRef.current;
+    const hasRunningTasks = currentJobs.some(job => isActiveStatus(job.status));
 
     if (!hasRunningTasks || fetchingRef.current) {
       return;
@@ -149,7 +164,7 @@ export const useJobs = (messageApi: MessageInstance) => {
     try {
       const response = await axios.get(`${VITE_API_BASE_URL}/tasks/status`, {
         signal: controller.signal,
-        timeout: 30000,
+        timeout: 10000,
         headers: buildAuthHeaders(),
       });
 
@@ -163,7 +178,7 @@ export const useJobs = (messageApi: MessageInstance) => {
             : [];
         if (statusUpdates.length > 0) {
           const statusMap = statusUpdates.reduce(
-            (acc, update) => {
+            (acc: Record<string, string>, update: any) => {
               if (update && update.id) {
                 acc[update.id] = update.status.toLowerCase();
               }
@@ -172,28 +187,30 @@ export const useJobs = (messageApi: MessageInstance) => {
             {} as Record<string, string>
           );
 
-          let hasChanges = false;
-          const updatedJobs = jobs.map(job => {
-            const newStatus = statusMap[job.id];
-            if (newStatus && newStatus !== job.status?.toLowerCase()) {
-              hasChanges = true;
-              return {
-                ...job,
-                status: newStatus,
-                updated_at: new Date().toISOString(),
-              };
+          setJobs(prevJobs => {
+            let hasChanges = false;
+            const updatedJobs = prevJobs.map(job => {
+              const newStatus = statusMap[job.id];
+              if (newStatus && newStatus !== job.status?.toLowerCase()) {
+                hasChanges = true;
+                return {
+                  ...job,
+                  status: newStatus,
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              return job;
+            });
+            if (hasChanges) {
+              setLastRefreshTime(new Date());
+              return updatedJobs;
             }
-            return job;
+            return prevJobs;
           });
-
-          if (hasChanges) {
-            setJobs(updatedJobs);
-            setLastRefreshTime(new Date());
-          }
         }
       }
     } catch {
-      /* ignore */
+      /* ignore polling errors */
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
@@ -201,21 +218,17 @@ export const useJobs = (messageApi: MessageInstance) => {
       fetchingRef.current = false;
       setRefreshing(false);
     }
-  }, [jobs]);
+  }, []); // No deps – reads from jobsRef
 
   const stopPolling = useCallback(() => {
     if (pollingTimerRef.current !== null) {
       clearInterval(pollingTimerRef.current);
       pollingTimerRef.current = null;
-      try {
-        localStorage.removeItem('job_polling_active');
-      } catch {
-        /* ignore */
-      }
     }
   }, []);
 
   const startPolling = useCallback(() => {
+    // Already polling or tab hidden → skip
     if (
       pollingTimerRef.current !== null ||
       document.visibilityState !== 'visible'
@@ -223,50 +236,30 @@ export const useJobs = (messageApi: MessageInstance) => {
       return;
     }
 
-    const hasRunningTasks = jobs.some(job =>
-      ['running', 'pending', 'created', 'queued'].includes(
-        job.status?.toLowerCase() || ''
-      )
+    const hasRunningTasks = jobsRef.current.some(job =>
+      isActiveStatus(job.status)
     );
 
     if (!hasRunningTasks) {
       return;
     }
 
-    try {
-      const now = Date.now();
-      const existingPollingTimestamp = parseInt(
-        localStorage.getItem('job_polling_timestamp') || '0'
-      );
-      if (now - existingPollingTimestamp < 25000) {
-        return;
-      }
-      localStorage.setItem('job_polling_timestamp', now.toString());
-      localStorage.setItem('job_polling_active', 'true');
-    } catch {
-      /* ignore */
-    }
-
-    const pollingInterval = 30000;
     const intervalId = window.setInterval(() => {
       if (document.visibilityState !== 'visible') {
         stopPolling();
         return;
       }
-      try {
-        localStorage.setItem('job_polling_timestamp', Date.now().toString());
-      } catch {
-        /* ignore */
-      }
       fetchJobStatuses();
-    }, pollingInterval);
+    }, ACTIVE_POLLING_INTERVAL);
     pollingTimerRef.current = intervalId;
-  }, [jobs, fetchJobStatuses, stopPolling]);
+  }, [fetchJobStatuses, stopPolling]);
 
+  // Initial data fetch
   useEffect(() => {
     fetchJobs();
   }, []);
 
+  // Re-fetch when filters or pagination change
   useEffect(() => {
     if (!initialLoadDoneRef.current) {
       return;
@@ -301,12 +294,9 @@ export const useJobs = (messageApi: MessageInstance) => {
     fetchAllModels();
   }, []);
 
+  // Start / stop polling based on whether active tasks exist
   useEffect(() => {
-    const hasRunningTasks = jobs.some(job =>
-      ['running', 'pending', 'created', 'queued'].includes(
-        job.status?.toLowerCase() || ''
-      )
-    );
+    const hasRunningTasks = jobs.some(job => isActiveStatus(job.status));
 
     if (hasRunningTasks) {
       startPolling();
@@ -317,15 +307,15 @@ export const useJobs = (messageApi: MessageInstance) => {
     return () => stopPolling();
   }, [jobs, startPolling, stopPolling]);
 
+  // Visibility change handling – refresh immediately when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const lastRefresh = lastRefreshTime?.getTime() || 0;
-        if (Date.now() - lastRefresh > 30000) {
+        if (Date.now() - lastRefresh > 5000) {
           fetchJobs(true);
-        } else {
-          startPolling();
         }
+        startPolling();
       } else {
         stopPolling();
       }

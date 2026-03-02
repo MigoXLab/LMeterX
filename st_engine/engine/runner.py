@@ -53,6 +53,17 @@ class LocustRunner:
 
     # --- Shared stepped load helpers ---
 
+    @staticmethod
+    def _safe_int(value, default: int) -> int:
+        """Return *value* as int if it is not None, otherwise *default*.
+
+        Unlike ``value or default``, this correctly preserves 0 as a valid
+        value instead of silently falling back to *default*.
+        """
+        if value is None:
+            return default
+        return int(value)
+
     def _get_stepped_env(self, task) -> Dict[str, str]:
         """Build environment variables for stepped load mode.
 
@@ -60,12 +71,20 @@ class LocustRunner:
         """
         return {
             "LOAD_MODE": "stepped",
-            "STEP_START_USERS": str(getattr(task, "step_start_users", None) or 1),
-            "STEP_INCREMENT": str(getattr(task, "step_increment", None) or 10),
-            "STEP_DURATION": str(getattr(task, "step_duration", None) or 30),
-            "STEP_MAX_USERS": str(getattr(task, "step_max_users", None) or 100),
+            "STEP_START_USERS": str(
+                self._safe_int(getattr(task, "step_start_users", None), 1)
+            ),
+            "STEP_INCREMENT": str(
+                self._safe_int(getattr(task, "step_increment", None), 10)
+            ),
+            "STEP_DURATION": str(
+                self._safe_int(getattr(task, "step_duration", None), 30)
+            ),
+            "STEP_MAX_USERS": str(
+                self._safe_int(getattr(task, "step_max_users", None), 100)
+            ),
             "STEP_SUSTAIN_DURATION": str(
-                getattr(task, "step_sustain_duration", None) or 60
+                self._safe_int(getattr(task, "step_sustain_duration", None), 60)
             ),
         }
 
@@ -74,11 +93,11 @@ class LocustRunner:
 
         Works with any task object that has step_* attributes.
         """
-        start = getattr(task, "step_start_users", None) or 1
-        increment = getattr(task, "step_increment", None) or 10
-        step_dur = getattr(task, "step_duration", None) or 30
-        max_users = getattr(task, "step_max_users", None) or 100
-        sustain = getattr(task, "step_sustain_duration", None) or 60
+        start = self._safe_int(getattr(task, "step_start_users", None), 1)
+        increment = self._safe_int(getattr(task, "step_increment", None), 10)
+        step_dur = self._safe_int(getattr(task, "step_duration", None), 30)
+        max_users = self._safe_int(getattr(task, "step_max_users", None), 100)
+        sustain = self._safe_int(getattr(task, "step_sustain_duration", None), 60)
 
         num_steps = max(1, math.ceil((max_users - start) / max(increment, 1)) + 1)
         return num_steps * step_dur + sustain
@@ -534,16 +553,15 @@ class LocustRunner:
         """Start Locust subprocess and register multiprocess group if needed."""
         # Inject stepped load env vars and task duration
         load_mode = self._get_load_mode(task)
+        # Reset _extra_env each time to prevent stale env vars (e.g. LOAD_MODE)
+        # from a previous stepped task leaking into the current fixed task.
+        self._extra_env = {}
         if load_mode == "stepped":
-            if not hasattr(self, "_extra_env"):
-                self._extra_env = {}
             self._extra_env.update(self._get_stepped_env(task))
             self._extra_env["TASK_DURATION"] = str(
                 self._calc_stepped_total_duration(task)
             )
         else:
-            if not hasattr(self, "_extra_env"):
-                self._extra_env = {}
             self._extra_env["TASK_DURATION"] = str(task.duration)
 
         self._validate_subprocess_command(cmd, "Locust")

@@ -1736,7 +1736,7 @@ body.api-test-modal-open {
 /* Table row hover styles */
 .ant-table-tbody .ant-table-row:hover,
 .ant-table-tbody .ant-table-row:hover td {
-  cursor: pointer;
+  cursor: default;
   background-color: var(--brand-lighter) !important;
 }
 
@@ -1790,6 +1790,24 @@ body.api-test-modal-open {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.table-cell-text-inner {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.table-cell-link {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.table-cell-link:hover {
+  color: var(--brand-primary) !important;
 }
 
 .table-cell-action {

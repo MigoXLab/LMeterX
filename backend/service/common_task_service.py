@@ -46,6 +46,7 @@ from model.common_task import (
     CommonTaskResult,
     CommonTaskResultRsp,
     CommonTaskStatusRsp,
+    CommonTaskTestReq,
 )
 from utils.auth import get_current_user
 from utils.auth_settings import get_auth_settings
@@ -395,17 +396,18 @@ async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, An
 
 
 async def test_common_api_svc(
-    request: Request, body: CommonTaskCreateReq
+    request: Request, body: CommonTaskTestReq
 ) -> Dict[str, Any]:
     """
     Test a common API endpoint with provided configuration (non-stream).
+    Uses the original request body directly without dataset file.
     """
     MAX_BODY_LENGTH = 100000
 
     if body.request_body and len(body.request_body) > MAX_BODY_LENGTH:
         return {
             "status": "error",
-            "error": f"Request body length exceeds {MAX_BODY_LENGTH} characters. Please shorten payload or use dataset upload.",
+            "error": f"Request body length exceeds {MAX_BODY_LENGTH} characters. Please shorten payload.",
             "response": None,
         }
 
@@ -417,30 +419,6 @@ async def test_common_api_svc(
 
     timeout_config = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
-
-    # If dataset_file provided, pick the first non-empty record for testing
-    dataset_path = body.dataset_file if isinstance(body.dataset_file, str) else None
-    if dataset_path:
-        try:
-            with open(dataset_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        json_payload = json.loads(line)
-                        text_payload = None
-                    except Exception:
-                        json_payload = None
-                        text_payload = line
-                    break
-        except Exception as e:
-            logger.error("Failed to read dataset file for testing: {}", e)
-            return {
-                "status": "error",
-                "error": f"Failed to read dataset file: {e}",
-                "response": None,
-            }
 
     try:
         async with httpx.AsyncClient(

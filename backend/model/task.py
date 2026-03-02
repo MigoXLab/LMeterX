@@ -3,6 +3,7 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import math
 from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, validator
@@ -288,6 +289,16 @@ class TaskCreateReq(BaseModel):
                 raise ValueError(
                     "step_start_users cannot be greater than step_max_users"
                 )
+            # Validate computed total duration does not exceed 48 hours (172800s)
+            increment = values.get("step_increment", 1) or 1
+            step_dur = values.get("step_duration", 30) or 30
+            num_steps = max(1, math.ceil((max_u - start) / max(increment, 1)) + 1)
+            total_duration = num_steps * step_dur + v
+            if total_duration > 172800:
+                raise ValueError(
+                    f"Stepped load total duration ({total_duration}s) exceeds "
+                    f"maximum allowed 172800s (48h). Reduce step parameters."
+                )
         return v
 
     @validator("name")
@@ -437,6 +448,122 @@ class TaskCreateReq(BaseModel):
                     "field_mapping.stop_flag is required for streaming custom-chat"
                 )
 
+        return v
+
+
+class TaskTestReq(BaseModel):
+    """
+    Request model for testing an API endpoint.
+    Only includes fields actually needed for the test request,
+    without requiring task metadata like name, duration, concurrent_users, etc.
+    """
+
+    target_host: str = Field(
+        ..., min_length=1, max_length=255, description="Target model API host"
+    )
+    api_path: str = Field(
+        default="/chat/completions", max_length=255, description="API path to test"
+    )
+    model: Optional[str] = Field(
+        default="", max_length=255, description="Name of the model to test"
+    )
+    stream_mode: bool = Field(
+        default=True, description="Whether to use streaming response"
+    )
+    headers: List[HeaderItem] = Field(
+        default_factory=list,
+        description="List of request headers (max 50)",
+    )
+    cookies: List[CookieItem] = Field(
+        default_factory=list,
+        description="List of request cookies (max 50)",
+    )
+    cert_config: Optional[CertConfig] = Field(
+        default=None, description="Certificate configuration"
+    )
+    request_payload: Optional[str] = Field(
+        default="",
+        max_length=50000,
+        description="Custom request payload (JSON string)",
+    )
+    api_type: Optional[str] = Field(
+        default="openai-chat",
+        description="API type: openai-chat, claude-chat, embeddings, or custom-chat",
+    )
+
+    @validator("target_host")
+    def validate_target_host(cls, v):
+        if not v or not v.strip():
+            raise ValueError("API address cannot be empty")
+        v = v.strip()
+        if len(v) > 255:
+            raise ValueError("API address length cannot exceed 255 characters")
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("API address must start with http:// or https://")
+        return v
+
+    @validator("api_path")
+    def validate_api_path(cls, v):
+        if not v or not v.strip():
+            raise ValueError("API path cannot be empty")
+        v = v.strip()
+        if len(v) > 255:
+            raise ValueError("API path length cannot exceed 255 characters")
+        if not v.startswith("/"):
+            raise ValueError("API path must start with /")
+        return v
+
+    @validator("request_payload")
+    def validate_request_payload(cls, v, values):
+        if not v or not v.strip():
+            model = values.get("model", "your-model-name")
+            stream_mode = values.get("stream_mode", True)
+            default_payload = {
+                "model": model,
+                "stream": stream_mode,
+                "messages": [{"role": "user", "content": "Hi"}],
+            }
+            import json
+
+            return json.dumps(default_payload)
+        if len(v) > 50000:
+            raise ValueError("Request payload length cannot exceed 50000 characters")
+        try:
+            import json
+
+            json.loads(v.strip())
+        except json.JSONDecodeError:
+            raise ValueError("Request payload must be a valid JSON format")
+        return v.strip()
+
+    @validator("headers")
+    def validate_headers(cls, v):
+        if len(v) > 50:
+            raise ValueError("Request header count cannot exceed 50")
+        for header in v:
+            if not header.key or not header.key.strip():
+                raise ValueError("Request header name cannot be empty")
+            if len(header.key.strip()) > 100:
+                raise ValueError(
+                    "Request header name length cannot exceed 100 characters"
+                )
+            if len(header.value) > 1000:
+                raise ValueError(
+                    "Request header value length cannot exceed 1000 characters"
+                )
+        return v
+
+    @validator("cookies")
+    def validate_cookies(cls, v):
+        if len(v) > 50:
+            raise ValueError("Cookie count cannot exceed 50")
+        for cookie in v:
+            if not cookie.key or not cookie.key.strip():
+                raise ValueError("Cookie name cannot be empty")
+            if len(cookie.key.strip()) > 100:
+                raise ValueError("Cookie name length cannot exceed 100 characters")
+            if len(cookie.value) > 1000:
+                raise ValueError("Cookie value length cannot exceed 1000 characters")
         return v
 
 

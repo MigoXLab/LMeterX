@@ -758,61 +758,80 @@ const TaskResults: React.FC = () => {
     }
 
     return (
-      <div
-        ref={chartsRef}
-        style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
-      >
-        {/* Response Time Chart */}
-        <div className='results-section unified-section'>
-          <div className='section-header'>
-            <span className='section-title'>
-              {t('pages.results.chartResponseTime', 'Response Time')}
-            </span>
-          </div>
-          <div className='section-content'>
-            <ReactECharts
-              option={responseTimeOption}
-              style={{ height: 300 }}
-              notMerge
-              lazyUpdate
-            />
-          </div>
+      <>
+        {/* Retention tip – outside chartsRef so it is excluded from download screenshots */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            marginBottom: 4,
+          }}
+        >
+          <span style={{ fontSize: 12, color: '#faad14' }}>
+            <ExclamationCircleOutlined style={{ marginRight: 4 }} />
+            {t(
+              'pages.results.chartsRetentionTip',
+              'Please download the report in time. Real-time metrics data will be automatically cleaned up after 7 days.'
+            )}
+          </span>
         </div>
 
-        {/* RPS & Failures Chart */}
-        <div className='results-section unified-section'>
-          <div className='section-header'>
-            <span className='section-title'>
-              {t('pages.results.chartRps', 'RPS & Failures')}
-            </span>
+        <div
+          ref={chartsRef}
+          style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
+        >
+          {/* Response Time Chart */}
+          <div className='results-section unified-section'>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.chartResponseTime', 'Response Time')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <ReactECharts
+                option={responseTimeOption}
+                style={{ height: 300 }}
+                notMerge
+                lazyUpdate
+              />
+            </div>
           </div>
-          <div className='section-content'>
-            <ReactECharts
-              option={rpsOption}
-              style={{ height: 260 }}
-              notMerge
-              lazyUpdate
-            />
-          </div>
-        </div>
 
-        {/* Concurrent Users Chart */}
-        <div className='results-section unified-section'>
-          <div className='section-header'>
-            <span className='section-title'>
-              {t('pages.results.chartConcurrentUsers', 'Concurrent Users')}
-            </span>
+          {/* RPS & Failures Chart */}
+          <div className='results-section unified-section'>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.chartRps', 'RPS & Failures')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <ReactECharts
+                option={rpsOption}
+                style={{ height: 260 }}
+                notMerge
+                lazyUpdate
+              />
+            </div>
           </div>
-          <div className='section-content'>
-            <ReactECharts
-              option={usersOption}
-              style={{ height: 240 }}
-              notMerge
-              lazyUpdate
-            />
+
+          {/* Concurrent Users Chart */}
+          <div className='results-section unified-section'>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.chartConcurrentUsers', 'Concurrent Users')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <ReactECharts
+                option={usersOption}
+                style={{ height: 240 }}
+                notMerge
+                lazyUpdate
+              />
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -1168,7 +1187,7 @@ const TaskResults: React.FC = () => {
     if (hasTtft) {
       firstRowMetrics.push({
         key: 'ttft',
-        title: createTitleWithTooltip(t('pages.results.ttft'), 'TTFT (s)'),
+        title: t('pages.results.ttft'),
         value: ttftDisplay,
       });
     }
@@ -1668,7 +1687,10 @@ const TaskResults: React.FC = () => {
                   onClick={handleDownloadReport}
                   loading={isDownloading}
                   disabled={
-                    loading || !!error || !results || results.length === 0
+                    loading ||
+                    (activeTab === 'charts'
+                      ? metricsData.length === 0
+                      : !!error || !results || results.length === 0)
                   }
                   className='modern-button-primary-light'
                 >

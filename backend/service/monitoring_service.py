@@ -21,6 +21,15 @@ _QUERY_TIMEOUT: float = 10.0
 DEFAULT_MAX_POINTS: int = 1200
 
 
+def _resp_detail(resp: httpx.Response) -> str:
+    """Extract a short error description from a non-200 VM response."""
+    try:
+        body = resp.json()
+        return body.get("error", body.get("message", resp.text[:300]))
+    except Exception:
+        return resp.text[:300]
+
+
 async def _vm_query_range(
     query: str,
     start: float,
@@ -50,7 +59,8 @@ async def _vm_query_range(
         async with httpx.AsyncClient(timeout=_QUERY_TIMEOUT) as client:
             resp = await client.get(url, params=params)
             if resp.status_code != 200:
-                logger.warning(f"VM query_range failed: HTTP {resp.status_code}")
+                detail = _resp_detail(resp)
+                logger.warning(f"VM query_range HTTP {resp.status_code}: {detail}")
                 return []
             data = resp.json()
             if data.get("status") != "success":
@@ -58,10 +68,13 @@ async def _vm_query_range(
                 return []
             return data.get("data", {}).get("result", [])
     except httpx.ConnectError:
-        logger.debug("VictoriaMetrics not reachable for query_range")
+        logger.warning(f"VM unreachable ({VM_URL}), service may not be running")
+        return []
+    except httpx.TimeoutException:
+        logger.warning(f"VM query_range timeout ({_QUERY_TIMEOUT}s)")
         return []
     except Exception as e:
-        logger.debug(f"VM query_range error: {e}")
+        logger.warning(f"VM query_range error: {e}")
         return []
 
 
@@ -81,13 +94,24 @@ async def _vm_query_instant(query: str) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=_QUERY_TIMEOUT) as client:
             resp = await client.get(url, params=params)
             if resp.status_code != 200:
+                detail = _resp_detail(resp)
+                logger.warning(f"VM instant query HTTP {resp.status_code}: {detail}")
                 return []
             data = resp.json()
             if data.get("status") != "success":
+                logger.warning(
+                    f"VM instant query error: {data.get('error', 'unknown')}"
+                )
                 return []
             return data.get("data", {}).get("result", [])
+    except httpx.ConnectError:
+        logger.warning(f"VM unreachable ({VM_URL}), service may not be running")
+        return []
+    except httpx.TimeoutException:
+        logger.warning(f"VM instant query timeout ({_QUERY_TIMEOUT}s)")
+        return []
     except Exception as e:
-        logger.debug(f"VM instant query error: {e}")
+        logger.warning(f"VM instant query error: {e}")
         return []
 
 
@@ -257,16 +281,32 @@ async def get_engine_resource_metrics(
     return result
 
 
+# VictoriaMetrics default max points per time series
+_VM_MAX_POINTS: int = 30_000
+
+
 def _calc_perf_step(
     start: float,
     end: float,
     max_points: int,
 ) -> str:
-    """Calculate step for perf queries, capped at the collection interval."""
-    raw_step = _calc_step(start, end, max_points)
-    step_seconds = int(raw_step.rstrip("s"))
-    max_perf_step = 2
-    return raw_step if step_seconds <= max_perf_step else f"{max_perf_step}s"
+    """Calculate step for perf queries.
+
+    Prefers the collection interval (2 s) for short time ranges, but
+    automatically increases the step when the resulting point count would
+    exceed VictoriaMetrics' ``search.maxPointsPerTimeseries`` limit
+    (default 30 000).
+    """
+    duration = max(end - start, 1)
+    preferred_step = 2  # collection interval
+
+    # Ensure we never exceed the VM hard limit
+    vm_min_step = max(int(duration / _VM_MAX_POINTS) + 1, 1)
+    # Also respect the frontend max_points preference
+    frontend_min_step = max(int(duration / max_points), 1)
+
+    step_seconds = max(preferred_step, vm_min_step, frontend_min_step)
+    return f"{step_seconds}s"
 
 
 #: Base metric names queried from VictoriaMetrics.

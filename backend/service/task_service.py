@@ -33,6 +33,7 @@ from model.task import (
     TaskResultItem,
     TaskResultRsp,
     TaskStatusRsp,
+    TaskTestReq,
 )
 from service.analysis_service import extract_multiple_task_metrics
 from utils.auth import get_current_user
@@ -182,12 +183,12 @@ def _build_common_task_detail(task: CommonTask) -> Dict[str, Any]:
     }
 
 
-def _get_cert_config(body: TaskCreateReq) -> Tuple[str, str]:
+def _get_cert_config(body: Union[TaskCreateReq, TaskTestReq]) -> Tuple[str, str]:
     """
     Get certificate configuration from the request body.
 
     Args:
-        body: The task creation request body
+        body: The task creation or test request body
 
     Returns:
         A tuple of (cert_file, key_file) absolute paths
@@ -200,11 +201,13 @@ def _get_cert_config(body: TaskCreateReq) -> Tuple[str, str]:
         key_file = body.cert_config.key_file or ""
     else:
         # Try to get certificate configuration from upload service
-        from service.upload_service import get_task_cert_config
+        temp_task_id = getattr(body, "temp_task_id", None)
+        if temp_task_id:
+            from service.upload_service import get_task_cert_config
 
-        cert_config = get_task_cert_config(body.temp_task_id)
-        cert_file = cert_config.get("cert_file", "")
-        key_file = cert_config.get("key_file", "")
+            cert_config = get_task_cert_config(temp_task_id)
+            cert_file = cert_config.get("cert_file", "")
+            key_file = cert_config.get("key_file", "")
 
     return cert_file, key_file
 
@@ -944,7 +947,9 @@ async def get_task_realtime_metrics_svc(
         return {"status": "ok", "data": []}
 
 
-def _prepare_cookies_from_headers(body: TaskCreateReq) -> Dict[str, str]:
+def _prepare_cookies_from_headers(
+    body: Union[TaskCreateReq, TaskTestReq],
+) -> Dict[str, str]:
     """Prepare cookies from both cookies field and headers for legacy support."""
     cookies = {}
 
@@ -978,7 +983,7 @@ def _prepare_cookies_from_headers(body: TaskCreateReq) -> Dict[str, str]:
     return cookies
 
 
-def _prepare_request_payload(body: TaskCreateReq) -> Dict:
+def _prepare_request_payload(body: Union[TaskCreateReq, TaskTestReq]) -> Dict:
     """Prepare request payload based on API path and configuration."""
 
     # If request_payload is empty or None, generate default
@@ -1078,7 +1083,7 @@ def _validate_certificate_files(
         return False, f"Certificate validation error: {str(e)}"
 
 
-def _prepare_client_cert(body: TaskCreateReq):
+def _prepare_client_cert(body: Union[TaskCreateReq, TaskTestReq]):
     """Prepare SSL certificate configuration for the HTTP client."""
     client_cert: Optional[Union[str, Tuple[str, str]]] = None
 
@@ -1130,7 +1135,7 @@ async def _handle_non_streaming_response(response) -> Dict:
     }
 
 
-async def test_llm_api_svc(request: Request, body: TaskCreateReq):
+async def test_llm_api_svc(request: Request, body: TaskTestReq):
     """
     Test a custom API endpoint with the provided configuration.
 

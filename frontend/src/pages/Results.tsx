@@ -1576,20 +1576,59 @@ const TaskResults: React.FC = () => {
             <span className='info-label'>{t('pages.results.modelName')}</span>
             <span className='info-value'>{taskInfo?.model || 'none'}</span>
           </div>
-          <div className='info-grid-item'>
-            <span className='info-label'>
-              {t('pages.results.concurrentUsers')}
-            </span>
-            <span className='info-value'>
-              {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
-            </span>
-          </div>
-          <div className='info-grid-item'>
-            <span className='info-label'>
-              {t('pages.results.testDuration')}
-            </span>
-            <span className='info-value'>{taskInfo?.duration || 0} s</span>
-          </div>
+          {(taskInfo?.load_mode || 'fixed') === 'fixed' ? (
+            <>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.concurrentUsers')}
+                </span>
+                <span className='info-value'>
+                  {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
+                </span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.testDuration')}
+                </span>
+                <span className='info-value'>{taskInfo?.duration || 0} s</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepStartUsers', 'Start Users')}
+                </span>
+                <span className='info-value'>{taskInfo?.step_start_users}</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepIncrement', 'Increment')}
+                </span>
+                <span className='info-value'>+{taskInfo?.step_increment}</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepDuration', 'Step Duration')}
+                </span>
+                <span className='info-value'>{taskInfo?.step_duration} s</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepMaxUsers', 'Max Users')}
+                </span>
+                <span className='info-value'>{taskInfo?.step_max_users}</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepSustainDuration', 'Sustain Duration')}
+                </span>
+                <span className='info-value'>
+                  {taskInfo?.step_sustain_duration} s
+                </span>
+              </div>
+            </>
+          )}
           <div className='info-grid-item'>
             <span className='info-label'>{t('pages.results.engineId')}</span>
             <span className='info-value'>

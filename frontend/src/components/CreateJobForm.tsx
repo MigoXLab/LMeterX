@@ -942,7 +942,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           1,
           Number(values.step_sustain_duration) || 60
         );
-        const steps = Math.max(1, Math.ceil((maxU - startU) / incr) + 1);
+        const steps = Math.max(1, Math.ceil((maxU - startU) / incr));
         values.duration = Math.max(1, steps * stepDur + sustainDur);
       }
 

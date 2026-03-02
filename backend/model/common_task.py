@@ -144,7 +144,7 @@ class CommonTaskCreateReq(BaseModel):
             # Validate computed total duration does not exceed 48 hours (172800s)
             increment = values.get("step_increment", 1) or 1
             step_dur = values.get("step_duration", 30) or 30
-            num_steps = max(1, math.ceil((max_u - start) / max(increment, 1)) + 1)
+            num_steps = max(1, math.ceil((max_u - start) / max(increment, 1)))
             total_duration = num_steps * step_dur + v
             if total_duration > 172800:
                 raise ValueError(

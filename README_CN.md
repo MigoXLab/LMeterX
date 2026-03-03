@@ -26,23 +26,25 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 
 - **主流框架兼容**：适配 vLLM、LiteLLM、TRT-LLM 等主流推理框架及云平台，实现环境无缝迁移。
 - **全模态全场景**：支持 GPT、Claude、Llama 及 [MinerU](https://github.com/opendatalab/MinerU)、[dots.ocr](https://github.com/rednote-hilab/dots.ocr) 等文档解析模型，涵盖文本、多模态与流式交互。
-- **混合协议压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持标准 Chat API 与业务 HTTP 接口，实现从底层模型到上层业务的全链路压测。
-- **多模式高并发压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持固定/阶梯式并发策略，支持模拟超高并发，精准定位性能拐点与系统容量上限。
+- **混合协议压测**：支持标准 Chat API 与业务 HTTP&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />接口，实现从底层模型到上层业务的全链路压测。
+- **多模式高并发压测**：支持固定/阶梯式并发&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />策略，支持模拟超高并发，精准定位性能拐点与系统容量上限。
 - **内置双模数据集**：预置高质量自建集与 ShareGPT 标准集，支持一键调用，大幅降低测试准备门槛。
 - **智能自动化预热**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持模型自动预热，消除冷启动干扰，确保测试数据精准可靠。
-- **多维指标可视化**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：集成 TTFT、RPS、TPS、吞吐分布等核心指标，多维度性能指标实时可视化呈现。
-- **AI 驱动数据洞察**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：AI 辅助分析报告，支持多模型多维度结果对比，直观呈现性能优化方向。
+- **多维指标可视化**：集成 TTFT、RPS、TPS 及吞吐分布等核心指标，支持性能数据实时追踪与可视化&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />。
+- **系统资源监控**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持压测机 CPU、内存与网络带宽的实时监控，精准排除本地资源瓶颈
+- **AI 驱动数据洞察**：AI 辅助分析报告&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />，支持多模型多维度结果对比，直观呈现性能优化方向。
 - **一站式 Web 控制台**：直观管理任务调度、监控与实时日志，显著降低上手门槛与运维成本。
-- **企业级架构安全**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持分布式弹性部署与 LDAP/AD 集成，满足企业级高可用与安全认证需求。
+- **企业级架构安全**：支持分布式弹性部署与 LDAP/AD&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />集成，满足企业级高可用与安全认证需求。
 
 ### 工具对比
 
 | 维度 | LMeterX | EvalScope | llmperf |
 |------|---------|---------|-----------|
 | 使用 | 提供 Web UI：任务创建、监控、停止全生命周期管理（压测） | CLI 命令行，面向 ModelScope 生态（效果评测和压测）| CLI 命令行，依赖 Ray 框架（压测） |
-| 并发与压测 | 支持多进程、多任务并发，企业级规模化压测 | 支持命令参数并发 | 支持命令参数并发 |
+| 并发与压测 | 支持多进程、多任务、固定和阶梯式并发模式，企业级规模化压测 | 支持命令参数并发 | 支持命令参数并发 |
 | 测试报告 | 支持多模型/多版本对比，AI 分析，提供可视化页面 | 基础报告 + 可视化图表（需额外安装 gradio, plotly等） | 简易报告 |
 | 模型与数据支持 | 支持 OpenAI 格式，支持自定义数据和模型接口 | 默认支持 OpenAI 格式，扩展新 API 需自行实现代码 | 支持 OpenAI 格式 |
+| 性能与资源监控| 支持实时监控性能指标和压测机资源情况 | - | - |
 | 部署与扩展 | 提供 Docker / K8s 部署方案，易于弹性伸缩 | `pip` 或源码 | 源码 |
 
 ## 🏗️ 系统架构
@@ -165,6 +167,39 @@ deploy:
       memory: 2G     # 内存限制，可根据实际负载调整（推荐 ≥ 2G）
 ```
 
+### VictoriaMetrics 配置
+
+LMeterX 使用 [VictoriaMetrics](https://victoriametrics.com/) 作为轻量级高性能时序数据库，用于存储实时性能指标及压测引擎的资源监控数据（CPU、内存、网络带宽）。
+
+```bash
+# ================= VictoriaMetrics 配置 =================
+# VictoriaMetrics 服务地址（后端与引擎均需配置）
+VICTORIA_METRICS_URL=http://victoria-metrics:8428
+
+# 引擎资源采集间隔，单位秒（默认 2s）
+RESOURCE_COLLECT_INTERVAL=2
+```
+
+`docker-compose.yml` 中的核心参数说明：
+
+```yaml
+victoria-metrics:
+  image: victoriametrics/victoria-metrics:v1.106.1
+  ports:
+    - "8428:8428"             # HTTP API 及 UI 端口
+  command:
+    - "-retentionPeriod=7d"               # 数据保留周期（默认 7 天）
+    - "-search.maxUniqueTimeseries=50000" # 查询允许的最大唯一时间序列数
+    - "-memory.allowedPercent=60"         # 允许使用的内存占比（%）
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 2G
+```
+
+> **说明**：资源采集模块支持 cgroup v1 与 cgroup v2，可实现容器感知的精准监控。多引擎部署场景下，每个引擎实例通过唯一的 `engine_id` 标签加以区分（自动从容器 hostname 派生，或通过 `ENGINE_ID` / `ENGINE_POD_NAME` 环境变量显式指定）。
+
 ## 🤝 开发指南
 
 > 💡 **欢迎贡献**！查看 [贡献指南](docs/CONTRIBUTING.md) 了解详情
@@ -186,11 +221,9 @@ deploy:
 
 ## 🗺️ 发展路线图
 
-### 开发中
-- [ ] 支持客户端资源监控
-
 ### 规划中
 - [ ] CLI 命令行工具
+- [ ] 多接口场景压测
 
 ## 📚 相关文档
 

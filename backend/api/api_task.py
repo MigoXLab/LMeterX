@@ -17,6 +17,7 @@ from model.task import (
     TaskResponse,
     TaskResultRsp,
     TaskStatusRsp,
+    TaskTestReq,
 )
 from service.task_service import (
     compare_performance_svc,
@@ -230,15 +231,15 @@ async def compare_performance(request: Request, comparison_request: ComparisonRe
 
 
 @router.post("/test", response_model=Dict[str, Any])
-async def test_llm_api(request: Request, task_create: TaskCreateReq):
+async def test_llm_api(request: Request, task_test: TaskTestReq):
     """
     Test the API endpoint with the provided configuration.
 
     Args:
         request (Request): The incoming request.
-        task_create (TaskCreateReq): The data for testing the API endpoint.
+        task_test (TaskTestReq): The data for testing the API endpoint.
 
     Returns:
         Dict[str, Any]: A response containing the test result.
     """
-    return await test_llm_api_svc(request, task_create)
+    return await test_llm_api_svc(request, task_test)

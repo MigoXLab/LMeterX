@@ -5,9 +5,7 @@ Copyright (c) 2025, All Rights Reserved.
 
 import asyncio
 import json
-import os
 import ssl
-import tempfile
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple, cast
@@ -44,11 +42,11 @@ from model.common_task import (
     CommonTaskCreateReq,
     CommonTaskCreateRsp,
     CommonTaskPagination,
-    CommonTaskRealtimeMetric,
     CommonTaskResponse,
     CommonTaskResult,
     CommonTaskResultRsp,
     CommonTaskStatusRsp,
+    CommonTaskTestReq,
 )
 from utils.auth import get_current_user
 from utils.auth_settings import get_auth_settings
@@ -81,6 +79,7 @@ def _build_task_summary(task: CommonTask) -> Dict[str, Any]:
         "duration": task.duration,
         "spawn_rate": task.spawn_rate,
         "load_mode": getattr(task, "load_mode", "fixed") or "fixed",
+        "engine_id": getattr(task, "engine_id", None),
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -397,17 +396,18 @@ async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, An
 
 
 async def test_common_api_svc(
-    request: Request, body: CommonTaskCreateReq
+    request: Request, body: CommonTaskTestReq
 ) -> Dict[str, Any]:
     """
     Test a common API endpoint with provided configuration (non-stream).
+    Uses the original request body directly without dataset file.
     """
     MAX_BODY_LENGTH = 100000
 
     if body.request_body and len(body.request_body) > MAX_BODY_LENGTH:
         return {
             "status": "error",
-            "error": f"Request body length exceeds {MAX_BODY_LENGTH} characters. Please shorten payload or use dataset upload.",
+            "error": f"Request body length exceeds {MAX_BODY_LENGTH} characters. Please shorten payload.",
             "response": None,
         }
 
@@ -419,30 +419,6 @@ async def test_common_api_svc(
 
     timeout_config = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
-
-    # If dataset_file provided, pick the first non-empty record for testing
-    dataset_path = body.dataset_file if isinstance(body.dataset_file, str) else None
-    if dataset_path:
-        try:
-            with open(dataset_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        json_payload = json.loads(line)
-                        text_payload = None
-                    except Exception:
-                        json_payload = None
-                        text_payload = line
-                    break
-        except Exception as e:
-            logger.error("Failed to read dataset file for testing: {}", e)
-            return {
-                "status": "error",
-                "error": f"Failed to read dataset file: {e}",
-                "response": None,
-            }
 
     try:
         async with httpx.AsyncClient(
@@ -735,88 +711,21 @@ async def _extract_common_task_metrics(
         return None
 
 
-def _read_jsonl_metrics(task_id: str, since: float) -> List[Dict[str, Any]]:
-    """Read real-time metrics from the JSONL file (used for running tasks)."""
-    metrics_path = os.path.join(
-        tempfile.gettempdir(), "locust_result", task_id, "realtime_metrics.jsonl"
-    )
-    if not os.path.exists(metrics_path):
-        return []
-
-    data_points: List[Dict[str, Any]] = []
-    try:
-        with open(metrics_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    point = json.loads(line)
-                    ts = point.get("timestamp", 0)
-                    if ts > since:
-                        data_points.append(point)
-                except json.JSONDecodeError:
-                    continue
-    except Exception as e:
-        logger.warning("Failed to read realtime metrics JSONL for {}: {}", task_id, e)
-    return data_points
-
-
-async def _read_db_metrics(session, task_id: str, since: float) -> List[Dict[str, Any]]:
-    """Read persisted real-time metrics from the database (used for completed tasks)."""
-    try:
-        stmt = (
-            select(CommonTaskRealtimeMetric)
-            .where(CommonTaskRealtimeMetric.task_id == task_id)
-            .where(CommonTaskRealtimeMetric.timestamp > since)
-            .order_by(CommonTaskRealtimeMetric.timestamp.asc())
-        )
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
-        return [
-            {
-                "timestamp": float(r.timestamp),
-                "current_users": int(r.current_users),
-                "current_rps": float(r.current_rps),
-                "current_fail_per_sec": float(r.current_fail_per_sec),
-                "avg_response_time": float(r.avg_response_time),
-                "min_response_time": float(r.min_response_time),
-                "max_response_time": float(r.max_response_time),
-                "median_response_time": float(r.median_response_time),
-                "p95_response_time": float(r.p95_response_time),
-                "total_requests": int(r.total_requests),
-                "total_failures": int(r.total_failures),
-            }
-            for r in rows
-        ]
-    except Exception as e:
-        logger.warning("Failed to read realtime metrics from DB for {}: {}", task_id, e)
-        return []
-
-
 async def get_common_task_realtime_metrics_svc(
     request: Request, task_id: str, since: float = 0.0
 ) -> Dict[str, Any]:
-    """
-    Hybrid read strategy for real-time metrics:
-    1. Try JSONL file first (available while the task is running)
-    2. Fall back to database (persisted after task finishes)
-    This ensures charts work both during and after the test.
-    """
+    """Query real-time performance metrics for a common task from VictoriaMetrics."""
     if not task_id:
         return {"status": "error", "error": "task_id is required", "data": []}
 
-    # Strategy: try JSONL first (faster, most up-to-date for running tasks)
-    data_points = _read_jsonl_metrics(task_id, since)
+    try:
+        from service.monitoring_service import get_task_perf_metrics_from_vm
 
-    if data_points:
+        data_points = await get_task_perf_metrics_from_vm(task_id, since)
         return {"status": "ok", "data": data_points}
-
-    # Fallback: read from database (for completed/stopped/failed tasks)
-    session = request.state.db
-    data_points = await _read_db_metrics(session, task_id, since)
-
-    return {"status": "ok", "data": data_points}
+    except Exception as e:
+        logger.warning("VM realtime metrics query failed for {}: {}", task_id, e)
+        return {"status": "ok", "data": []}
 
 
 async def compare_common_performance_svc(

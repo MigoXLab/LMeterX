@@ -8,6 +8,7 @@ import {
   ApiOutlined,
   BugOutlined,
   CloudOutlined,
+  CopyOutlined,
   DatabaseOutlined,
   FireOutlined,
   InfoCircleOutlined,
@@ -40,7 +41,7 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   jobApi,
@@ -49,6 +50,7 @@ import {
 } from '@/api/services';
 import { useI18n } from '@/hooks/useI18n';
 import { Job } from '@/types/job';
+import { copyToClipboard } from '@/utils/clipboard';
 import { safeJsonParse } from '@/utils/data';
 
 const { TextArea } = Input;
@@ -90,8 +92,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   // Add state to track upload loading
   const [uploading, setUploading] = useState(false);
   const [datasetFile, setDatasetFile] = useState<File | null>(null);
-  // Add state to track if user manually modified request_payload
-  const [userModifiedPayload, setUserModifiedPayload] = useState(false);
+  // Ref to prevent infinite loops during bidirectional sync between payload and form fields
+  const isSyncingRef = useRef(false);
 
   // Get default API path based on API type
   const getDefaultApiPath = (type: ApiType): string => {
@@ -231,6 +233,38 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       return JSON.stringify(parsed, null, 2);
     }
     return payload;
+  };
+
+  // Helper: update specific fields in the current payload JSON without regenerating the entire payload
+  const updatePayloadFields = (updates: Record<string, any>): string | null => {
+    const currentPayload = form.getFieldValue('request_payload');
+    if (!currentPayload) return null;
+    const parsed = safeJsonParse<any>(currentPayload, null);
+    if (!parsed || typeof parsed !== 'object') return null;
+    let changed = false;
+    Object.entries(updates).forEach(([key, value]) => {
+      if (parsed[key] !== value) {
+        parsed[key] = value;
+        changed = true;
+      }
+    });
+    return changed ? JSON.stringify(parsed, null, 2) : null;
+  };
+
+  // Helper: extract model and stream values from payload JSON
+  const extractFieldsFromPayload = (
+    payloadStr: string
+  ): { model?: string; stream?: boolean } => {
+    const parsed = safeJsonParse<any>(payloadStr, null);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const result: { model?: string; stream?: boolean } = {};
+    if ('model' in parsed && typeof parsed.model === 'string') {
+      result.model = parsed.model;
+    }
+    if ('stream' in parsed && typeof parsed.stream === 'boolean') {
+      result.stream = parsed.stream;
+    }
+    return result;
   };
 
   // Tab navigation functions
@@ -446,8 +480,6 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   useEffect(() => {
     if (initialData) {
       setIsCopyMode(true);
-      // In copy mode, consider payload as manually modified to prevent auto-filling
-      setUserModifiedPayload(true);
 
       const dataToFill: any = { ...initialData };
 
@@ -571,8 +603,6 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       }
     } else if (!isCopyMode) {
       setIsCopyMode(false);
-      // Reset user modification tracking for new tasks
-      setUserModifiedPayload(false);
       // reset form fields
       const currentTempTaskId = form.getFieldValue('temp_task_id');
       if (currentTempTaskId !== tempTaskId) {
@@ -743,13 +773,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       setTesting(true);
 
       // Only validate required fields for testing from the first tab
-      const requiredFields = [
-        'target_host',
-        'api_path',
-        'model',
-        'stream_mode',
-        // Remove request_payload from required fields for testing
-      ];
+      const requiredFields = ['target_host', 'api_path', 'stream_mode'];
 
       // Validate only the required fields for testing
       await form.validateFields(requiredFields);
@@ -758,7 +782,6 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const values = form.getFieldsValue(true);
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
-      normalizeWarmupDuration(values);
 
       // Ensure request_payload is available - auto-generate if empty
       if (!values.request_payload || !values.request_payload.trim()) {
@@ -827,19 +850,22 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         ];
       }
 
-      // Prepare test data - provide default values for missing fields
-      const testData = {
-        ...values,
-        // Provide default values for testing
-        duration: 10, // Default 10 seconds for testing
-        concurrent_users: 1, // Default 1 user for testing
-        spawn_rate: 1, // Default spawn rate for testing
-        test_data_input_type: 'none', // No dataset for testing
+      // Prepare test data - only include fields needed by backend TaskTestReq
+      const testData: any = {
+        target_host: values.target_host,
+        api_path: values.api_path,
+        model: values.model,
+        stream_mode: values.stream_mode,
+        headers: values.headers,
+        cookies: values.cookies,
+        request_payload: values.request_payload,
+        api_type: values.api_type,
       };
 
-      // Remove field_mapping as it's not needed for testing
-      delete testData.field_mapping;
-      delete testData.cert_type;
+      // Include cert_config if present (uploaded via certificate flow)
+      if (values.cert_config) {
+        testData.cert_config = values.cert_config;
+      }
 
       // Call test API
       const apiResponse = await jobApi.testApiEndpoint(testData);
@@ -916,7 +942,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           1,
           Number(values.step_sustain_duration) || 60
         );
-        const steps = Math.max(1, Math.ceil((maxU - startU) / incr)) + 1;
+        const steps = Math.max(1, Math.ceil((maxU - startU) / incr));
         values.duration = Math.max(1, steps * stepDur + sustainDur);
       }
 
@@ -1080,7 +1106,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       const values = form.getFieldsValue();
 
       // Only check fields required for testing (from tab 1)
-      if (!values.target_host || !values.api_path || !values.model) {
+      if (!values.target_host || !values.api_path) {
         return false;
       }
 
@@ -1837,21 +1863,6 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
               placeholder='{"model":"your-model-name","messages": [{"role": "user","content":"Hi"}],"stream": true}'
               maxLength={50000}
               showCount
-              onChange={e => {
-                // Track if user manually modified the payload
-                if (
-                  e.target.value !==
-                  generateDefaultPayload(
-                    form.getFieldValue('model') || '',
-                    form.getFieldValue('stream_mode') !== undefined
-                      ? form.getFieldValue('stream_mode')
-                      : true,
-                    form.getFieldValue('api_path') || ''
-                  )
-                ) {
-                  setUserModifiedPayload(true);
-                }
-              }}
             />
           </Form.Item>
         </Col>
@@ -3281,27 +3292,54 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         }}
         onFinish={handleSubmit}
         onValuesChange={changedValues => {
-          // Handle API type changes
-          if ('api_type' in changedValues && !isCopyMode) {
-            const newApiType = changedValues.api_type;
-
-            // Update api_path based on API type
-            const newApiPath = getDefaultApiPath(newApiType);
-            form.setFieldsValue({ api_path: newApiPath });
-
-            // Update stream_mode for embed types
-            const isEmbedType = newApiType === 'embeddings';
-            if (isEmbedType) {
-              form.setFieldsValue({ stream_mode: false });
-              setStreamMode(false);
+          // Skip sync logic when we are already syncing internally
+          if (isSyncingRef.current) {
+            // Still handle non-payload related changes even during sync
+            if ('warmup_enabled' in changedValues) {
+              const warmupEnabled = changedValues.warmup_enabled;
+              const currentWarmupDuration =
+                form.getFieldValue('warmup_duration');
+              if (warmupEnabled === false) {
+                form.setFieldsValue({
+                  warmup_duration: currentWarmupDuration ?? 120,
+                });
+              } else if (warmupEnabled === true) {
+                if (
+                  currentWarmupDuration === undefined ||
+                  currentWarmupDuration === null
+                ) {
+                  form.setFieldsValue({ warmup_duration: 120 });
+                }
+              }
             }
+            if ('concurrent_users' in changedValues) {
+              setConcurrentUsers(changedValues.concurrent_users);
+            }
+            if ('stream_mode' in changedValues) {
+              setStreamMode(changedValues.stream_mode);
+            }
+          } else {
+            // Handle API type changes — regenerate entire payload since structure differs
+            if ('api_type' in changedValues && !isCopyMode) {
+              const newApiType = changedValues.api_type;
 
-            // Update field_mapping based on API type
-            const newFieldMapping = getDefaultFieldMapping(newApiType);
-            form.setFieldsValue({ field_mapping: newFieldMapping });
+              // Update api_path based on API type
+              const newApiPath = getDefaultApiPath(newApiType);
+              form.setFieldsValue({ api_path: newApiPath });
 
-            // Update request_payload based on API type
-            if (!userModifiedPayload) {
+              // Update stream_mode for embed types
+              const isEmbedType = newApiType === 'embeddings';
+              if (isEmbedType) {
+                form.setFieldsValue({ stream_mode: false });
+                setStreamMode(false);
+              }
+
+              // Update field_mapping based on API type
+              const newFieldMapping = getDefaultFieldMapping(newApiType);
+              form.setFieldsValue({ field_mapping: newFieldMapping });
+
+              // Regenerate entire payload for new API type
+              isSyncingRef.current = true;
               const currentStreamMode = isEmbedType
                 ? false
                 : form.getFieldValue('stream_mode');
@@ -3312,71 +3350,94 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                 currentStreamMode
               );
               form.setFieldsValue({ request_payload: newPayload });
+              isSyncingRef.current = false;
+
+              // Reset to tab 1 when API type changes to ensure proper tab navigation
+              setActiveTabKey('1');
             }
 
-            // Reset to tab 1 when API type changes to ensure proper tab navigation
-            setActiveTabKey('1');
-          }
+            // Handle stream_mode changes — update only `stream` field in payload JSON
+            if ('stream_mode' in changedValues) {
+              setStreamMode(changedValues.stream_mode);
+              // Update field_mapping default values when stream mode changes (but not in copy mode)
+              if (!isCopyMode) {
+                const currentApiType =
+                  form.getFieldValue('api_type') || 'openai-chat';
+                const newFieldMapping = getDefaultFieldMapping(currentApiType);
+                form.setFieldsValue({ field_mapping: newFieldMapping });
+              }
 
-          if ('stream_mode' in changedValues) {
-            setStreamMode(changedValues.stream_mode);
-            // Update field_mapping default values when stream mode changes (but not in copy mode)
-            // Note: For standard chat APIs (openai-chat, claude-chat), backend auto-generates field mapping
-            // so we don't need to update it here
-            if (!isCopyMode) {
-              const currentApiType =
-                form.getFieldValue('api_type') || 'openai-chat';
-              const newFieldMapping = getDefaultFieldMapping(currentApiType);
-              form.setFieldsValue({ field_mapping: newFieldMapping });
-            }
-
-            // Auto-fill request_payload when stream_mode changes (only if user hasn't manually modified it)
-            if (!userModifiedPayload && !isCopyMode) {
-              const currentApiType =
-                form.getFieldValue('api_type') || 'openai-chat';
-              const currentModel = form.getFieldValue('model') || '';
-              const newPayload = generateDefaultPayload(
-                currentApiType,
-                currentModel,
-                changedValues.stream_mode
-              );
-              form.setFieldsValue({ request_payload: newPayload });
-            }
-          }
-          if ('warmup_enabled' in changedValues) {
-            const warmupEnabled = changedValues.warmup_enabled;
-            const currentWarmupDuration = form.getFieldValue('warmup_duration');
-            if (warmupEnabled === false) {
-              form.setFieldsValue({
-                warmup_duration: currentWarmupDuration ?? 120,
+              // Update `stream` field in the existing payload JSON
+              isSyncingRef.current = true;
+              const updatedPayload = updatePayloadFields({
+                stream: changedValues.stream_mode,
               });
-            } else if (warmupEnabled === true) {
-              if (
-                currentWarmupDuration === undefined ||
-                currentWarmupDuration === null
-              ) {
-                form.setFieldsValue({ warmup_duration: 120 });
+              if (updatedPayload) {
+                form.setFieldsValue({ request_payload: updatedPayload });
+              }
+              isSyncingRef.current = false;
+            }
+
+            // Handle model changes — update only `model` field in payload JSON
+            if ('model' in changedValues) {
+              isSyncingRef.current = true;
+              const modelValue = changedValues.model?.trim() || 'none';
+              const updatedPayload = updatePayloadFields({
+                model: modelValue,
+              });
+              if (updatedPayload) {
+                form.setFieldsValue({ request_payload: updatedPayload });
+              }
+              isSyncingRef.current = false;
+            }
+
+            // Handle request_payload changes — reverse sync model and stream_mode back to form fields
+            if ('request_payload' in changedValues) {
+              const payloadStr = changedValues.request_payload;
+              if (payloadStr) {
+                const extracted = extractFieldsFromPayload(payloadStr);
+                const updates: Record<string, any> = {};
+                if (
+                  extracted.model !== undefined &&
+                  extracted.model !== form.getFieldValue('model')
+                ) {
+                  updates.model = extracted.model;
+                }
+                if (
+                  extracted.stream !== undefined &&
+                  extracted.stream !== form.getFieldValue('stream_mode')
+                ) {
+                  updates.stream_mode = extracted.stream;
+                  setStreamMode(extracted.stream);
+                }
+                if (Object.keys(updates).length > 0) {
+                  isSyncingRef.current = true;
+                  form.setFieldsValue(updates);
+                  isSyncingRef.current = false;
+                }
               }
             }
-          }
-          if ('concurrent_users' in changedValues) {
-            setConcurrentUsers(changedValues.concurrent_users);
-          }
 
-          // Auto-fill request_payload when model changes (only if user hasn't manually modified it)
-          if ('model' in changedValues && !userModifiedPayload && !isCopyMode) {
-            const currentApiType =
-              form.getFieldValue('api_type') || 'openai-chat';
-            const currentStreamMode =
-              form.getFieldValue('stream_mode') !== undefined
-                ? form.getFieldValue('stream_mode')
-                : true;
-            const newPayload = generateDefaultPayload(
-              currentApiType,
-              changedValues.model || '',
-              currentStreamMode
-            );
-            form.setFieldsValue({ request_payload: newPayload });
+            if ('warmup_enabled' in changedValues) {
+              const warmupEnabled = changedValues.warmup_enabled;
+              const currentWarmupDuration =
+                form.getFieldValue('warmup_duration');
+              if (warmupEnabled === false) {
+                form.setFieldsValue({
+                  warmup_duration: currentWarmupDuration ?? 120,
+                });
+              } else if (warmupEnabled === true) {
+                if (
+                  currentWarmupDuration === undefined ||
+                  currentWarmupDuration === null
+                ) {
+                  form.setFieldsValue({ warmup_duration: 120 });
+                }
+              }
+            }
+            if ('concurrent_users' in changedValues) {
+              setConcurrentUsers(changedValues.concurrent_users);
+            }
           }
 
           // Clear related fields when dataset source type changes
@@ -3530,6 +3591,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
             key='close'
             size='large'
             onClick={() => setTestModalVisible(false)}
+            type='primary'
           >
             {t('components.createJobForm.close')}
           </Button>,
@@ -3692,6 +3754,37 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                         </div>
                       )}
                   </Space>
+                  <Tooltip title={t('common.copy')}>
+                    <Button
+                      type='text'
+                      size='small'
+                      icon={<CopyOutlined />}
+                      onClick={() => {
+                        let textToCopy = '';
+                        if (
+                          testResult.response.is_stream &&
+                          Array.isArray(testResult.response.data)
+                        ) {
+                          textToCopy = testResult.response.data.join('\n');
+                        } else if (
+                          typeof testResult.response.data === 'string'
+                        ) {
+                          textToCopy = testResult.response.data;
+                        } else {
+                          textToCopy = JSON.stringify(
+                            testResult.response.data,
+                            null,
+                            2
+                          );
+                        }
+                        copyToClipboard(
+                          textToCopy,
+                          t('common.copySuccess'),
+                          t('common.copyFailed')
+                        );
+                      }}
+                    />
+                  </Tooltip>
                 </div>
 
                 {/* Response Content */}

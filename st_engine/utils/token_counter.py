@@ -202,7 +202,6 @@ def get_token_counter(model_name: str) -> TokenCounter:
                     exc,
                 )
 
-        logger.debug("Using regex-based token counter for model: %s", model_name)
         return RegexTokenCounter()
 
     except Exception as exc:

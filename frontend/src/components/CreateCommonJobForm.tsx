@@ -2,7 +2,11 @@
  * @file CreateCommonJobForm.tsx
  * @description Form for creating common API jobs
  */
-import { BugOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import {
+  BugOutlined,
+  CopyOutlined,
+  InfoCircleOutlined,
+} from '@ant-design/icons';
 import {
   App,
   Button,
@@ -25,6 +29,7 @@ import { useTranslation } from 'react-i18next';
 
 import { commonJobApi, uploadDatasetFile } from '@/api/services';
 import { CommonJob } from '@/types/job';
+import { copyToClipboard } from '@/utils/clipboard';
 import parseCurlCommand from '@/utils/curl';
 
 const { TextArea } = Input;
@@ -241,7 +246,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
         1,
         Number(values.step_sustain_duration) || 60
       );
-      const steps = Math.max(1, Math.ceil((maxU - startU) / incr)) + 1;
+      const steps = Math.max(1, Math.ceil((maxU - startU) / incr));
       payload.duration = Math.max(1, steps * stepDur + sustainDur);
     }
 
@@ -288,25 +293,29 @@ const CreateCommonJobForm: React.FC<Props> = ({
       // Validate minimal set
       await form.validateFields(requiredFields as any);
 
-      // Merge all current form values with initial defaults
+      // Get current form values
       const allValues = form.getFieldsValue(true);
-      const mergedValues: any = {
-        ...initialValues,
-        ...allValues,
+
+      // Build test-only payload - only include fields needed by CommonTaskTestReq
+      const headersStr = (allValues.headers || '').trim();
+      const parsedHeaders = headersStr
+        ? headersStr
+            .split('\n')
+            .filter((line: string) => line.trim())
+            .map((line: string) => {
+              const [key, ...rest] = line.split(':');
+              return { key: key.trim(), value: rest.join(':').trim() };
+            })
+        : [];
+
+      const payload: any = {
+        method: allValues.method,
+        target_url: allValues.target_url,
+        headers: parsedHeaders,
+        cookies: allValues.cookies || [],
+        request_body: allValues.request_body || null,
       };
 
-      // Fallbacks for required backend fields
-      mergedValues.name =
-        mergedValues.name?.toString().trim() || `temp-${Date.now()}`;
-      mergedValues.temp_task_id =
-        mergedValues.temp_task_id || `temp-${Date.now()}`;
-      mergedValues.concurrent_users = mergedValues.concurrent_users || 1;
-      mergedValues.spawn_rate =
-        mergedValues.spawn_rate || mergedValues.concurrent_users || 1;
-      mergedValues.duration = mergedValues.duration || 60;
-      mergedValues.dataset_source = mergedValues.dataset_source || 'none';
-
-      const payload = buildPayload(mergedValues);
       setTesting(true);
       const res = await commonJobApi.testJob(payload);
       const data = (res as any)?.data ?? {};
@@ -318,11 +327,6 @@ const CreateCommonJobForm: React.FC<Props> = ({
         body: data?.body ?? data,
       });
       setTestModalVisible(true);
-      message.success(
-        t('components.createCommonJobForm.testSuccess', {
-          status: httpStatus ?? 'OK',
-        })
-      );
     } catch (err: any) {
       // apiClient throws { data, status, statusText } — not wrapped in .response
       const errData = err?.data ?? err?.response?.data;
@@ -651,7 +655,16 @@ const CreateCommonJobForm: React.FC<Props> = ({
             </Col>
             <Col span={8}>
               <Form.Item
-                label={t('components.createCommonJobForm.spawnRate')}
+                label={
+                  <Space>
+                    {t('components.createCommonJobForm.spawnRate')}
+                    <Tooltip
+                      title={t('components.createCommonJobForm.spawnRateTip')}
+                    >
+                      <InfoCircleOutlined />
+                    </Tooltip>
+                  </Space>
+                }
                 name='spawn_rate'
                 rules={[
                   {
@@ -909,8 +922,34 @@ const CreateCommonJobForm: React.FC<Props> = ({
                 fontSize: 12,
               }}
             >
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  marginBottom: 6,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
                 {t('components.createCommonJobForm.testResponse')}
+                <Tooltip title={t('common.copy')}>
+                  <Button
+                    type='text'
+                    size='small'
+                    icon={<CopyOutlined />}
+                    onClick={() => {
+                      const textToCopy =
+                        typeof testResult.body === 'string'
+                          ? testResult.body
+                          : JSON.stringify(testResult.body ?? {}, null, 2);
+                      copyToClipboard(
+                        textToCopy,
+                        t('common.copySuccess'),
+                        t('common.copyFailed')
+                      );
+                    }}
+                  />
+                </Tooltip>
               </div>
               {typeof testResult.body === 'string'
                 ? testResult.body

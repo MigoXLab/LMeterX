@@ -2,7 +2,7 @@
   "sidebar": {
     "testTasks": "Test Tasks",
     "perfCompare": "Perf Insight",
-    "monitorHub": "Monitor Hub",
+    "monitorHub": "System Monitor",
     "systemConfig": "System Config"
   },
   "header": {
@@ -137,6 +137,8 @@
       "modelName": "Model Name",
       "concurrentUsers": "Concurrent Users",
       "testDuration": "Test Duration",
+      "engineId": "Engine ID",
+      "viewEngineMonitor": "View Engine Resource Monitor",
       "builtInDataset": "Built-in Dataset",
       "customDataset": "Custom Dataset",
       "datasetOptionTextSelfBuilt": "Text-Only · Self-built",
@@ -191,6 +193,8 @@
       "chartConcurrentUsers": "Concurrent Users",
       "chartsWaiting": "Waiting for real-time metrics data...",
       "chartsNoData": "No real-time metrics data available for this task.",
+      "refreshCharts": "Refresh",
+      "chartsRetentionTip": "Please download the report in time. Real-time metrics data will be automatically cleaned up after 7 days.",
       "metricExplanations": {
         "Time_to_first_output_token": "Time to output the first token in the final answer (content field)",
         "Time_to_output_completion": "Generation time for the final answer",
@@ -209,13 +213,21 @@
     },
     "systemMonitor": {
       "title": "System Monitor",
-      "description": "View system logs and runtime status",
+      "description": "View system resource usage and runtime status",
+      "engineResources": "Resource Monitoring",
+      "selectEngine": "Select Load Test Engine",
       "cpuUsage": "CPU Usage",
       "memoryUsage": "Memory Usage",
+      "memUsed": "Used",
+      "memTotal": "Total",
       "diskUsage": "Disk Usage",
-      "networkTraffic": "Network Traffic",
+      "networkTraffic": "Network Bandwidth",
+      "netSent": "Net Sent",
+      "netRecv": "Net Received",
       "systemLoad": "System Load",
-      "uptime": "Uptime"
+      "uptime": "Uptime",
+      "noEngineData": "No engine metrics data available",
+      "fetchFailed": "Failed to fetch metrics"
     },
     "systemConfig": {
       "title": "System Configuration",
@@ -499,7 +511,7 @@
       "testDurationTooltip": "How long the load test should run",
       "concurrentUsersTooltip": "Maximum number of virtual users sending requests simultaneously",
       "userSpawnRate": "User Spawn Rate",
-      "userSpawnRateTooltip": "Number of new virtual users started per second during ramp-up",
+      "userSpawnRateTooltip": "The number of virtual users spawned per second until the target concurrency is reached. A higher rate ramps up load faster.",
       "requestFieldMapping": "Request Field Mapping",
       "promptFieldPath": "Prompt",
       "promptFieldPathTooltip": "The key in your request payload that contains the user prompt (needed for performance metrics calculation)",
@@ -655,6 +667,7 @@
       "concurrentUsers": "Concurrent Users",
       "concurrentUsersRequired": "Please enter concurrent users",
       "spawnRate": "User Spawn Rate",
+      "spawnRateTip": "The number of virtual users spawned per second until the target concurrency is reached. A higher rate ramps up load faster.",
       "spawnRateRequired": "Please enter user spawn rate",
       "duration": "Duration (seconds)",
       "durationRequired": "Please enter duration",

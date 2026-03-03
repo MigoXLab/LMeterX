@@ -39,14 +39,13 @@ class SteppedLoadShape(LoadTestShape):
         self.step_duration = int(os.environ.get("STEP_DURATION", "30"))
         self.step_max_users = int(os.environ.get("STEP_MAX_USERS", "100"))
         self.step_sustain_duration = int(os.environ.get("STEP_SUSTAIN_DURATION", "60"))
-        # Calculate the number of ramp-up steps
+        # Calculate the number of ramp-up steps (from start to just below max)
         self.num_steps = max(
             1,
             math.ceil(
                 (self.step_max_users - self.step_start_users)
                 / max(self.step_increment, 1)
-            )
-            + 1,  # +1 for the initial step
+            ),
         )
         # Total ramp phase time
         self.ramp_phase_time = self.num_steps * self.step_duration

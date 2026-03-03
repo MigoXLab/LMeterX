@@ -10,6 +10,7 @@ import {
   ExclamationCircleOutlined,
   FileTextOutlined,
   InfoCircleOutlined,
+  ReloadOutlined,
   RobotOutlined,
   StopOutlined,
   UnorderedListOutlined,
@@ -39,7 +40,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { analysisApi, jobApi, resultApi } from '../api/services';
+import { analysisApi, jobApi, monitoringApi, resultApi } from '../api/services';
 import { CopyButton } from '../components/ui/CopyButton';
 import { IconTooltip } from '../components/ui/IconTooltip';
 import { LoadingSpinner } from '../components/ui/LoadingState';
@@ -75,6 +76,20 @@ const TaskResults: React.FC = () => {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguage();
   const { id } = useParams<{ id: string }>();
+  const getTabStorageKey = useCallback(
+    (jobId?: string) => `results-active-tab:${jobId || 'unknown'}`,
+    []
+  );
+  const getStoredActiveTab = useCallback(
+    (jobId?: string) => {
+      if (typeof window === 'undefined') return 'statistics';
+      const saved = window.localStorage.getItem(getTabStorageKey(jobId));
+      return saved === 'charts' || saved === 'statistics'
+        ? saved
+        : 'statistics';
+    },
+    [getTabStorageKey]
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<any[]>([]);
@@ -85,12 +100,16 @@ const TaskResults: React.FC = () => {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [showAnalysisReport, setShowAnalysisReport] = useState(false);
   const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState('charts');
+  const [activeTab, setActiveTab] = useState(() => getStoredActiveTab(id));
   const [metricsData, setMetricsData] = useState<RealtimeMetricPoint[]>([]);
+  const [validatedEngineId, setValidatedEngineId] = useState<string | null>(
+    null
+  );
   const [isStopping, setIsStopping] = useState(false);
   const lastMetricTs = useRef<number>(0);
   const fetchingRef = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevStatusRef = useRef<string | undefined>();
   const configCardRef = useRef<HTMLDivElement | null>(null);
   const overviewCardRef = useRef<HTMLDivElement | null>(null);
   const detailsCardRef = useRef<HTMLDivElement | null>(null);
@@ -212,17 +231,63 @@ const TaskResults: React.FC = () => {
     fetchAnalysisResult();
   }, [id]);
 
+  // Restore active tab when navigating to a different task ID.
+  useEffect(() => {
+    setActiveTab(getStoredActiveTab(id));
+  }, [id, getStoredActiveTab]);
+
+  // Validate task engine id against monitoring engine list.
+  // Old task snapshots may contain stale ids (e.g. engine-01).
+  useEffect(() => {
+    const rawEngineId = taskInfo?.engine_id;
+    if (!rawEngineId) {
+      setValidatedEngineId(null);
+      return;
+    }
+
+    let cancelled = false;
+    const validateEngineId = async () => {
+      try {
+        const resp = await monitoringApi.getEngines();
+        const engines = ((resp.data as any)?.data ?? []) as Array<{
+          engine_id?: string;
+        }>;
+        const exists = engines.some(engine => engine.engine_id === rawEngineId);
+        if (!cancelled) {
+          setValidatedEngineId(exists ? rawEngineId : null);
+        }
+      } catch {
+        if (!cancelled) {
+          // Fallback to "-" when engine list cannot be resolved.
+          setValidatedEngineId(null);
+        }
+      }
+    };
+
+    validateEngineId();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskInfo?.engine_id]);
+
   // Fetch real-time metrics incrementally (with lock to prevent concurrent fetches)
   const fetchMetrics = useCallback(async () => {
     if (!id || fetchingRef.current) return;
     fetchingRef.current = true;
     try {
-      const res = await jobApi.getRealtimeMetrics(id, lastMetricTs.current);
+      const since = lastMetricTs.current;
+      const res = await jobApi.getRealtimeMetrics(id, since);
       const body: any = res.data;
       const points: RealtimeMetricPoint[] = body?.data ?? [];
       if (points.length > 0) {
-        setMetricsData(prev => [...prev, ...points]);
-        lastMetricTs.current = Math.max(...points.map(p => p.timestamp));
+        // Filter out duplicate points: VM query_range is inclusive on start
+        // boundary, so the point at `since` may be returned again.
+        const newPoints =
+          since > 0 ? points.filter(p => p.timestamp > since) : points;
+        if (newPoints.length > 0) {
+          setMetricsData(prev => [...prev, ...newPoints]);
+          lastMetricTs.current = Math.max(...newPoints.map(p => p.timestamp));
+        }
       }
     } catch {
       // Silently ignore fetch errors during polling
@@ -275,23 +340,60 @@ const TaskResults: React.FC = () => {
     return () => clearInterval(interval);
   }, [id, taskInfo?.status]);
 
-  // Poll real-time metrics ONLY when task is running and charts tab is active
+  // Poll real-time metrics when charts tab is active.
+  // - Active tasks (running/pending): poll every 2 s.
+  // - On transition from active → terminal: schedule a delayed final fetch
+  //   so that late-arriving VM data is captured.
+  // - Completed tasks opened fresh: single fetch to load all historical data.
   useEffect(() => {
     if (!taskInfo) return;
 
-    const isRunning = taskInfo.status === 'running';
+    const currentStatus = taskInfo.status;
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = currentStatus;
+
+    const isActive = currentStatus === 'running' || currentStatus === 'pending';
+    const wasActive = prev === 'running' || prev === 'pending';
+
+    let completionTimer: ReturnType<typeof setTimeout> | null = null;
+
     if (activeTab === 'charts' && id) {
-      // Always do an initial fetch when switching to charts tab
+      // Seed lastMetricTs from task creation time so the backend queries
+      // a precise window instead of a wide fallback (e.g. 2 h).
+      if (lastMetricTs.current === 0 && taskInfo.created_at) {
+        const createdTs = new Date(taskInfo.created_at).getTime() / 1000;
+        if (createdTs > 0) {
+          lastMetricTs.current = createdTs;
+        }
+      }
+
+      // Always do an initial / incremental fetch when switching to charts tab
       fetchMetrics();
 
-      if (isRunning) {
+      if (isActive) {
+        // Keep polling while the task is active
         pollingRef.current = setInterval(fetchMetrics, 2000);
+      } else if (wasActive) {
+        // Task just finished – schedule a delayed final fetch to capture
+        // metrics that may still be ingested by VictoriaMetrics.
+        completionTimer = setTimeout(() => {
+          // Reset to task creation time for a full re-fetch
+          const createdTs = taskInfo.created_at
+            ? new Date(taskInfo.created_at).getTime() / 1000
+            : 0;
+          lastMetricTs.current = createdTs;
+          setMetricsData([]);
+          fetchMetrics();
+        }, 3000);
       }
     }
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
+      }
+      if (completionTimer) {
+        clearTimeout(completionTimer);
       }
     };
   }, [activeTab, taskInfo?.status, id, fetchMetrics]);
@@ -472,6 +574,7 @@ const TaskResults: React.FC = () => {
         axisLabel: {
           formatter: (val: number) => formatChartTime(val),
           rotate: 0,
+          hideOverlap: true,
         },
       },
       yAxis: { type: 'value' as const, name: 'ms' },
@@ -537,6 +640,7 @@ const TaskResults: React.FC = () => {
         data: timestamps,
         axisLabel: {
           formatter: (val: number) => formatChartTime(val),
+          hideOverlap: true,
         },
       },
       yAxis: { type: 'value' as const, name: 'req/s' },
@@ -583,6 +687,7 @@ const TaskResults: React.FC = () => {
         data: timestamps,
         axisLabel: {
           formatter: (val: number) => formatChartTime(val),
+          hideOverlap: true,
         },
       },
       yAxis: { type: 'value' as const, name: 'users' },
@@ -593,8 +698,8 @@ const TaskResults: React.FC = () => {
           data: metricsData.map(p => p.current_users),
           smooth: false,
           symbol: 'emptyCircle',
-          symbolSize: 6,
-          showSymbol: true,
+          symbolSize: 4,
+          showSymbol: metricsData.length <= 60,
           step: 'end' as const,
           areaStyle: { opacity: 0.1 },
           itemStyle: { color: '#b37feb' },
@@ -603,6 +708,24 @@ const TaskResults: React.FC = () => {
       ],
     };
   }, [metricsData, formatChartTime, chartTooltip, t]);
+
+  // Handle manual refresh of real-time metrics
+  const [isRefreshingMetrics, setIsRefreshingMetrics] = useState(false);
+  const handleRefreshMetrics = useCallback(async () => {
+    if (!id) return;
+    setIsRefreshingMetrics(true);
+    try {
+      // Reset to task creation time for a full re-fetch
+      const createdTs = taskInfo?.created_at
+        ? new Date(taskInfo.created_at).getTime() / 1000
+        : 0;
+      lastMetricTs.current = createdTs;
+      setMetricsData([]);
+      await fetchMetrics();
+    } finally {
+      setIsRefreshingMetrics(false);
+    }
+  }, [id, taskInfo?.created_at, fetchMetrics]);
 
   // Render the Charts tab content
   const renderChartsContent = () => {
@@ -635,61 +758,80 @@ const TaskResults: React.FC = () => {
     }
 
     return (
-      <div
-        ref={chartsRef}
-        style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
-      >
-        {/* Response Time Chart */}
-        <div className='results-section unified-section'>
-          <div className='section-header'>
-            <span className='section-title'>
-              {t('pages.results.chartResponseTime', 'Response Time')}
-            </span>
-          </div>
-          <div className='section-content'>
-            <ReactECharts
-              option={responseTimeOption}
-              style={{ height: 300 }}
-              notMerge
-              lazyUpdate
-            />
-          </div>
+      <>
+        {/* Retention tip – outside chartsRef so it is excluded from download screenshots */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            marginBottom: 4,
+          }}
+        >
+          <span style={{ fontSize: 12, color: '#faad14' }}>
+            <ExclamationCircleOutlined style={{ marginRight: 4 }} />
+            {t(
+              'pages.results.chartsRetentionTip',
+              'Please download the report in time. Real-time metrics data will be automatically cleaned up after 7 days.'
+            )}
+          </span>
         </div>
 
-        {/* RPS & Failures Chart */}
-        <div className='results-section unified-section'>
-          <div className='section-header'>
-            <span className='section-title'>
-              {t('pages.results.chartRps', 'RPS & Failures')}
-            </span>
+        <div
+          ref={chartsRef}
+          style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
+        >
+          {/* Response Time Chart */}
+          <div className='results-section unified-section'>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.chartResponseTime', 'Response Time')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <ReactECharts
+                option={responseTimeOption}
+                style={{ height: 300 }}
+                notMerge
+                lazyUpdate
+              />
+            </div>
           </div>
-          <div className='section-content'>
-            <ReactECharts
-              option={rpsOption}
-              style={{ height: 260 }}
-              notMerge
-              lazyUpdate
-            />
-          </div>
-        </div>
 
-        {/* Concurrent Users Chart */}
-        <div className='results-section unified-section'>
-          <div className='section-header'>
-            <span className='section-title'>
-              {t('pages.results.chartConcurrentUsers', 'Concurrent Users')}
-            </span>
+          {/* RPS & Failures Chart */}
+          <div className='results-section unified-section'>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.chartRps', 'RPS & Failures')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <ReactECharts
+                option={rpsOption}
+                style={{ height: 260 }}
+                notMerge
+                lazyUpdate
+              />
+            </div>
           </div>
-          <div className='section-content'>
-            <ReactECharts
-              option={usersOption}
-              style={{ height: 240 }}
-              notMerge
-              lazyUpdate
-            />
+
+          {/* Concurrent Users Chart */}
+          <div className='results-section unified-section'>
+            <div className='section-header'>
+              <span className='section-title'>
+                {t('pages.results.chartConcurrentUsers', 'Concurrent Users')}
+              </span>
+            </div>
+            <div className='section-content'>
+              <ReactECharts
+                option={usersOption}
+                style={{ height: 240 }}
+                notMerge
+                lazyUpdate
+              />
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -1045,7 +1187,7 @@ const TaskResults: React.FC = () => {
     if (hasTtft) {
       firstRowMetrics.push({
         key: 'ttft',
-        title: createTitleWithTooltip(t('pages.results.ttft'), 'TTFT (s)'),
+        title: t('pages.results.ttft'),
         value: ttftDisplay,
       });
     }
@@ -1227,15 +1369,6 @@ const TaskResults: React.FC = () => {
 
   // Function to handle report download
   const handleDownloadReport = async () => {
-    if (
-      !configCardRef.current ||
-      !overviewCardRef.current ||
-      !metricsDetailCardRef.current
-    ) {
-      message.error(t('pages.results.reportComponentsNotLoaded'));
-      return;
-    }
-
     setIsDownloading(true);
     message.loading({
       content: 'Generating report...',
@@ -1244,11 +1377,38 @@ const TaskResults: React.FC = () => {
     });
 
     try {
-      const elementsToCapture = [
-        { ref: configCardRef, title: t('pages.results.taskInfo') },
-        { ref: overviewCardRef, title: t('pages.results.resultsOverview') },
-        { ref: metricsDetailCardRef, title: t('pages.results.metricsDetail') },
-      ];
+      const elementsToCapture: {
+        ref: React.RefObject<HTMLDivElement | null>;
+        title: string;
+      }[] = [];
+
+      if (activeTab === 'charts') {
+        if (!chartsRef.current) {
+          message.error(t('pages.results.reportComponentsNotLoaded'));
+          return;
+        }
+        elementsToCapture.push({
+          ref: chartsRef,
+          title: t('pages.results.tabCharts', 'Charts'),
+        });
+      } else {
+        if (
+          !configCardRef.current ||
+          !overviewCardRef.current ||
+          !metricsDetailCardRef.current
+        ) {
+          message.error(t('pages.results.reportComponentsNotLoaded'));
+          return;
+        }
+        elementsToCapture.push(
+          { ref: configCardRef, title: t('pages.results.taskInfo') },
+          { ref: overviewCardRef, title: t('pages.results.resultsOverview') },
+          {
+            ref: metricsDetailCardRef,
+            title: t('pages.results.metricsDetail'),
+          }
+        );
+      }
 
       const canvases = await Promise.all(
         elementsToCapture.map(async elementInfo => {
@@ -1265,8 +1425,9 @@ const TaskResults: React.FC = () => {
       );
 
       const validCanvases = canvases.filter(
-        canvas => canvas !== null
-      ) as HTMLCanvasElement[];
+        (canvas): canvas is HTMLCanvasElement =>
+          canvas !== null && canvas.width > 0 && canvas.height > 0
+      );
       if (validCanvases.length === 0) {
         throw new Error('Unable to capture any report content.');
       }
@@ -1321,7 +1482,8 @@ const TaskResults: React.FC = () => {
       const image = mergedCanvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = image;
-      link.download = `task-results-${taskInfo?.name || taskInfo?.id || ''}.png`;
+      const suffix = activeTab === 'charts' ? 'charts' : 'results';
+      link.download = `task-${suffix}-${taskInfo?.name || taskInfo?.id || ''}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1414,19 +1576,77 @@ const TaskResults: React.FC = () => {
             <span className='info-label'>{t('pages.results.modelName')}</span>
             <span className='info-value'>{taskInfo?.model || 'none'}</span>
           </div>
+          {(taskInfo?.load_mode || 'fixed') === 'fixed' ? (
+            <>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.concurrentUsers')}
+                </span>
+                <span className='info-value'>
+                  {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
+                </span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.testDuration')}
+                </span>
+                <span className='info-value'>{taskInfo?.duration || 0} s</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepStartUsers', 'Start Users')}
+                </span>
+                <span className='info-value'>{taskInfo?.step_start_users}</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepIncrement', 'Increment')}
+                </span>
+                <span className='info-value'>+{taskInfo?.step_increment}</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepDuration', 'Step Duration')}
+                </span>
+                <span className='info-value'>{taskInfo?.step_duration} s</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepMaxUsers', 'Max Users')}
+                </span>
+                <span className='info-value'>{taskInfo?.step_max_users}</span>
+              </div>
+              <div className='info-grid-item'>
+                <span className='info-label'>
+                  {t('pages.results.stepSustainDuration', 'Sustain Duration')}
+                </span>
+                <span className='info-value'>
+                  {taskInfo?.step_sustain_duration} s
+                </span>
+              </div>
+            </>
+          )}
           <div className='info-grid-item'>
-            <span className='info-label'>
-              {t('pages.results.concurrentUsers')}
-            </span>
+            <span className='info-label'>{t('pages.results.engineId')}</span>
             <span className='info-value'>
-              {taskInfo?.user_count || taskInfo?.concurrent_users || 0}
+              {validatedEngineId ? (
+                <Tooltip title={t('pages.results.viewEngineMonitor')}>
+                  <a
+                    href={`/system-monitor?engine_id=${encodeURIComponent(validatedEngineId)}`}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    style={{ color: '#1677ff' }}
+                  >
+                    {validatedEngineId}
+                  </a>
+                </Tooltip>
+              ) : (
+                '-'
+              )}
             </span>
-          </div>
-          <div className='info-grid-item'>
-            <span className='info-label'>
-              {t('pages.results.testDuration')}
-            </span>
-            <span className='info-value'>{taskInfo?.duration || 0} s</span>
           </div>
         </div>
       </div>
@@ -1436,58 +1656,11 @@ const TaskResults: React.FC = () => {
   return (
     <div className='page-container results-page'>
       <div className='page-header-wrapper'>
-        <div className='flex justify-between align-center'>
-          <PageHeader
-            title={t('pages.results.title', 'Test Results')}
-            icon={<FileTextOutlined />}
-            level={3}
-          />
-          <Space>
-            {isTaskRunning && (
-              <Tooltip title={t('pages.results.stopTest', 'Stop Test')}>
-                <Button
-                  icon={<StopOutlined />}
-                  onClick={handleStopTest}
-                  loading={isStopping}
-                  className='modern-button-stop-test'
-                >
-                  {t('pages.results.stopTest', 'Stop Test')}
-                </Button>
-              </Tooltip>
-            )}
-            <Button
-              icon={<RobotOutlined />}
-              onClick={() => setAnalysisModalVisible(true)}
-              loading={isAnalyzing}
-              disabled={loading || !!error || !results || results.length === 0}
-              className='modern-button-ai-summary'
-            >
-              {t('pages.results.aiSummary')}
-            </Button>
-            <Button
-              type='primary'
-              icon={<DownloadOutlined />}
-              onClick={handleDownloadReport}
-              loading={isDownloading}
-              disabled={loading || !!error || !results || results.length === 0}
-              className='modern-button-primary-light'
-            >
-              {t('pages.results.downloadReport')}
-            </Button>
-            <Button
-              type='primary'
-              icon={<UnorderedListOutlined />}
-              onClick={() => {
-                if (id) {
-                  window.open(`/logs/task/${id}`, '_blank');
-                }
-              }}
-              disabled={!id}
-            >
-              {t('pages.results.viewLogs')}
-            </Button>
-          </Space>
-        </div>
+        <PageHeader
+          title={t('pages.results.title', 'Test Results')}
+          icon={<FileTextOutlined />}
+          level={3}
+        />
       </div>
 
       {loading ? (
@@ -1514,17 +1687,78 @@ const TaskResults: React.FC = () => {
         <div className='results-content'>
           <Tabs
             activeKey={activeTab}
-            onChange={setActiveTab}
+            onChange={key => {
+              setActiveTab(key);
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem(getTabStorageKey(id), key);
+              }
+            }}
+            tabBarExtraContent={
+              <Space>
+                {isTaskRunning && (
+                  <Tooltip title={t('pages.results.stopTest', 'Stop Test')}>
+                    <Button
+                      icon={<StopOutlined />}
+                      onClick={handleStopTest}
+                      loading={isStopping}
+                      className='modern-button-stop-test'
+                    >
+                      {t('pages.results.stopTest', 'Stop Test')}
+                    </Button>
+                  </Tooltip>
+                )}
+                {activeTab === 'statistics' && (
+                  <Button
+                    icon={<RobotOutlined />}
+                    onClick={() => setAnalysisModalVisible(true)}
+                    loading={isAnalyzing}
+                    disabled={
+                      loading || !!error || !results || results.length === 0
+                    }
+                    className='modern-button-ai-summary'
+                  >
+                    {t('pages.results.aiSummary')}
+                  </Button>
+                )}
+                <Button
+                  type='primary'
+                  icon={<DownloadOutlined />}
+                  onClick={handleDownloadReport}
+                  loading={isDownloading}
+                  disabled={
+                    loading ||
+                    (activeTab === 'charts'
+                      ? metricsData.length === 0
+                      : !!error || !results || results.length === 0)
+                  }
+                  className='modern-button-primary-light'
+                >
+                  {t('pages.results.downloadReport')}
+                </Button>
+                <Button
+                  type='primary'
+                  icon={<UnorderedListOutlined />}
+                  onClick={() => {
+                    if (id) {
+                      window.open(`/logs/task/${id}`, '_blank');
+                    }
+                  }}
+                  disabled={!id}
+                >
+                  {t('pages.results.viewLogs')}
+                </Button>
+                {activeTab === 'charts' && (
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={handleRefreshMetrics}
+                    loading={isRefreshingMetrics}
+                  >
+                    {t('pages.results.refreshCharts', 'Refresh')}
+                  </Button>
+                )}
+              </Space>
+            }
             items={[
-              {
-                key: 'charts',
-                label: (
-                  <span className='tab-label'>
-                    {t('pages.results.tabCharts', 'Charts')}
-                  </span>
-                ),
-                children: renderChartsContent(),
-              },
               {
                 key: 'statistics',
                 label: (
@@ -1695,6 +1929,15 @@ const TaskResults: React.FC = () => {
                       </div>
                     </div>
                   ),
+              },
+              {
+                key: 'charts',
+                label: (
+                  <span className='tab-label'>
+                    {t('pages.results.tabCharts', 'Charts')}
+                  </span>
+                ),
+                children: renderChartsContent(),
               },
             ]}
             className='unified-tabs'

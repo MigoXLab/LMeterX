@@ -158,12 +158,19 @@ class MultiprocessingConfig:
         except Exception as exc:  # pragma: no cover - platform dependent
             logger.debug("Skipping file descriptor check: %s", exc)
 
-        # Memory check
+        # Memory check — require at least 1GB per potential worker process
+        # to prevent OOM kills (exit code 137) in containerized environments
         try:
             import psutil
 
             memory = psutil.virtual_memory()
-            if memory.available < 500 * 1024 * 1024:  # 500MB
+            min_required_mb = 1024  # 1GB minimum available memory
+            if memory.available < min_required_mb * 1024 * 1024:
+                logger.warning(
+                    f"Insufficient memory for multiprocessing: "
+                    f"{memory.available // (1024 * 1024)}MB available, "
+                    f"{min_required_mb}MB required. Falling back to single process."
+                )
                 return False
         except ImportError:
             logger.debug("psutil not installed; skipping memory check")
@@ -175,7 +182,11 @@ class MultiprocessingConfig:
     def get_process_count(
         self, concurrent_users: int, cpu_count: Optional[int] = None
     ) -> int:
-        """Calculate optimal number of worker processes."""
+        """Calculate optimal number of worker processes.
+
+        Takes into account CPU count, user load, and available memory
+        to prevent OOM kills in containerized environments.
+        """
         if cpu_count is None:
             cpu_count = self.cpu_count
 
@@ -198,6 +209,25 @@ class MultiprocessingConfig:
             users_per_process = concurrent_users // process_count
             if users_per_process < min_users:
                 process_count = max(1, concurrent_users // min_users)
+
+        # Cap by available memory to prevent OOM (exit code 137)
+        # Each worker process needs ~500MB-1GB depending on dataset size
+        if process_count > 1:
+            try:
+                import psutil
+
+                available_mb = psutil.virtual_memory().available // (1024 * 1024)
+                mem_per_process_mb = 800  # Conservative estimate per worker
+                max_by_memory = max(1, available_mb // mem_per_process_mb)
+                if process_count > max_by_memory:
+                    logger.warning(
+                        f"Reducing process count from {process_count} to "
+                        f"{max_by_memory} due to memory constraints "
+                        f"({available_mb}MB available, ~{mem_per_process_mb}MB per worker)"
+                    )
+                    process_count = max(1, max_by_memory)
+            except Exception as exc:
+                logger.debug(f"Skipping memory-based process cap: {exc}")
 
         return process_count
 

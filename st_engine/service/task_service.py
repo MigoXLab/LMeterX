@@ -30,6 +30,7 @@ from engine.runner import LocustRunner
 from model.task import Task
 from service.result_service import ResultService
 from utils.logger import add_task_log_sink, logger, remove_task_log_sink
+from utils.vm_push import ENGINE_ID
 
 
 class TaskService:
@@ -233,7 +234,9 @@ class TaskService:
                 task_logger = logger.bind(task_id=task.id)
                 task_logger.info(f"Claimed and locked new task {task.id}.")
                 task.status = "locked"  # type: ignore # Update status immediately
+                task.engine_id = ENGINE_ID  # type: ignore # Bind engine instance
                 session.commit()
+                task_logger.info(f"Task {task.id} bound to engine_id={ENGINE_ID}")
                 return task
             return None
         except (OperationalError, pymysql.err.OperationalError) as e:
@@ -411,20 +414,6 @@ class TaskService:
                 "return_code": -1,
             }
 
-    def _persist_task_realtime_metrics(
-        self, session: Session, task: Task, run_result: dict, task_logger
-    ):
-        """Persist real-time metrics to DB (non-fatal on failure)."""
-        realtime_data = run_result.get("realtime_metrics_data", [])
-        try:
-            self.result_service.persist_realtime_metrics(
-                session, task.id, realtime_data
-            )
-        except Exception as metrics_err:
-            task_logger.warning(
-                f"Non-fatal: failed to persist realtime metrics: {metrics_err}"
-            )
-
     def process_task_pipeline(self, task: Task, session: Session):  # noqa: C901
         """
         Manages the complete pipeline for processing a single task.
@@ -467,9 +456,6 @@ class TaskService:
                         "Failed to rollback session after refresh error.",
                         exc_info=True,
                     )
-
-            # Persist realtime metrics regardless of status (non-fatal)
-            self._persist_task_realtime_metrics(session, task, run_result, task_logger)
 
             if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
                 task_logger.info(
@@ -621,7 +607,6 @@ class TaskService:
             # Mark this task as stopped so warmup phase can detect it
             # This is critical for stopping tasks during warmup before main test starts
             self.runner._stopped_task_ids.add(task_id)
-            task_logger.debug(f"Marked task {task_id} in _stopped_task_ids.")
 
             # Stop both warmup and main test processes
             # Warmup process uses {task_id}_warmup as key

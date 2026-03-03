@@ -16,6 +16,7 @@ from model.common_task import (
     CommonTaskResponse,
     CommonTaskResultRsp,
     CommonTaskStatusRsp,
+    CommonTaskTestReq,
 )
 from service.common_task_service import (
     test_common_api_svc,  # type: ignore[attr-defined]
@@ -77,8 +78,8 @@ async def create_common_task(request: Request, task_create: CommonTaskCreateReq)
 
 
 @router.post("/test", response_model=Dict[str, Any])
-async def test_common_api(request: Request, task_create: CommonTaskCreateReq):
-    return await test_common_api_svc(request, task_create)
+async def test_common_api(request: Request, task_test: CommonTaskTestReq):
+    return await test_common_api_svc(request, task_test)
 
 
 @router.post("/stop/{task_id}", response_model=CommonTaskCreateRsp)

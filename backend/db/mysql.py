@@ -45,9 +45,6 @@ DATABASE_URL = URL.create(
 # This should be used whenever we need to log connection information
 SAFE_DATABASE_URL = get_safe_database_url()
 
-# Log connection info safely (without password)
-logger.info(f"Initializing database connection to: {SAFE_DATABASE_URL}")
-
 # Create an asynchronous database engine with robust connection handling
 engine = create_async_engine(
     DATABASE_URL,

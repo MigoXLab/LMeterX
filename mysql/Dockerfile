@@ -12,7 +12,7 @@ ENV MYSQL_DATABASE=${MYSQL_DATABASE_ARG}
 COPY ../init_db.sql /docker-entrypoint-initdb.d/
 
 # Set MySQL configuration
-CMD ["mysqld", "--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--init-connect=SET NAMES utf8mb4"]
+CMD ["mysqld", "--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--init-connect=SET NAMES utf8mb4", "--default-time-zone=+08:00"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

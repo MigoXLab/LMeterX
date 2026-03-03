@@ -9,7 +9,7 @@ import queue
 from typing import Any, Dict, List, Optional
 
 from config.base import DATA_DIR, MAX_QUEUE_SIZE
-from utils.common import encode_image, is_url
+from utils.common import is_url
 from utils.logger import logger
 
 # === BUILT-IN DATASET CONFIGURATION ===
@@ -36,6 +36,7 @@ class PromptData:
         prompt: str,
         image_base64: str = "",
         image_url: str = "",
+        image_path: str = "",
     ):
         """Initialize PromptData with prompt information and optional image data.
 
@@ -44,11 +45,13 @@ class PromptData:
             prompt: The text prompt content
             image_base64: Base64 encoded image data (optional)
             image_url: URL to image (optional)
+            image_path: Local file path for lazy encoding (optional, memory-efficient)
         """
         self.id = prompt_id
         self.prompt = prompt
         self.image_base64 = image_base64
         self.image_url = image_url
+        self.image_path = image_path
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
@@ -57,6 +60,8 @@ class PromptData:
             result["image_base64"] = self.image_base64
         if self.image_url:
             result["image_url"] = self.image_url
+        if self.image_path:
+            result["image_path"] = self.image_path
         return result
 
     @classmethod
@@ -67,6 +72,7 @@ class PromptData:
             prompt=data.get("prompt", ""),
             image_base64=data.get("image_base64", ""),
             image_url=data.get("image_url", ""),
+            image_path=data.get("image_path", ""),
         )
 
 
@@ -210,6 +216,7 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
         # Support both "image" and "image_path" fields
         image_base64 = ""
         image_url = ""
+        image_path = ""
 
         # Try "image" field first, then "image_path" as fallback
         image_field_value = json_obj.get("image") or json_obj.get("image_path")
@@ -223,19 +230,17 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
                 if is_url(image_value):
                     image_url = image_value
                 else:
-                    # Treat as file path - encode_image will handle path resolution
-                    try:
-                        image_base64 = encode_image(image_value)
-                    except FileNotFoundError as e:
+                    # Store file path for lazy encoding at request time
+                    # This avoids loading large base64 image data into the prompt queue,
+                    # which is critical for memory efficiency in multiprocess mode.
+                    if os.path.exists(image_value):
+                        image_path = image_value
+                    else:
                         effective_logger.warning(
-                            f"Image file not found in dataset: {image_value} - {e}"
-                        )
-                    except IOError as e:
-                        effective_logger.warning(
-                            f"Failed to encode image from dataset: {image_value} - {e}"
+                            f"Image file not found in dataset: {image_value}"
                         )
 
-        return PromptData(prompt_id, prompt, image_base64, image_url)
+        return PromptData(prompt_id, prompt, image_base64, image_url, image_path)
 
     except json.JSONDecodeError as e:
         effective_logger.error(

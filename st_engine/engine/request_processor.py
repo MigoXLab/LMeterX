@@ -4,6 +4,7 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import time
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
 import orjson
@@ -17,11 +18,37 @@ from engine.core import (
     GlobalStateManager,
     StreamMetrics,
 )
-from utils.common import safe_int_convert
+from utils.common import encode_image, safe_int_convert
 from utils.error_handler import ErrorResponse
 from utils.event_handler import EventManager
 
 global_state = GlobalStateManager()
+
+
+# === LAZY IMAGE ENCODING ===
+@lru_cache(maxsize=32)
+def _encode_image_cached(image_path: str) -> str:
+    """Lazily encode image file to base64 with LRU caching.
+
+    Images are NOT loaded at dataset parse time to reduce memory usage,
+    especially critical in multiprocess mode where each worker process
+    would otherwise hold a full copy of all base64 image data.
+
+    The LRU cache (maxsize=32) ensures:
+    - Frequently used images are encoded only once per process
+    - Memory is bounded (at most 32 images cached per process)
+    - Disk I/O is minimized for repeated access patterns
+
+    Args:
+        image_path: Absolute or relative path to the image file.
+
+    Returns:
+        Base64 encoded string, or empty string on failure.
+    """
+    try:
+        return encode_image(image_path)
+    except OSError:
+        return ""
 
 
 # === STREAM PROCESSING ===
@@ -461,6 +488,16 @@ class PayloadBuilder:
             user_prompt = prompt_data.get("prompt", DEFAULT_PROMPT)
             image_url = prompt_data.get("image_url", "")
             image_base64 = prompt_data.get("image_base64", "")
+            image_path = prompt_data.get("image_path", "")
+
+            # Lazy encode: if we have a file path but no pre-encoded base64,
+            # encode on-demand with LRU cache to minimize memory usage.
+            if image_path and not image_base64:
+                image_base64 = _encode_image_cached(image_path)
+                if not image_base64:
+                    self.task_logger.warning(
+                        f"Failed to lazy-encode image: {image_path}"
+                    )
 
             # Get API type
             api_type = getattr(self.config, "api_type", "")

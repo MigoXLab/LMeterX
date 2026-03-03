@@ -390,6 +390,49 @@ export const systemApi = {
   getAIServiceConfig: () => api.get<any>('/system/ai-service'),
 } as const;
 
+// Monitoring API methods (Engine resource metrics from VictoriaMetrics)
+export const monitoringApi = {
+  /** List engines that have reported metrics recently. */
+  getEngines: () =>
+    api.get<{
+      status: string;
+      data: Array<{
+        engine_id: string;
+        last_seen: number;
+        cpu_percent: number;
+      }>;
+    }>('/monitoring/engines'),
+
+  /** Get Engine system resource metrics (CPU, Memory, Network). */
+  getEngineResources: (params: {
+    engine_id?: string;
+    start?: number;
+    end?: number;
+    max_points?: number;
+  }) =>
+    api.get<{
+      status: string;
+      data: Record<
+        string,
+        Array<{
+          metric: Record<string, string>;
+          values: Array<[number, number]>;
+        }>
+      >;
+    }>('/monitoring/engine-resources', { params }),
+
+  /** Get task performance metrics from VictoriaMetrics. */
+  getTaskMetrics: (
+    taskId: string,
+    since: number = 0,
+    maxPoints: number = 1200
+  ) =>
+    api.get<{ status: string; data: any[] }>(
+      `/monitoring/task-metrics/${taskId}`,
+      { params: { since, max_points: maxPoints } }
+    ),
+};
+
 // Define the upload service
 export const uploadCertificateFiles = async (
   certFile: FileLike,

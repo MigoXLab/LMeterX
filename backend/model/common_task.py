@@ -3,6 +3,7 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import math
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, validator
@@ -140,6 +141,16 @@ class CommonTaskCreateReq(BaseModel):
                 raise ValueError(
                     "step_start_users cannot be greater than step_max_users"
                 )
+            # Validate computed total duration does not exceed 48 hours (172800s)
+            increment = values.get("step_increment", 1) or 1
+            step_dur = values.get("step_duration", 30) or 30
+            num_steps = max(1, math.ceil((max_u - start) / max(increment, 1)))
+            total_duration = num_steps * step_dur + v
+            if total_duration > 172800:
+                raise ValueError(
+                    f"Stepped load total duration ({total_duration}s) exceeds "
+                    f"maximum allowed 172800s (48h). Reduce step parameters."
+                )
         return v
 
     @validator("name")
@@ -235,6 +246,57 @@ class CommonTaskCreateReq(BaseModel):
         if len(path_clean) > 4096:
             raise ValueError("Dataset file path length cannot exceed 4096 characters")
         return path_clean or None
+
+
+class CommonTaskTestReq(BaseModel):
+    """
+    Request model for testing a common API endpoint.
+    Only includes fields actually needed for the test request,
+    without requiring task metadata like name, duration, concurrent_users, etc.
+    """
+
+    method: str = Field(..., description="HTTP method, e.g. GET/POST/PUT/PATCH/DELETE")
+    target_url: str = Field(..., max_length=2000, description="Full request URL")
+    headers: List[CommonHeaderItem] = Field(default_factory=list)
+    cookies: List[CommonHeaderItem] = Field(default_factory=list)
+    request_body: Optional[str] = Field(
+        default=None, max_length=100000, description="Request body (raw text/JSON)"
+    )
+
+    @validator("method")
+    def validate_method(cls, v: str) -> str:
+        if not v:
+            raise ValueError("HTTP method is required")
+        method = v.strip().upper()
+        if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+            raise ValueError("Unsupported HTTP method")
+        return method
+
+    @validator("target_url")
+    def validate_target_url(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Target URL cannot be empty")
+        url = v.strip()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError("Target URL must start with http:// or https://")
+        if len(url) > 2000:
+            raise ValueError("Target URL length cannot exceed 2000 characters")
+        return url
+
+    @validator("headers", "cookies")
+    def validate_kv_items(cls, items: List[CommonHeaderItem]) -> List[CommonHeaderItem]:
+        if len(items) > 50:
+            raise ValueError("Header/Cookie count cannot exceed 50")
+        return items
+
+    @validator("request_body")
+    def validate_body(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        body = v.strip()
+        if len(body) > 100000:
+            raise ValueError("Request body length cannot exceed 100000 characters")
+        return body
 
 
 class CommonTaskResultItem(BaseModel):
@@ -362,6 +424,7 @@ class CommonTask(Base):
     log_file = Column(Text, nullable=True)
     result_file = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
+    engine_id = Column(String(64), nullable=True)
     is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -422,24 +485,3 @@ class CommonTaskResult(Base):
             ),
             created_at=self.created_at.isoformat() if self.created_at else "",
         )
-
-
-class CommonTaskRealtimeMetric(Base):
-    """SQLAlchemy model for real-time performance metrics collected during load tests."""
-
-    __tablename__ = "common_task_realtime_metrics"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(String(40), nullable=False, index=True)
-    timestamp = Column(Float, nullable=False)
-    current_users = Column(Integer, nullable=False, default=0)
-    current_rps = Column(Float, nullable=False, default=0.0)
-    current_fail_per_sec = Column(Float, nullable=False, default=0.0)
-    avg_response_time = Column(Float, nullable=False, default=0.0)
-    min_response_time = Column(Float, nullable=False, default=0.0)
-    max_response_time = Column(Float, nullable=False, default=0.0)
-    median_response_time = Column(Float, nullable=False, default=0.0)
-    p95_response_time = Column(Float, nullable=False, default=0.0)
-    total_requests = Column(Integer, nullable=False, default=0)
-    total_failures = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, server_default=func.now())

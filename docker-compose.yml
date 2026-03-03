@@ -7,6 +7,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: lmeterx123
       MYSQL_DATABASE: lmeterx
+      TZ: Asia/Shanghai
+    command: ["mysqld", "--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--init-connect=SET NAMES utf8mb4", "--default-time-zone=+08:00"]
     ports:
       - "3306:3306"
     volumes:
@@ -16,6 +18,36 @@ services:
       timeout: 20s
       retries: 10
 
+  # VictoriaMetrics
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    container_name: lmeterx-victoria-metrics
+    restart: unless-stopped
+    ports:
+      - "8428:8428"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - vm_data:/victoria-metrics-data
+    command:
+      - "-retentionPeriod=7d"
+      - "-search.maxUniqueTimeseries=50000"
+      - "-memory.allowedPercent=60"
+      - "-search.latencyOffset=1s"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8428/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # backend service
   backend:
     image: charmy1220/lmeterx-be:latest
@@ -23,13 +55,17 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      victoria-metrics:
+        condition: service_healthy
     environment:
+      - TZ=Asia/Shanghai
       - DATABASE_URL=mysql://root:lmeterx123@mysql:3306/lmeterx
       - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
       - DB_PASSWORD=lmeterx123
       - DB_NAME=lmeterx
+      - VICTORIA_METRICS_URL=http://victoria-metrics:8428
       # ================= LDAP Authentication Configuration =================
       # Set to 'on' to enable LDAP authentication
       - LDAP_ENABLED=off
@@ -65,12 +101,19 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      victoria-metrics:
+        condition: service_healthy
     environment:
+      TZ: Asia/Shanghai
       DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: root
       DB_PASSWORD: lmeterx123
       DB_NAME: lmeterx
+      VICTORIA_METRICS_URL: "http://victoria-metrics:8428"
+      # automatically gets a unique ID derived from its container hostname.
+      # To use a fixed ID (single-instance only), uncomment the line below:
+      # ENGINE_ID: "engine-01"
       # Multi-process configuration
       ENABLE_MULTIPROCESS: auto
       LOCUST_CPU_CORES: 2.0
@@ -116,6 +159,7 @@ services:
     ports:
       - "8080:80"
     environment:
+      - TZ=Asia/Shanghai
       - VITE_API_BASE_URL=/api
       # Set to 'on' to enable LDAP login UI (must match backend LDAP_ENABLED)
       - VITE_LDAP_ENABLED=off
@@ -130,6 +174,7 @@ services:
 
 volumes:
   mysql_data:
+  vm_data:
 
 networks:
   default:

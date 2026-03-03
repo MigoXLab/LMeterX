@@ -499,6 +499,93 @@ docker stats $(docker-compose ps -q)
    ```
 ## 📊 监控和日志
 
+### VictoriaMetrics 配置
+
+LMeterX 内置 [VictoriaMetrics](https://victoriametrics.com/) 作为轻量级高性能时序数据库，用于存储实时性能指标及压测引擎的资源监控数据（CPU 使用率、内存占用、网络带宽收发速率）。
+
+#### 环境变量
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `VICTORIA_METRICS_URL` | `http://victoria-metrics:8428` | VictoriaMetrics 服务地址（后端与引擎服务均需配置） |
+| `RESOURCE_COLLECT_INTERVAL` | `2` | 引擎资源采集间隔（秒） |
+| `ENGINE_ID` | 自动（取自容器 hostname） | 固定引擎标识，单实例场景可手动指定 |
+| `ENGINE_POD_NAME` | — | Kubernetes Pod 名称，优先级高于 hostname |
+
+#### Docker Compose 服务配置
+
+```yaml
+victoria-metrics:
+  image: victoriametrics/victoria-metrics:v1.106.1
+  container_name: lmeterx-victoria-metrics
+  restart: unless-stopped
+  ports:
+    - "8428:8428"             # HTTP API、Prometheus 远程写入及内置 UI 端口
+  volumes:
+    - vm_data:/victoria-metrics-data   # 时序数据持久化存储
+  command:
+    - "-retentionPeriod=7d"               # 数据保留周期（默认 7 天）
+    - "-search.maxUniqueTimeseries=50000" # 查询允许的最大唯一时间序列数
+    - "-memory.allowedPercent=60"         # 允许使用的内存占比（%）
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 2G
+      reservations:
+        cpus: '0.5'
+        memory: 1G
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 10s
+```
+
+#### 关键调优参数
+
+| 参数 | 推荐值 | 说明 |
+|------|--------|------|
+| `-retentionPeriod` | `7d` – `30d` | 原始数据保留时长，长期趋势分析可适当延长 |
+| `-search.maxUniqueTimeseries` | `50000` | 并行压测任务较多时可适当调大 |
+| `-memory.allowedPercent` | `40` – `70` | 内存紧张时降至 `40`；查询密集时可升至 `70` |
+
+#### 验证 VictoriaMetrics 服务
+
+```bash
+# 健康检查
+curl http://localhost:8428/health
+
+# 查询最近 5 分钟的引擎 CPU 指标
+curl "http://localhost:8428/api/v1/query_range?query=engine_cpu_percent&start=-5m&step=15s"
+
+# 查看所有可用的指标名称
+curl "http://localhost:8428/api/v1/label/__name__/values"
+```
+
+#### 指标参考
+
+| 指标名称 | 标签 | 说明 |
+|----------|------|------|
+| `engine_cpu_percent` | `engine_id` | 引擎 CPU 使用率（%，相对于已分配核数） |
+| `engine_cpu_limit_cores` | `engine_id` | 容器 CPU 核数上限 |
+| `engine_memory_used_bytes` | `engine_id` | 引擎内存使用量（字节） |
+| `engine_memory_total_bytes` | `engine_id` | 引擎内存上限（字节） |
+| `engine_memory_percent` | `engine_id` | 引擎内存使用率（%） |
+| `engine_network_sent_bytes_per_sec` | `engine_id` | 网络发送带宽（字节/秒） |
+| `engine_network_recv_bytes_per_sec` | `engine_id` | 网络接收带宽（字节/秒） |
+| `engine_network_sent_bytes_total` | `engine_id` | 累计发送字节数 |
+| `engine_network_recv_bytes_total` | `engine_id` | 累计接收字节数 |
+| `lmeterx_current_users` | `task_id`, `task_type`, `engine_id` | 当前活跃虚拟用户数 |
+| `lmeterx_current_rps` | `task_id`, `task_type`, `engine_id` | 实时请求速率（RPS） |
+| `lmeterx_avg_response_time` | `task_id`, `task_type`, `engine_id` | 平均响应时间（ms） |
+| `lmeterx_p95_response_time` | `task_id`, `task_type`, `engine_id` | P95 响应时间（ms） |
+| `lmeterx_total_requests` | `task_id`, `task_type`, `engine_id` | 累计请求总数 |
+| `lmeterx_total_failures` | `task_id`, `task_type`, `engine_id` | 累计失败总数 |
+
+> **多引擎部署说明**：每个引擎实例自动从容器 hostname 派生唯一 `engine_id`。可通过 `ENGINE_ID`（Docker Compose）或 `ENGINE_POD_NAME`（Kubernetes）环境变量显式指定固定、易读的标识符。
+
 ### 日志管理
 
 ```bash

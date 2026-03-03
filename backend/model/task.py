@@ -3,6 +3,7 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import math
 from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, validator
@@ -176,7 +177,7 @@ class TaskCreateReq(BaseModel):
         ..., ge=1, le=5000, description="Number of concurrent users (1-5000)"
     )
     spawn_rate: int = Field(
-        ge=1, le=100, description="Number of users to spawn per second (1-100)"
+        ge=1, le=1000, description="Number of users to spawn per second (1-1000)"
     )
     chat_type: Optional[int] = Field(
         default=0,
@@ -287,6 +288,16 @@ class TaskCreateReq(BaseModel):
             if start > max_u:
                 raise ValueError(
                     "step_start_users cannot be greater than step_max_users"
+                )
+            # Validate computed total duration does not exceed 48 hours (172800s)
+            increment = values.get("step_increment", 1) or 1
+            step_dur = values.get("step_duration", 30) or 30
+            num_steps = max(1, math.ceil((max_u - start) / max(increment, 1)))
+            total_duration = num_steps * step_dur + v
+            if total_duration > 172800:
+                raise ValueError(
+                    f"Stepped load total duration ({total_duration}s) exceeds "
+                    f"maximum allowed 172800s (48h). Reduce step parameters."
                 )
         return v
 
@@ -437,6 +448,122 @@ class TaskCreateReq(BaseModel):
                     "field_mapping.stop_flag is required for streaming custom-chat"
                 )
 
+        return v
+
+
+class TaskTestReq(BaseModel):
+    """
+    Request model for testing an API endpoint.
+    Only includes fields actually needed for the test request,
+    without requiring task metadata like name, duration, concurrent_users, etc.
+    """
+
+    target_host: str = Field(
+        ..., min_length=1, max_length=255, description="Target model API host"
+    )
+    api_path: str = Field(
+        default="/chat/completions", max_length=255, description="API path to test"
+    )
+    model: Optional[str] = Field(
+        default="", max_length=255, description="Name of the model to test"
+    )
+    stream_mode: bool = Field(
+        default=True, description="Whether to use streaming response"
+    )
+    headers: List[HeaderItem] = Field(
+        default_factory=list,
+        description="List of request headers (max 50)",
+    )
+    cookies: List[CookieItem] = Field(
+        default_factory=list,
+        description="List of request cookies (max 50)",
+    )
+    cert_config: Optional[CertConfig] = Field(
+        default=None, description="Certificate configuration"
+    )
+    request_payload: Optional[str] = Field(
+        default="",
+        max_length=50000,
+        description="Custom request payload (JSON string)",
+    )
+    api_type: Optional[str] = Field(
+        default="openai-chat",
+        description="API type: openai-chat, claude-chat, embeddings, or custom-chat",
+    )
+
+    @validator("target_host")
+    def validate_target_host(cls, v):
+        if not v or not v.strip():
+            raise ValueError("API address cannot be empty")
+        v = v.strip()
+        if len(v) > 255:
+            raise ValueError("API address length cannot exceed 255 characters")
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("API address must start with http:// or https://")
+        return v
+
+    @validator("api_path")
+    def validate_api_path(cls, v):
+        if not v or not v.strip():
+            raise ValueError("API path cannot be empty")
+        v = v.strip()
+        if len(v) > 255:
+            raise ValueError("API path length cannot exceed 255 characters")
+        if not v.startswith("/"):
+            raise ValueError("API path must start with /")
+        return v
+
+    @validator("request_payload")
+    def validate_request_payload(cls, v, values):
+        if not v or not v.strip():
+            model = values.get("model", "your-model-name")
+            stream_mode = values.get("stream_mode", True)
+            default_payload = {
+                "model": model,
+                "stream": stream_mode,
+                "messages": [{"role": "user", "content": "Hi"}],
+            }
+            import json
+
+            return json.dumps(default_payload)
+        if len(v) > 50000:
+            raise ValueError("Request payload length cannot exceed 50000 characters")
+        try:
+            import json
+
+            json.loads(v.strip())
+        except json.JSONDecodeError:
+            raise ValueError("Request payload must be a valid JSON format")
+        return v.strip()
+
+    @validator("headers")
+    def validate_headers(cls, v):
+        if len(v) > 50:
+            raise ValueError("Request header count cannot exceed 50")
+        for header in v:
+            if not header.key or not header.key.strip():
+                raise ValueError("Request header name cannot be empty")
+            if len(header.key.strip()) > 100:
+                raise ValueError(
+                    "Request header name length cannot exceed 100 characters"
+                )
+            if len(header.value) > 1000:
+                raise ValueError(
+                    "Request header value length cannot exceed 1000 characters"
+                )
+        return v
+
+    @validator("cookies")
+    def validate_cookies(cls, v):
+        if len(v) > 50:
+            raise ValueError("Cookie count cannot exceed 50")
+        for cookie in v:
+            if not cookie.key or not cookie.key.strip():
+                raise ValueError("Cookie name cannot be empty")
+            if len(cookie.key.strip()) > 100:
+                raise ValueError("Cookie name length cannot exceed 100 characters")
+            if len(cookie.value) > 1000:
+                raise ValueError("Cookie value length cannot exceed 1000 characters")
         return v
 
 
@@ -619,6 +746,7 @@ class Task(Base):
     field_mapping = Column(Text, nullable=True)
     api_type = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
+    engine_id = Column(String(64), nullable=True)
     test_data = Column(Text, nullable=True)
     is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
@@ -699,25 +827,3 @@ class TaskResult(Base):
                 else 0.0
             ),
         )
-
-
-class TaskRealtimeMetric(Base):
-    """SQLAlchemy model for real-time performance metrics collected during LLM load tests."""
-
-    __tablename__ = "task_realtime_metrics"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(String(40), nullable=False, index=True)
-    timestamp = Column(Float, nullable=False)
-    current_users = Column(Integer, nullable=False, default=0)
-    current_rps = Column(Float, nullable=False, default=0.0)
-    current_fail_per_sec = Column(Float, nullable=False, default=0.0)
-    avg_response_time = Column(Float, nullable=False, default=0.0)
-    min_response_time = Column(Float, nullable=False, default=0.0)
-    max_response_time = Column(Float, nullable=False, default=0.0)
-    median_response_time = Column(Float, nullable=False, default=0.0)
-    p95_response_time = Column(Float, nullable=False, default=0.0)
-    total_requests = Column(Integer, nullable=False, default=0)
-    total_failures = Column(Integer, nullable=False, default=0)
-    metrics_detail = Column(Text, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())

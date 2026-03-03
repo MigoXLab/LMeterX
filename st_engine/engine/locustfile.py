@@ -20,7 +20,6 @@ from config.base import DEFAULT_PROMPT
 from engine.core import ConfigManager, GlobalStateManager, ValidationManager
 from engine.request_processor import APIClient, PayloadBuilder
 from utils.common import mask_sensitive_data
-from utils.error_handler import ErrorResponse
 from utils.event_handler import EventManager
 from utils.logger import logger
 from utils.realtime_metrics import realtime_metrics_greenlet
@@ -92,13 +91,16 @@ def _register_master_message_handlers(environment, task_logger):
 
         def on_token_stats(environment, msg, **kwargs):
             """Master received token stats from Worker"""
-            data = msg.data
-            stats_manager.update_stats(
-                reqs=data.get("reqs", 0),
-                completion_tokens=data.get("completion_tokens", 0),
-                total_tokens=data.get("total_tokens", 0),
-            )
-            task_logger.debug(f"[Master] Received stats from worker: {data}")
+            try:
+                data = msg.data
+                stats_manager.update_stats(
+                    reqs=data.get("reqs", 0),
+                    completion_tokens=data.get("completion_tokens", 0),
+                    total_tokens=data.get("total_tokens", 0),
+                )
+                # task_logger.debug(f"[Master] Received stats from worker: {data}")
+            except Exception as exc:
+                task_logger.warning(f"Failed to process token stats from worker: {exc}")
 
         runner.register_message("token_stats", on_token_stats)
     except Exception as exc:
@@ -312,8 +314,23 @@ def on_test_start(environment, **kwargs):
     """Spawn real-time metrics greenlet when the test starts.
 
     Metrics are NOT collected during warmup mode to keep warmup lightweight.
+
+    In multiprocess mode (``--processes N``), only the **master** process
+    reports metrics.  Worker processes are skipped because:
+    1. The master's ``runner.user_count`` already reflects the total across
+       all workers, while each worker only sees its own subset.
+    2. All processes share identical VictoriaMetrics labels so worker pushes
+       would overwrite the master's correct aggregated values.
     """
     if getattr(environment, "warmup_mode", False):
+        return
+
+    # Only collect metrics on master (multiprocess) or local (single-process).
+    # Worker processes must NOT push metrics to avoid overwriting aggregated
+    # values from the master with partial per-worker values.
+    from locust.runners import WorkerRunner
+
+    if isinstance(environment.runner, WorkerRunner):
         return
 
     task_id = getattr(environment.parsed_options, "task_id", "") or os.environ.get(
@@ -325,9 +342,8 @@ def on_test_start(environment, **kwargs):
 
     # Spawn background greenlet for real-time metrics collection
     # include_entries=True  -> capture per-metric detail for LLM charts
-    # is_llm=True           -> use wider collection intervals (LLM requests are long-running)
     environment._realtime_greenlet = gevent.spawn(
-        realtime_metrics_greenlet, environment, include_entries=True, is_llm=True
+        realtime_metrics_greenlet, environment, include_entries=True
     )
 
 
@@ -370,12 +386,20 @@ def on_test_stop(environment, **kwargs):
             task_logger.info(f"Locust stats: {locust_stats}")
         except Exception as e:
             task_logger.warning(f"Failed to get Locust stats: {e}")
-            locust_stats = {}
+            locust_stats = []
 
         # Get final stats with environment.stats for TTFT calculation
-        final_stats = stats_manager.get_final_stats(environment.stats)
+        try:
+            final_stats = stats_manager.get_final_stats(environment.stats)
+        except Exception as e:
+            task_logger.warning(f"Failed to get final stats: {e}")
+            final_stats = {}
 
-        _write_result_file(task_id, final_stats, locust_stats, task_logger)
+        try:
+            _write_result_file(task_id, final_stats, locust_stats, task_logger)
+        except Exception as e:
+            task_logger.error(f"Failed to write result file: {e}")
+
         task_logger.info(f"Final statistics: {final_stats}")
 
     except Exception as e:
@@ -494,7 +518,7 @@ class LLMTestUser(HttpUser):
                     usage, ["output", "completion"]
                 )
                 total_tokens = extract_token_from_usage(usage, ["total", "all"])
-                logger.debug(f"usage: {usage}")
+                # logger.debug(f"usage: {usage}")
 
             # Step 2: Per-field partial fallback — count only the missing fields
             # If input_tokens is missing, count from user_prompt
@@ -584,7 +608,7 @@ class LLMTestUser(HttpUser):
         base_request_kwargs, user_prompt = self.request_handler.prepare_request_kwargs(
             prompt_data
         )
-        self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
+        # self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
         if not base_request_kwargs:
             self.task_logger.error(
                 "Failed to generate request arguments. Skipping task."
@@ -605,7 +629,7 @@ class LLMTestUser(HttpUser):
                         self.client, base_request_kwargs, start_time
                     )
                 )
-                self.task_logger.debug(f"chat_request- content: {content}")
+                # self.task_logger.debug(f"chat_request- content: {content}")
             else:
                 reasoning_content, content, usage = (
                     self.stream_handler.handle_non_stream_request(
@@ -622,20 +646,23 @@ class LLMTestUser(HttpUser):
             except Exception:
                 response_time = 0
 
-            ErrorResponse._handle_general_exception_event(
-                error_msg=f"Unhandled exception in chat_request: {e}",
-                response=None,
-                response_time=response_time,
-                additional_context={
-                    "stream_mode": self.config.stream_mode,
-                    "api_path": self.config.api_path,
-                    "prompt_preview": (
-                        str(user_prompt)[:100] if user_prompt else "No prompt"
-                    ),
-                    "task_id": self.config.task_id,
-                    "request_name": request_name,
-                },
-            )
+            try:
+                self.stream_handler.error_handler._handle_general_exception_event(
+                    error_msg=f"Unhandled exception in chat_request: {e}",
+                    response=None,
+                    response_time=response_time,
+                    additional_context={
+                        "stream_mode": self.config.stream_mode,
+                        "api_path": self.config.api_path,
+                        "prompt_preview": (
+                            str(user_prompt)[:100] if user_prompt else "No prompt"
+                        ),
+                        "task_id": self.config.task_id,
+                        "request_name": request_name,
+                    },
+                )
+            except Exception as inner_e:
+                self.task_logger.warning(f"Failed to record failure event: {inner_e}")
 
         if reasoning_content or content or usage:
             self._log_token_counts(user_prompt or "", reasoning_content, content, usage)

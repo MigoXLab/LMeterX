@@ -191,4 +191,4 @@ class StatsManager:
 
         except Exception as e:
             self.task_logger.error(f"Failed to get Locust statistics: {e}")
-            raise RuntimeError(f"Failed to get Locust statistics: {e}")
+            return []

@@ -477,7 +477,7 @@ class LocustRunner:
             "--stop-timeout",
             f"{LOCUST_STOP_TIMEOUT}s",
             "--headless",
-            # "--only-summary",
+            "--only-summary",
             "--api_path",
             task.api_path or "/chat/completions",
             "--headers",

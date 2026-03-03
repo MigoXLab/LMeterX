@@ -245,6 +245,7 @@ LMeterX adopts a modern technology stack to ensure system reliability and mainta
 
 ### Planned
 - [ ] CLI command-line tool
+- [ ] Multi-interface scenario load testing
 
 ## 🗂️ Dataset Reference Notes
 

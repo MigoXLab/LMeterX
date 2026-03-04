@@ -8,7 +8,7 @@
  */
 
 import { ReloadOutlined } from '@ant-design/icons';
-import { Alert, Button, Col, Row, Select, Space, Statistic } from 'antd';
+import { Alert, Button, Col, Row, Select, Space, Statistic, theme } from 'antd';
 import ReactECharts from 'echarts-for-react';
 import React, {
   useCallback,
@@ -86,8 +86,16 @@ const formatBytes = (bytes: number, decimals = 1): string => {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
-  return `${(bytes / k ** i).toFixed(decimals)} ${sizes[i]}`;
+  const i = Math.min(
+    Math.floor(Math.log(Math.abs(bytes)) / Math.log(k)),
+    sizes.length - 1
+  );
+  const val = bytes / k ** i;
+  // When decimals=0 and the converted value < 10, use 1 decimal place
+  // to avoid two distinct tick values (e.g. 1.9 GB vs 2.4 GB)
+  // both rounding to the same "2 GB" label.
+  const d = decimals === 0 && val >= 1 && val < 10 ? 1 : decimals;
+  return `${val.toFixed(d)} ${sizes[i]}`;
 };
 
 /** Format bytes/s into a human-friendly throughput string. */
@@ -95,8 +103,49 @@ const formatBytesPerSec = (bps: number, decimals = 1): string => {
   if (bps === 0) return '0 B/s';
   const k = 1024;
   const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-  const i = Math.floor(Math.log(Math.abs(bps)) / Math.log(k));
-  return `${(bps / k ** i).toFixed(decimals)} ${sizes[i]}`;
+  const i = Math.min(
+    Math.floor(Math.log(Math.abs(bps)) / Math.log(k)),
+    sizes.length - 1
+  );
+  const val = bps / k ** i;
+  // When decimals=0 and the converted value < 10, use 1 decimal place
+  // to avoid two distinct tick values (e.g. 1.1 MB/s vs 1.4 MB/s)
+  // both rounding to the same "1 MB/s" label.
+  const d = decimals === 0 && val >= 1 && val < 10 ? 1 : decimals;
+  return `${val.toFixed(d)} ${sizes[i]}`;
+};
+
+/**
+ * Compute nice Y-axis { max, interval } so that tick labels display as
+ * round, human-readable values (e.g. 0, 500 KB, 1 MB, 1.5 MB, 2 MB).
+ * Works for both byte and byte/s axes.
+ */
+const niceByteAxis = (
+  maxVal: number,
+  targetSplits = 5
+): { max: number; interval: number } => {
+  if (maxVal <= 0) return { max: 1024, interval: 1024 };
+  const k = 1024;
+  // Determine the appropriate unit size
+  let unitSize = 1;
+  if (maxVal >= k ** 3)
+    unitSize = k ** 3; // GB
+  else if (maxVal >= k ** 2)
+    unitSize = k ** 2; // MB
+  else if (maxVal >= k) unitSize = k; // KB
+
+  const maxInUnit = maxVal / unitSize;
+  const rawStep = maxInUnit / targetSplits;
+
+  // Choose the smallest "nice" step that is >= rawStep
+  const niceSteps = [
+    0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000,
+  ];
+  const step =
+    niceSteps.find(s => s >= rawStep) ?? niceSteps[niceSteps.length - 1];
+
+  const niceMax = Math.ceil(maxInUnit / step) * step;
+  return { max: niceMax * unitSize, interval: step * unitSize };
 };
 
 /** Extract the first series' values from a SeriesPoint array. */
@@ -114,6 +163,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
   initialEngineId,
 }) => {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
 
   // State
   const [engines, setEngines] = useState<EngineInfo[]>([]);
@@ -244,6 +294,12 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
   const latestNetRecv =
     netRecvData.length > 0 ? netRecvData[netRecvData.length - 1][1] : 0;
 
+  /** Shared style for the four summary cards. */
+  const summaryCardStyle: React.CSSProperties = {
+    padding: '16px 20px',
+    height: '100%',
+  };
+
   /* ----- CPU chart ------------------------------------------------- */
   const cpuOption = useMemo(() => {
     if (cpuData.length === 0) return {};
@@ -307,6 +363,13 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
   const memoryOption = useMemo(() => {
     if (memPercentData.length === 0) return {};
     const timestamps = memPercentData.map(p => p[0]);
+    // Compute nice Y-axis range from both used & total memory series
+    const allMemValues = [
+      ...memUsedData.map(p => p[1]),
+      ...memTotalData.map(p => p[1]),
+    ];
+    const memMax = allMemValues.length > 0 ? Math.max(...allMemValues) : 0;
+    const memAxis = niceByteAxis(memMax);
     return {
       tooltip: {
         ...chartTooltip,
@@ -336,7 +399,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
         ],
         bottom: 0,
       },
-      grid: { top: 40, right: 30, bottom: 50, left: 60 },
+      grid: { top: 40, right: 30, bottom: 50, left: 80 },
       xAxis: {
         type: 'category' as const,
         data: timestamps,
@@ -346,6 +409,9 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
         {
           type: 'value' as const,
           name: 'Bytes',
+          min: 0,
+          max: memAxis.max,
+          interval: memAxis.interval,
           axisLabel: {
             formatter: (val: number) => formatBytes(val, 0),
           },
@@ -399,6 +465,13 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
       netSentData.length > 0
         ? netSentData.map(p => p[0])
         : netRecvData.map(p => p[0]);
+    // Compute nice Y-axis range from both sent & recv series
+    const allNetValues = [
+      ...netSentData.map(p => p[1]),
+      ...netRecvData.map(p => p[1]),
+    ];
+    const netMax = allNetValues.length > 0 ? Math.max(...allNetValues) : 0;
+    const netAxis = niceByteAxis(netMax);
     return {
       tooltip: {
         ...chartTooltip,
@@ -431,6 +504,9 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
       yAxis: {
         type: 'value' as const,
         name: 'Bytes/s',
+        min: 0,
+        max: netAxis.max,
+        interval: netAxis.interval,
         axisLabel: {
           formatter: (val: number) => formatBytesPerSec(val, 0),
         },
@@ -572,9 +648,9 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
 
       {/* ---- Realtime summary cards --------------------------------- */}
       {hasData && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Row gutter={[16, 16]} align='stretch' style={{ marginBottom: 24 }}>
           <Col xs={12} sm={8} md={6}>
-            <div className='content-card' style={{ padding: '16px 20px' }}>
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.cpuUsage', 'CPU Usage')}
                 value={latestCpu.toFixed(1)}
@@ -592,11 +668,11 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
             </div>
           </Col>
           <Col xs={12} sm={8} md={6}>
-            <div className='content-card' style={{ padding: '16px 20px' }}>
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.memoryUsage', 'Memory Usage')}
                 value={latestMemPercent.toFixed(1)}
-                suffix={`% (${formatBytes(latestMemUsed)} / ${formatBytes(latestMemTotal)})`}
+                suffix='%'
                 valueStyle={{
                   color:
                     latestMemPercent > 85
@@ -607,10 +683,19 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
                   fontSize: 22,
                 }}
               />
+              <div
+                style={{
+                  fontSize: 13,
+                  color: token.colorTextSecondary,
+                  marginTop: 4,
+                }}
+              >
+                {formatBytes(latestMemUsed)} / {formatBytes(latestMemTotal)}
+              </div>
             </div>
           </Col>
           <Col xs={12} sm={8} md={6}>
-            <div className='content-card' style={{ padding: '16px 20px' }}>
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.netSent', 'Net Sent')}
                 value={formatBytesPerSec(latestNetSent)}
@@ -619,7 +704,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
             </div>
           </Col>
           <Col xs={12} sm={8} md={6}>
-            <div className='content-card' style={{ padding: '16px 20px' }}>
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.netRecv', 'Net Received')}
                 value={formatBytesPerSec(latestNetRecv)}

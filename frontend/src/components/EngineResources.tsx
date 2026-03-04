@@ -8,7 +8,7 @@
  */
 
 import { ReloadOutlined } from '@ant-design/icons';
-import { Alert, Button, Col, Row, Select, Space, Statistic } from 'antd';
+import { Alert, Button, Col, Row, Select, Space, Statistic, theme } from 'antd';
 import ReactECharts from 'echarts-for-react';
 import React, {
   useCallback,
@@ -163,6 +163,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
   initialEngineId,
 }) => {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
 
   // State
   const [engines, setEngines] = useState<EngineInfo[]>([]);
@@ -292,6 +293,12 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
     netSentData.length > 0 ? netSentData[netSentData.length - 1][1] : 0;
   const latestNetRecv =
     netRecvData.length > 0 ? netRecvData[netRecvData.length - 1][1] : 0;
+
+  /** Shared style for the four summary cards. */
+  const summaryCardStyle: React.CSSProperties = {
+    padding: '16px 20px',
+    height: '100%',
+  };
 
   /* ----- CPU chart ------------------------------------------------- */
   const cpuOption = useMemo(() => {
@@ -643,10 +650,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
       {hasData && (
         <Row gutter={[16, 16]} align='stretch' style={{ marginBottom: 24 }}>
           <Col xs={12} sm={8} md={6}>
-            <div
-              className='content-card'
-              style={{ padding: '16px 20px', height: '100%' }}
-            >
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.cpuUsage', 'CPU Usage')}
                 value={latestCpu.toFixed(1)}
@@ -664,10 +668,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
             </div>
           </Col>
           <Col xs={12} sm={8} md={6}>
-            <div
-              className='content-card'
-              style={{ padding: '16px 20px', height: '100%' }}
-            >
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.memoryUsage', 'Memory Usage')}
                 value={latestMemPercent.toFixed(1)}
@@ -685,7 +686,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
               <div
                 style={{
                   fontSize: 13,
-                  color: 'rgba(0,0,0,0.45)',
+                  color: token.colorTextSecondary,
                   marginTop: 4,
                 }}
               >
@@ -694,10 +695,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
             </div>
           </Col>
           <Col xs={12} sm={8} md={6}>
-            <div
-              className='content-card'
-              style={{ padding: '16px 20px', height: '100%' }}
-            >
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.netSent', 'Net Sent')}
                 value={formatBytesPerSec(latestNetSent)}
@@ -706,10 +704,7 @@ const EngineResources: React.FC<EngineResourcesProps> = ({
             </div>
           </Col>
           <Col xs={12} sm={8} md={6}>
-            <div
-              className='content-card'
-              style={{ padding: '16px 20px', height: '100%' }}
-            >
+            <div className='content-card' style={summaryCardStyle}>
               <Statistic
                 title={t('pages.systemMonitor.netRecv', 'Net Received')}
                 value={formatBytesPerSec(latestNetRecv)}

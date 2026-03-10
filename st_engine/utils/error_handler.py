@@ -41,7 +41,7 @@ class ErrorResponse:
                 if error_type or error_message:
                     return f"API error - type: {error_type}, message: {error_message}"
 
-            if code < 0:
+            if isinstance(code, (int, float)) and code < 0:
                 return f"Response contains error code: {json_data}"
 
             if error and str(error).strip():
@@ -100,7 +100,9 @@ class ErrorResponse:
         # Add safety checks for response object
         if response is None:
             error_msg = "Response object is None"
-            response_time = (time.time() - start_time) * 1000 if start_time > 0 else 0
+            response_time = (
+                (time.perf_counter() - start_time) * 1000 if start_time > 0 else 0
+            )
             self._handle_general_exception_event(
                 error_msg=error_msg,
                 response=None,
@@ -114,7 +116,7 @@ class ErrorResponse:
             if status_code is None:
                 error_msg = "Response object has no status_code attribute"
                 response_time = (
-                    (time.time() - start_time) * 1000 if start_time > 0 else 0
+                    (time.perf_counter() - start_time) * 1000 if start_time > 0 else 0
                 )
                 self._handle_general_exception_event(
                     error_msg=error_msg,
@@ -130,7 +132,7 @@ class ErrorResponse:
                 )
                 error_msg = f"Request failed with status_code {status_code}. Response: {response_text}"
                 response_time = (
-                    (time.time() - start_time) * 1000 if start_time > 0 else 0
+                    (time.perf_counter() - start_time) * 1000 if start_time > 0 else 0
                 )
                 self._handle_general_exception_event(
                     error_msg=error_msg,
@@ -140,7 +142,9 @@ class ErrorResponse:
                 return True
         except Exception as e:
             error_msg = f"Error checking response status: {e}"
-            response_time = (time.time() - start_time) * 1000 if start_time > 0 else 0
+            response_time = (
+                (time.perf_counter() - start_time) * 1000 if start_time > 0 else 0
+            )
             self._handle_general_exception_event(
                 error_msg=error_msg,
                 response=response,
@@ -155,7 +159,7 @@ class ErrorResponse:
     ) -> None:
         """Handle specific stream processing errors."""
         error_msg = str(e)
-        response_time = (time.time() - start_time) * 1000
+        response_time = (time.perf_counter() - start_time) * 1000
 
         if "Read timed out" in error_msg:
             self.task_logger.error(

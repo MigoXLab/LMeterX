@@ -6,7 +6,7 @@ Copyright (c) 2025, All Rights Reserved.
 import json
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from gevent import queue
 from gevent.lock import Semaphore
@@ -26,9 +26,25 @@ class StreamMetrics:
     reasoning_ended: bool = False
     first_output_token_time: Optional[float] = None
     first_thinking_token_time: Optional[float] = None
-    content: str = ""
-    reasoning_content: str = ""
     usage: Optional[Dict[str, Optional[int]]] = field(default_factory=dict)
+    # List-based content accumulation for O(n) performance
+    _content_parts: List[str] = field(default_factory=list)
+    _reasoning_parts: List[str] = field(default_factory=list)
+    _content_size: int = 0
+    _reasoning_size: int = 0
+    # Timing fields for metric calculation (previously dynamically injected)
+    _start_thinking_perf: Optional[float] = None
+    _first_output_token_perf: Optional[float] = None
+
+    @property
+    def content(self) -> str:
+        """Get accumulated content as a single string."""
+        return "".join(self._content_parts)
+
+    @property
+    def reasoning_content(self) -> str:
+        """Get accumulated reasoning content as a single string."""
+        return "".join(self._reasoning_parts)
 
 
 @dataclass

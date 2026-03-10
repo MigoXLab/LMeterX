@@ -48,6 +48,7 @@ import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useLanguage } from '../contexts/LanguageContext';
 import { RealtimeMetricPoint } from '../types/job';
+import { getStoredUser } from '../utils/auth';
 import { formatDate } from '../utils/date';
 
 const SUMMARY_METRIC_TYPES = new Set([
@@ -55,6 +56,7 @@ const SUMMARY_METRIC_TYPES = new Set([
   'Total_time',
   'Time_to_first_reasoning_token',
   'Time_to_first_output_token',
+  'Time_to_reasoning_completion',
   'Time_to_output_completion',
   'failure',
   'total_tokens_per_second',
@@ -401,10 +403,22 @@ const TaskResults: React.FC = () => {
   // Whether the task is currently in a stoppable state
   const isTaskRunning =
     taskInfo?.status === 'running' || taskInfo?.status === 'pending';
+  const currentUsername = useMemo(() => getStoredUser()?.username || '', []);
+  const canStopTask = useMemo(() => {
+    const creator = taskInfo?.created_by;
+    // Backward compatibility: legacy anonymous tasks use "-" as creator.
+    if (creator === '-') return true;
+    if (!creator || !currentUsername) return false;
+    return creator === currentUsername;
+  }, [taskInfo?.created_by, currentUsername]);
 
   // Handle stop test with confirmation dialog
   const handleStopTest = useCallback(() => {
     if (!id) return;
+    if (!canStopTask) {
+      message.warning(t('pages.jobs.ownerOnly'));
+      return;
+    }
     Modal.confirm({
       title: t('pages.jobs.stopConfirmTitle'),
       icon: <ExclamationCircleOutlined />,
@@ -431,7 +445,7 @@ const TaskResults: React.FC = () => {
         }
       },
     });
-  }, [id, t]);
+  }, [id, t, canStopTask]);
 
   // Format timestamp for chart x-axis display (HH:mm:ss)
   const formatChartTime = useCallback((ts: number) => {
@@ -1695,7 +1709,7 @@ const TaskResults: React.FC = () => {
             }}
             tabBarExtraContent={
               <Space>
-                {isTaskRunning && (
+                {isTaskRunning && canStopTask && (
                   <Tooltip title={t('pages.results.stopTest', 'Stop Test')}>
                     <Button
                       icon={<StopOutlined />}

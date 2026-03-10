@@ -40,6 +40,7 @@ import { commonJobApi, monitoringApi } from '@/api/services';
 import { LoadingSpinner } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { RealtimeMetricPoint } from '@/types/job';
+import { getStoredUser } from '@/utils/auth';
 import { formatDate } from '@/utils/date';
 
 const CommonResults: React.FC = () => {
@@ -299,10 +300,22 @@ const CommonResults: React.FC = () => {
   // Whether the task is currently in a stoppable state
   const isTaskRunning =
     taskInfo?.status === 'running' || taskInfo?.status === 'pending';
+  const currentUsername = useMemo(() => getStoredUser()?.username || '', []);
+  const canStopTask = useMemo(() => {
+    const creator = taskInfo?.created_by;
+    // Backward compatibility: legacy anonymous tasks use "-" as creator.
+    if (creator === '-') return true;
+    if (!creator || !currentUsername) return false;
+    return creator === currentUsername;
+  }, [taskInfo?.created_by, currentUsername]);
 
   // Handle stop test with confirmation dialog
   const handleStopTest = useCallback(() => {
     if (!id) return;
+    if (!canStopTask) {
+      message.warning(t('pages.jobs.ownerOnly'));
+      return;
+    }
     Modal.confirm({
       title: t('pages.jobs.stopConfirmTitle'),
       icon: <ExclamationCircleOutlined />,
@@ -330,7 +343,7 @@ const CommonResults: React.FC = () => {
         }
       },
     });
-  }, [id, t]);
+  }, [id, t, canStopTask]);
 
   const handleDownloadReport = async () => {
     try {
@@ -1126,7 +1139,7 @@ const CommonResults: React.FC = () => {
             }}
             tabBarExtraContent={
               <Space>
-                {isTaskRunning && (
+                {isTaskRunning && canStopTask && (
                   <Button
                     icon={<StopOutlined />}
                     onClick={handleStopTest}

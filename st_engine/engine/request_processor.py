@@ -3,6 +3,7 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import os
 import time
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,6 +24,11 @@ from utils.error_handler import ErrorResponse
 from utils.event_handler import EventManager
 
 global_state = GlobalStateManager()
+
+# Maximum accumulated content size per streaming response (10 MB)
+# Prevents OOM from malicious or buggy servers sending unbounded data
+MAX_STREAM_CONTENT_SIZE = 10 * 1024 * 1024  # 10 MB
+STREAM_DEBUG_ENV = "LMETERX_STREAM_DEBUG"
 
 
 # === LAZY IMAGE ENCODING ===
@@ -56,6 +62,16 @@ class StreamProcessor:
     """Handles streaming response processing."""
 
     @staticmethod
+    def _stream_debug_enabled() -> bool:
+        """Whether verbose stream parsing logs are enabled."""
+        return str(os.getenv(STREAM_DEBUG_ENV, "false")).lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
+    @staticmethod
     def get_field_value(data: Dict[str, Any], path: str) -> Any:
         """Get value from nested dictionary using dot-separated path."""
         if not path or not isinstance(data, dict):
@@ -65,7 +81,7 @@ class StreamProcessor:
             keys = path.split(".")
             current = data
 
-            for key in keys:
+            for i, key in enumerate(keys):
                 # Check if key is a valid integer (including negative numbers)
                 try:
                     index = int(key)
@@ -77,11 +93,15 @@ class StreamProcessor:
                     # Key is not an integer, treat as dict key
                     if isinstance(current, list) and current:
                         if isinstance(current[0], dict):
-                            current = current[0].get(key, {})
+                            if key not in current[0]:
+                                return ""
+                            current = current[0][key]
                         else:
                             return ""
                     elif isinstance(current, dict):
-                        current = current.get(key, {})
+                        if key not in current:
+                            return ""
+                        current = current[key]
                     else:
                         return ""
 
@@ -141,10 +161,9 @@ class StreamProcessor:
             field_mapping.stream_prefix
         ):
             result = result[len(field_mapping.stream_prefix) :].strip()
-        elif chunk_str.startswith("data: "):
-            result = result[len("data: ") :].strip()
-        elif chunk_str.startswith("event: "):
-            result = result[len("event: ") :].strip()
+        elif result.startswith("data:"):
+            result = result[len("data:") :].strip()
+        # Note: 'event:' lines are already filtered by should_skip_non_json_chunk
         return result
 
     @staticmethod
@@ -185,19 +204,15 @@ class StreamProcessor:
         # Initialize usage dict if not present
         if metrics.usage is None:
             metrics.usage = {}
-        # Extract usage tokens
-        usage_extracted = False
 
-        # Update prompt tokens if field mapping exists
+        # 1. Extract Usage independently (non-blocking)
         if field_mapping.prompt_tokens:
             prompt_tokens_value = safe_int_convert(
                 StreamProcessor.get_field_value(chunk_data, field_mapping.prompt_tokens)
             )
-
             if prompt_tokens_value > 0:
                 metrics.usage["prompt_tokens"] = prompt_tokens_value
 
-        # Update completion tokens if field mapping exists
         if field_mapping.completion_tokens:
             completion_tokens_value = safe_int_convert(
                 StreamProcessor.get_field_value(
@@ -206,86 +221,91 @@ class StreamProcessor:
             )
             if completion_tokens_value > 0:
                 metrics.usage["completion_tokens"] = completion_tokens_value
-                usage_extracted = True
 
-        # Update total tokens if field mapping exists
         if field_mapping.total_tokens:
             total_tokens_value = safe_int_convert(
                 StreamProcessor.get_field_value(chunk_data, field_mapping.total_tokens)
             )
             if total_tokens_value > 0:
                 metrics.usage["total_tokens"] = total_tokens_value
-                usage_extracted = True
 
-        # Extract content
-        if field_mapping.content:
-            content_chunk = StreamProcessor.get_field_value(
-                chunk_data, field_mapping.content
-            )
-            # Convert to string for content fields
-            content_chunk = str(content_chunk) if content_chunk else ""
-            if (
-                content_chunk
-                and isinstance(content_chunk, str)
-                and content_chunk.strip()
-            ):
-
-                if not metrics.first_token_received:
-                    metrics.first_token_received = True
-                    metrics.first_output_token_time = time.time()
-                    if start_time > 0 and metrics.first_output_token_time:
-                        ttfot = (metrics.first_output_token_time - start_time) * 1000
-                        EventManager.fire_metric_event(
-                            "Time_to_first_output_token", ttfot, 0
-                        )
-                if not usage_extracted:
-                    metrics.content += content_chunk
-
-        # Extract reasoning content
+        # 2. Extract Reasoning Content (Chain of Thought)
         if field_mapping.reasoning_content:
-            reasoning_chunk = StreamProcessor.get_field_value(
+            reasoning_chunk_raw = StreamProcessor.get_field_value(
                 chunk_data, field_mapping.reasoning_content
             )
-            # Convert to string for reasoning content fields
-            reasoning_chunk = str(reasoning_chunk) if reasoning_chunk else ""
-            if (
-                reasoning_chunk
-                and isinstance(reasoning_chunk, str)
-                and reasoning_chunk.strip()
-            ):
+            # Only treat actual non-empty strings as valid reasoning content.
+            # get_field_value returns "" for missing/null fields; non-str types
+            # (dict, list, int …) are never valid text content.
+            reasoning_chunk = (
+                reasoning_chunk_raw if isinstance(reasoning_chunk_raw, str) else ""
+            )
 
+            if reasoning_chunk:
                 if not metrics.reasoning_is_active:
                     metrics.reasoning_is_active = True
+
                 if not metrics.first_thinking_received:
                     metrics.first_thinking_received = True
+                    # Record absolute business time (can be removed if not needed)
                     metrics.first_thinking_token_time = time.time()
-                    if start_time > 0 and metrics.first_thinking_token_time:
-                        ttfrt = (metrics.first_thinking_token_time - start_time) * 1000
+
+                    # Use monotonic clock to calculate elapsed time
+                    current_perf = time.perf_counter()
+                    metrics._start_thinking_perf = current_perf
+
+                    if start_time > 0:
+                        ttfrt = (current_perf - start_time) * 1000
                         EventManager.fire_metric_event(
                             "Time_to_first_reasoning_token", ttfrt, 0
                         )
-                if not usage_extracted:
-                    metrics.reasoning_content += reasoning_chunk
 
-            elif (
-                metrics.reasoning_is_active
-                and not reasoning_chunk
-                and not metrics.reasoning_ended
-                and field_mapping.content  # Only if we have content in this chunk
-            ):
-                content_chunk = StreamProcessor.get_field_value(
-                    chunk_data, field_mapping.content
-                )
-                # Convert to string for content check
-                content_chunk = str(content_chunk) if content_chunk else ""
+                # Append with OOM protection
+                chunk_len = len(reasoning_chunk)
+                if metrics._reasoning_size + chunk_len <= MAX_STREAM_CONTENT_SIZE:
+                    metrics._reasoning_parts.append(reasoning_chunk)
+                    metrics._reasoning_size += chunk_len
+
+        # 3. Extract main Content and handle reasoning completion logic
+        if field_mapping.content:
+            content_chunk_raw = StreamProcessor.get_field_value(
+                chunk_data, field_mapping.content
+            )
+            # Only treat actual non-empty strings as valid output content.
+            content_chunk = (
+                content_chunk_raw if isinstance(content_chunk_raw, str) else ""
+            )
+
+            if content_chunk:
+                # Record Time to First Token (TTFT)
+                if not metrics.first_token_received:
+                    metrics.first_token_received = True
+                    # Record absolute business time (can be removed if not needed)
+                    metrics.first_output_token_time = time.time()
+
+                    # Use monotonic clock to calculate first token latency
+                    current_perf = time.perf_counter()
+                    metrics._first_output_token_perf = current_perf
+                    if start_time > 0:
+                        ttfot = (current_perf - start_time) * 1000
+                        EventManager.fire_metric_event(
+                            "Time_to_first_output_token", ttfot, 0
+                        )
+
+                # Append with OOM protection
+                chunk_len = len(content_chunk)
+                if metrics._content_size + chunk_len <= MAX_STREAM_CONTENT_SIZE:
+                    metrics._content_parts.append(content_chunk)
+                    metrics._content_size += chunk_len
+
+                # Main content starts outputting, indicating the reasoning phase is officially over (calculate TTRC)
                 if (
-                    content_chunk
-                    and metrics.first_thinking_received
-                    and metrics.first_thinking_token_time
+                    metrics.reasoning_is_active
+                    and not metrics.reasoning_ended
+                    and metrics._start_thinking_perf is not None
                 ):
                     metrics.reasoning_ended = True
-                    current_time = time.time()
-                    ttrc = (current_time - metrics.first_thinking_token_time) * 1000
+                    ttrc = (time.perf_counter() - metrics._start_thinking_perf) * 1000
                     EventManager.fire_metric_event(
                         "Time_to_reasoning_completion", ttrc, 0
                     )
@@ -321,6 +341,9 @@ class StreamProcessor:
         if not chunk_str:
             return False, None, metrics
 
+        if StreamProcessor._stream_debug_enabled():
+            task_logger.debug(f"[stream-raw] {chunk_str}")
+
         if StreamProcessor.should_skip_non_json_chunk(chunk_str):
             return False, None, metrics
 
@@ -340,34 +363,48 @@ class StreamProcessor:
                 chunk_data = orjson.loads(processed_chunk)
             except (orjson.JSONDecodeError, TypeError) as e:
                 task_logger.warning(
-                    f"Failed to parse chunk as JSON: {e} | Chunk: {processed_chunk}"
+                    f"Failed to parse chunk as JSON: {e} | Chunk: {processed_chunk[:200]}"
                 )
-                return True, f"JSON parsing error: {e}", metrics
-
-            # Check end_field stop condition
-            if StreamProcessor.check_end_field_stop(chunk_data, field_mapping):
-                return True, None, metrics  # Normal stream end
+                return (
+                    False,
+                    None,
+                    metrics,
+                )  # Skip malformed chunk instead of terminating
 
             # Check for JSON errors
             error_msg = ErrorResponse._handle_json_error(chunk_data)
             if error_msg:
                 return True, error_msg, metrics  # Error occurred
 
-            # Extract and update metrics
+            # Extract and update metrics BEFORE checking end_field,
+            # because the final chunk may carry both the end signal
+            # AND usage/content data that must not be lost.
             metrics = StreamProcessor.extract_metrics_from_chunk(
                 chunk_data, field_mapping, metrics, start_time, task_logger
             )
+
+            # Check end_field stop condition (after metrics extraction)
+            if StreamProcessor.check_end_field_stop(chunk_data, field_mapping):
+                return True, None, metrics  # Normal stream end
         else:
-            # For non-JSON format, treat processed_chunk as content
-            metrics.content += processed_chunk
+            # Fallback logic for non-JSON format (with OOM protection)
+            chunk_len = len(processed_chunk)
+            if metrics._content_size + chunk_len <= MAX_STREAM_CONTENT_SIZE:
+                metrics._content_parts.append(processed_chunk)
+                metrics._content_size += chunk_len
             if not metrics.first_token_received:
                 metrics.first_token_received = True
                 metrics.first_output_token_time = time.time()
-                if start_time > 0 and metrics.first_output_token_time:
-                    ttfot = (metrics.first_output_token_time - start_time) * 1000
+
+                current_perf = time.perf_counter()
+                # Store perf_counter value for subsequent completion time calculation
+                metrics._first_output_token_perf = current_perf
+                if start_time > 0:
+                    ttfot = (current_perf - start_time) * 1000
                     EventManager.fire_metric_event(
                         "Time_to_first_output_token", ttfot, 0
                     )
+
         return False, None, metrics
 
 
@@ -860,7 +897,8 @@ class APIClient:
         }
 
         try:
-            actual_start_time = time.time()
+            # Use perf_counter for high-precision monotonic timing
+            actual_start_time = time.perf_counter()
             with client.post(self.config.api_path, **request_kwargs) as response:
                 if self.error_handler._handle_status_code_error(
                     response, start_time, request_name
@@ -886,7 +924,8 @@ class APIClient:
                                 self.error_handler._handle_general_exception_event(
                                     error_msg=error_message,
                                     response=response,
-                                    response_time=(time.time() - start_time) * 1000,
+                                    response_time=(time.perf_counter() - start_time)
+                                    * 1000,
                                     additional_context={
                                         "chunk_preview": (
                                             chunk if chunk else "No chunk data"
@@ -900,9 +939,9 @@ class APIClient:
 
                     # Fire completion events for streaming
                     try:
-                        current_time = time.time()
+                        current_perf = time.perf_counter()
                         total_time = (
-                            (current_time - actual_start_time) * 1000
+                            (current_perf - actual_start_time) * 1000
                             if actual_start_time is not None and actual_start_time > 0
                             else 0
                         )
@@ -910,11 +949,13 @@ class APIClient:
                         completion_time = 0
                         if (
                             metrics.first_token_received
-                            and metrics.first_output_token_time is not None
-                            and metrics.first_output_token_time > 0
+                            and hasattr(metrics, "_first_output_token_perf")
+                            and metrics._first_output_token_perf is not None
+                            and metrics._first_output_token_perf > 0
                         ):
+                            # Use perf_counter for completion time calculation
                             completion_time = (
-                                current_time - metrics.first_output_token_time
+                                current_perf - metrics._first_output_token_perf
                             ) * 1000
                             EventManager.fire_metric_event(
                                 METRIC_TTOC, completion_time, 0
@@ -934,7 +975,7 @@ class APIClient:
                     )
                     return "", "", usage
                 except (orjson.JSONDecodeError, ValueError) as e:
-                    response_time = (time.time() - start_time) * 1000
+                    response_time = (time.perf_counter() - start_time) * 1000
                     self.error_handler._handle_general_exception_event(
                         error_msg=f"Stream data parsing error: {e}",
                         response=response,
@@ -943,7 +984,7 @@ class APIClient:
                     )
                     return "", "", usage
         except (ConnectionError, TimeoutError) as e:
-            response_time = (time.time() - start_time) * 1000
+            response_time = (time.perf_counter() - start_time) * 1000
             self.error_handler._handle_general_exception_event(
                 error_msg=f"Connection error: {e}",
                 response=response,
@@ -952,7 +993,7 @@ class APIClient:
             )
             return "", "", usage
         except Exception as e:
-            response_time = (time.time() - start_time) * 1000
+            response_time = (time.perf_counter() - start_time) * 1000
             self.task_logger.error(f"Stream processing error: {e}")
             self.error_handler._handle_general_exception_event(
                 error_msg=f"Unexpected error: {e}",
@@ -1052,7 +1093,7 @@ class APIClient:
                 "Please either set stream_mode=True in task config, or remove 'stream' field from payload."
             )
             self.task_logger.error(error_msg)
-            response_time = (time.time() - start_time) * 1000
+            response_time = (time.perf_counter() - start_time) * 1000
             self.error_handler._handle_general_exception_event(
                 error_msg=error_msg,
                 response=None,
@@ -1083,7 +1124,7 @@ class APIClient:
 
         try:
             with client.post(self.config.api_path, **request_kwargs) as response:
-                total_time = (time.time() - start_time) * 1000
+                total_time = (time.perf_counter() - start_time) * 1000
 
                 if self.error_handler._handle_status_code_error(
                     response, start_time, request_name
@@ -1138,7 +1179,7 @@ class APIClient:
                 return reasoning_content, content, usage
 
         except Exception as e:
-            response_time = (time.time() - start_time) * 1000
+            response_time = (time.perf_counter() - start_time) * 1000
             self.error_handler._handle_general_exception_event(
                 error_msg=f"Unexpected error: {e}",
                 response=response,

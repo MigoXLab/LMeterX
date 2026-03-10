@@ -94,6 +94,14 @@ class EventManager:
 
         name = str(name) if name is not None else "metric"
 
+        # Diagnostic log for timing metrics to aid stream-metric troubleshooting.
+        if name.startswith("Time_") or name == "Total_time":
+            logger.debug(
+                "[metric-fired] "
+                f"name={name} response_time_ms={response_time:.3f} "
+                f"response_length={response_length}"
+            )
+
         try:
             # Use the correct Locust event API based on version
             if hasattr(events, "request_success"):

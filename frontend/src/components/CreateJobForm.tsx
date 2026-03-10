@@ -168,6 +168,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           {
             model: model || 'none',
             stream: streamMode,
+            ...(streamMode ? { stream_options: { include_usage: true } } : {}),
             messages: [
               {
                 role: 'user',
@@ -185,6 +186,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
             model: model || 'none',
             max_tokens: 8192,
             stream: streamMode,
+            ...(streamMode ? { stream_options: { include_usage: true } } : {}),
             messages: [
               {
                 role: 'user',
@@ -214,6 +216,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           {
             model: model || 'none',
             stream: streamMode,
+            ...(streamMode ? { stream_options: { include_usage: true } } : {}),
             messages: [
               {
                 role: 'user',
@@ -1860,7 +1863,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           >
             <TextArea
               autoSize={{ minRows: 3, maxRows: 12 }}
-              placeholder='{"model":"your-model-name","messages": [{"role": "user","content":"Hi"}],"stream": true}'
+              placeholder='{"model":"your-model-name","stream": true,"stream_options": {"include_usage": true},"messages": [{"role": "user","content":"Hi"}]}'
               maxLength={50000}
               showCount
             />

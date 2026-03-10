@@ -168,7 +168,7 @@ def graceful_signal_handler(signum, frame):
                         completion_tokens=0,
                         total_tokens=0,
                     )
-                    time.sleep(0.5)
+                    gevent.sleep(0.5)
                 except Exception as e:
                     task_logger.error(f"Failed to send emergency metrics: {e}")
     except Exception as e:
@@ -299,7 +299,7 @@ def on_locust_init(environment, **kwargs):
             task_logger.debug(
                 "Running in warmup mode - token stats will not be collected"
             )
-        global_state.start_time = time.time()
+        global_state.start_time = time.perf_counter()
 
         # Register message handlers
         _register_master_message_handlers(environment, task_logger)
@@ -376,7 +376,7 @@ def on_test_stop(environment, **kwargs):
 
             concurrent_users = os.getenv("LOCUST_CONCURRENT_USERS", "0")
             wait_time = wait_time_for_stats_sync(runner, int(concurrent_users))
-            time.sleep(wait_time)
+            gevent.sleep(wait_time)
 
         task_id = global_state.config.task_id
 
@@ -608,14 +608,14 @@ class LLMTestUser(HttpUser):
         base_request_kwargs, user_prompt = self.request_handler.prepare_request_kwargs(
             prompt_data
         )
-        # self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
+        self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
         if not base_request_kwargs:
             self.task_logger.error(
                 "Failed to generate request arguments. Skipping task."
             )
             return
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         reasoning_content, content = "", ""
         usage: Dict[str, Optional[int]] = {
             "completion_tokens": 0,
@@ -641,7 +641,9 @@ class LLMTestUser(HttpUser):
             # Record the failure event for unhandled exceptions with enhanced context
             try:
                 response_time = (
-                    (time.time() - start_time) * 1000 if start_time is not None else 0
+                    (time.perf_counter() - start_time) * 1000
+                    if start_time is not None
+                    else 0
                 )
             except Exception:
                 response_time = 0

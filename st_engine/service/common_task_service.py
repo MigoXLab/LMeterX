@@ -280,6 +280,19 @@ class CommonTaskService:
                         self.update_task_status(
                             session, task, TASK_STATUS_FAILED, error_message
                         )
+                    except FileNotFoundError as e:
+                        # Minimal images may not include procps (pgrep/pkill).
+                        # Do not abort reconciliation for all tasks in this case.
+                        task_logger.error(
+                            f" Process inspection command is missing: {e}. "
+                            "Marking task as FAILED to avoid stale RUNNING state."
+                        )
+                        self.update_task_status(
+                            session,
+                            task,
+                            TASK_STATUS_FAILED,
+                            "Engine process inspection command (pgrep/pkill) is missing after restart.",
+                        )
                 finally:
                     if handler_id is not None:
                         remove_task_log_sink(handler_id)

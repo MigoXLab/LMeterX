@@ -362,6 +362,17 @@ class TaskService:
                         self.update_task_status(
                             session, task, TASK_STATUS_FAILED, error_message
                         )
+                    except FileNotFoundError as e:
+                        task_logger.error(
+                            f"Process inspection command is missing: {e}. "
+                            "Marking as FAILED to avoid stale RUNNING state."
+                        )
+                        self.update_task_status(
+                            session,
+                            task,
+                            TASK_STATUS_FAILED,
+                            "Engine process inspection command (pgrep/pkill) is missing after restart.",
+                        )
                 finally:
                     # Clean up the temporary log sink.
                     if handler_id is not None:

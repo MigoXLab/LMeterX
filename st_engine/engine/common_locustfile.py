@@ -179,7 +179,6 @@ def on_test_stop(environment, **kwargs):
     greenlet = getattr(environment, "_realtime_greenlet", None)
     if greenlet and not greenlet.dead:
         greenlet.kill(block=False)
-        task_logger.debug("Real-time metrics greenlet stopped.")
 
     locust_stats = []
     try:

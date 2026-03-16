@@ -200,7 +200,7 @@ class CommonTaskService:
             return []
 
     def reconcile_tasks_on_startup(self, session: Session):
-        """Best-effort reconciliation to mark stale common tasks as failed on engine restart."""
+        """Best-effort reconciliation for stale common tasks owned by current engine."""
         try:
             stale_tasks = (
                 session.execute(
@@ -209,6 +209,7 @@ class CommonTaskService:
                         CommonTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
                     )
                     .where(CommonTask.is_deleted == 0)
+                    .where(CommonTask.engine_id == ENGINE_ID)
                 )
                 .scalars()
                 .all()
@@ -219,6 +220,21 @@ class CommonTaskService:
                 try:
                     # Ensure task log sink exists so reconciliation warnings are captured per task
                     handler_id = add_task_log_sink(task.id)
+                    task_engine_id = getattr(task, "engine_id", None)
+
+                    # Defensive guard for future query changes.
+                    if not task_engine_id:
+                        task_logger.warning(
+                            " Task has empty engine_id. Skipping startup reconciliation "
+                            "to avoid cross-instance misjudgment."
+                        )
+                        continue
+                    if task_engine_id != ENGINE_ID:
+                        task_logger.info(
+                            f" Task bound to engine_id={task_engine_id}, current={ENGINE_ID}. "
+                            "Skipping reconciliation."
+                        )
+                        continue
 
                     if task.status == TASK_STATUS_LOCKED:
                         task_logger.warning(
@@ -282,16 +298,10 @@ class CommonTaskService:
                         )
                     except FileNotFoundError as e:
                         # Minimal images may not include procps (pgrep/pkill).
-                        # Do not abort reconciliation for all tasks in this case.
-                        task_logger.error(
+                        # Keep current status to avoid false negatives during scaling.
+                        task_logger.warning(
                             f" Process inspection command is missing: {e}. "
-                            "Marking task as FAILED to avoid stale RUNNING state."
-                        )
-                        self.update_task_status(
-                            session,
-                            task,
-                            TASK_STATUS_FAILED,
-                            "Engine process inspection command (pgrep/pkill) is missing after restart.",
+                            "Skipping startup reconciliation for this task and keeping current status."
                         )
                 finally:
                     if handler_id is not None:
@@ -316,6 +326,73 @@ class CommonTaskService:
             except Exception:
                 logger.debug(
                     "Failed to rollback session after reconciliation error.",
+                    exc_info=True,
+                )
+
+    def reconcile_dead_engine_tasks(self, session: Session):
+        """Mark running/locked common tasks from dead engines as failed.
+
+        An engine is considered dead when its heartbeat timestamp is older
+        than the configured stale threshold.  This handles the scenario
+        where ``docker compose --scale`` removes replicas while tasks are
+        still running inside them.
+        """
+        from service.heartbeat import get_stale_engine_ids
+
+        try:
+            stale_ids = get_stale_engine_ids(session)
+            if not stale_ids:
+                return
+
+            orphan_tasks = (
+                session.execute(
+                    select(CommonTask)
+                    .where(
+                        CommonTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
+                    )
+                    .where(CommonTask.is_deleted == 0)
+                    .where(CommonTask.engine_id.in_(stale_ids))
+                )
+                .scalars()
+                .all()
+            )
+
+            if not orphan_tasks:
+                return
+
+            logger.info(
+                f"Found {len(orphan_tasks)} orphaned common task(s) "
+                f"from dead engine(s): {stale_ids}"
+            )
+            for task in orphan_tasks:
+                handler_id = None
+                try:
+                    handler_id = add_task_log_sink(task.id)
+                    task_logger = logger.bind(task_id=task.id)
+                    task_logger.warning(
+                        f"Engine '{task.engine_id}' has been discontinued. Marking as FAILED."
+                    )
+                    self.update_task_status(
+                        session,
+                        task,
+                        TASK_STATUS_FAILED,
+                        f"Engine instance '{task.engine_id}' is no longer "
+                        "alive. Task has been marked as failed due to "
+                        "engine shutdown.",
+                    )
+                finally:
+                    if handler_id is not None:
+                        remove_task_log_sink(handler_id)
+        except Exception as e:
+            if isinstance(e, (OperationalError, pymysql.err.OperationalError)):
+                logger.warning(f" DB error during dead-engine reconciliation: {e}")
+            else:
+                logger.debug(f" Dead-engine reconciliation error (non-fatal): {e}")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback after dead-engine reconciliation.",
                     exc_info=True,
                 )
 
@@ -442,6 +519,17 @@ class CommonTaskService:
         task_logger = logger.bind(task_id=task.id)
         try:
             handler_id = add_task_log_sink(task.id)
+
+            # Re-check soft-delete flag to handle the race where a user deletes
+            # a "created" task right after the poller locked it but before
+            # execution starts.
+            self._safe_refresh_task(session, task, task_logger)
+            if getattr(task, "is_deleted", 0) == 1:
+                task_logger.info(
+                    f" Task {task.id} was soft-deleted before execution. Skipping."
+                )
+                return
+
             self.update_task_status(session, task, TASK_STATUS_RUNNING)
 
             run_result = self.start_task(task)

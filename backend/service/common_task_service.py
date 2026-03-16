@@ -374,6 +374,13 @@ async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, An
         if getattr(task, "is_deleted", 0) == 1:
             raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
 
+        # Prevent deleting tasks that are running or currently stopping to avoid orphaned resources
+        if str(task.status).lower() in {"running", "stopping"}:
+            raise ErrorResponse.bad_request(
+                "Cannot delete a task while it is running or stopping. "
+                "Please stop the task and wait until it finishes."
+            )
+
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
             # forbidden to delete task without created_by

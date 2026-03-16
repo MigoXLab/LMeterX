@@ -10,7 +10,12 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from db.database import init_db
+from db.database import get_db_session, init_db
+from service.heartbeat import (
+    ensure_heartbeat_table,
+    heartbeat_and_reconcile_loop,
+    update_heartbeat,
+)
 from service.poller import (
     common_task_create_poller,
     common_task_stop_poller,
@@ -40,10 +45,16 @@ def start_polling():
         daemon=True,
         name="CommonTaskStopPollerThread",
     )
+    heartbeat_thread = threading.Thread(
+        target=heartbeat_and_reconcile_loop,
+        daemon=True,
+        name="HeartbeatReconcileThread",
+    )
     task_create_thread.start()
     task_stop_thread.start()
     common_task_create_thread.start()
     common_task_stop_thread.start()
+    heartbeat_thread.start()
     logger.info("Polling threads started successfully.")
 
 
@@ -82,6 +93,17 @@ async def lifespan(app: FastAPI):
                 raise e
 
     if db_initialized:
+        # Ensure heartbeat table exists and write the initial heartbeat
+        # so that peer engines (and subsequent reconciliation) see us as alive
+        # BEFORE any poller starts its own startup reconciliation.
+        try:
+            ensure_heartbeat_table()
+            with get_db_session() as session:
+                update_heartbeat(session)
+            logger.info("Engine heartbeat initialised successfully.")
+        except Exception as e:
+            logger.warning(f"Failed to initialise engine heartbeat (non-fatal): {e}")
+
         # Start background polling tasks if the database is initialized
         start_polling()
 

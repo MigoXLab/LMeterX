@@ -13,7 +13,7 @@ from config.business import (
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
 )
-from service.task_service import TaskService
+from service.task_service import ENGINE_ID, TaskService
 
 
 @pytest.fixture
@@ -146,3 +146,98 @@ def test_get_stopping_task_ids_handles_exception(task_service):
 def test_stop_task_returns_true_when_process_not_found(task_service):
     result = task_service.stop_task("missing_task")
     assert result is True
+
+
+def test_reconcile_skips_tasks_owned_by_other_engine(task_service):
+    mock_session = Mock()
+    mock_task = Mock()
+    mock_task.id = "task-other-engine"
+    mock_task.status = TASK_STATUS_RUNNING
+    mock_task.engine_id = "engine-another-pod"
+
+    mock_result = Mock()
+    mock_result.scalars.return_value.all.return_value = [mock_task]
+    mock_session.execute.return_value = mock_result
+
+    with (
+        patch("service.task_service.add_task_log_sink", return_value=1),
+        patch("service.task_service.remove_task_log_sink"),
+        patch.object(task_service, "update_task_status") as mock_update_status,
+        patch("service.task_service.subprocess.check_output") as mock_check_output,
+    ):
+        task_service.reconcile_tasks_on_startup(mock_session)
+
+    mock_update_status.assert_not_called()
+    mock_check_output.assert_not_called()
+
+
+def test_pipeline_skips_soft_deleted_task(task_service):
+    """Task soft-deleted between lock and pipeline start should not run."""
+    mock_session = Mock()
+    mock_task = Mock()
+    mock_task.id = "task-deleted-race"
+    mock_task.is_deleted = 1  # simulates value after session.refresh
+
+    with (
+        patch("service.task_service.add_task_log_sink", return_value=1),
+        patch("service.task_service.remove_task_log_sink"),
+        patch.object(task_service, "update_task_status") as mock_update_status,
+        patch.object(task_service, "start_task") as mock_start_task,
+    ):
+        task_service.process_task_pipeline(mock_task, mock_session)
+
+    mock_start_task.assert_not_called()
+    mock_update_status.assert_not_called()
+
+
+def test_pipeline_runs_non_deleted_task(task_service):
+    """Normal (non-deleted) task should proceed through the pipeline."""
+    mock_session = Mock()
+    mock_task = Mock()
+    mock_task.id = "task-normal"
+    mock_task.is_deleted = 0
+    mock_task.status = TASK_STATUS_RUNNING
+
+    with (
+        patch("service.task_service.add_task_log_sink", return_value=1),
+        patch("service.task_service.remove_task_log_sink"),
+        patch.object(task_service, "update_task_status"),
+        patch.object(
+            task_service,
+            "start_task",
+            return_value={
+                "status": "COMPLETED",
+                "locust_result": {},
+                "stderr": "",
+                "return_code": 0,
+            },
+        ) as mock_start_task,
+    ):
+        task_service.process_task_pipeline(mock_task, mock_session)
+
+    mock_start_task.assert_called_once_with(mock_task)
+
+
+def test_reconcile_keeps_running_when_pgrep_missing(task_service):
+    mock_session = Mock()
+    mock_task = Mock()
+    mock_task.id = "task-owned-engine"
+    mock_task.status = TASK_STATUS_RUNNING
+    mock_task.engine_id = ENGINE_ID
+
+    mock_result = Mock()
+    mock_result.scalars.return_value.all.return_value = [mock_task]
+    mock_session.execute.return_value = mock_result
+
+    with (
+        patch("service.task_service.add_task_log_sink", return_value=1),
+        patch("service.task_service.remove_task_log_sink"),
+        patch.object(task_service, "update_task_status") as mock_update_status,
+        patch(
+            "service.task_service.subprocess.check_output",
+            side_effect=FileNotFoundError("pgrep"),
+        ),
+    ):
+        task_service.reconcile_tasks_on_startup(mock_session)
+
+    mock_update_status.assert_not_called()

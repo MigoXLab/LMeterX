@@ -383,17 +383,11 @@ class CommonTaskService:
                 finally:
                     if handler_id is not None:
                         remove_task_log_sink(handler_id)
-        except (OperationalError, pymysql.err.OperationalError) as e:
-            logger.warning(f" DB error during dead-engine reconciliation: {e}")
-            try:
-                session.rollback()
-            except Exception:
-                logger.debug(
-                    "Failed to rollback after dead-engine reconciliation.",
-                    exc_info=True,
-                )
         except Exception as e:
-            logger.debug(f" Dead-engine reconciliation error (non-fatal): {e}")
+            if isinstance(e, (OperationalError, pymysql.err.OperationalError)):
+                logger.warning(f" DB error during dead-engine reconciliation: {e}")
+            else:
+                logger.debug(f" Dead-engine reconciliation error (non-fatal): {e}")
             try:
                 session.rollback()
             except Exception:

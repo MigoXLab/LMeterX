@@ -89,14 +89,13 @@ def get_stale_engine_ids(session: Session) -> List[str]:
     heartbeat record are **not** included (they may be running an older
     version that does not support heartbeats).
     """
+    stale_cutoff_expr = text("NOW() - INTERVAL :stale_seconds SECOND")
     result = (
         session.execute(
             select(EngineHeartbeat.engine_id)
-            .where(
-                EngineHeartbeat.last_heartbeat
-                < text(f"NOW() - INTERVAL {HEARTBEAT_STALE_SECONDS} SECOND")
-            )
-            .where(EngineHeartbeat.engine_id != ENGINE_ID)
+            .where(EngineHeartbeat.last_heartbeat < stale_cutoff_expr)
+            .where(EngineHeartbeat.engine_id != ENGINE_ID),
+            {"stale_seconds": HEARTBEAT_STALE_SECONDS},
         )
         .scalars()
         .all()

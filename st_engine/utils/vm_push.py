@@ -82,14 +82,18 @@ def push_metrics(
             timeout=_PUSH_TIMEOUT,
         )
         if resp.status_code >= 400:
-            logger.debug(f"VM push failed: HTTP {resp.status_code} - {resp.text[:200]}")
+            logger.warning(
+                f"VM push failed: HTTP {resp.status_code} - {resp.text[:200]}"
+            )
             return False
         return True
     except requests.exceptions.ConnectionError:
-        logger.debug("VM push connection error (VictoriaMetrics may not be available)")
+        logger.warning(
+            "VM push connection error (VictoriaMetrics may not be available)"
+        )
         return False
     except Exception as e:
-        logger.debug(f"VM push error: {e}")
+        logger.warning(f"VM push error: {e}")
         return False
 
 

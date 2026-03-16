@@ -263,10 +263,118 @@ class TaskService:
                 )
             return None
 
+    def _kill_orphaned_process(self, task: Task, task_logger):
+        """
+        Attempts to terminate an orphaned locust process for a given task.
+
+        Args:
+            task (Task): The task whose orphaned process should be killed.
+            task_logger: A logger instance bound to the task ID.
+        """
+        try:
+            kill_cmd = ["pkill", "-f", f"locust .*--task-id {task.id}"]
+            subprocess.run(kill_cmd, check=True)  # nosec B603
+            task_logger.info(f"Successfully terminated orphaned process.")
+        except subprocess.CalledProcessError as e:
+            if e.returncode > 1:
+                task_logger.error(f"Failed to kill orphaned process: {e}")
+            else:
+                task_logger.warning(
+                    f"Orphaned process cleanup for task {task.id} was interrupted "
+                    f"or the process was already gone (exit code {e.returncode}). "
+                    "This is likely safe to ignore."
+                )
+        except Exception as kill_e:
+            task_logger.error(
+                f"An unexpected error occurred while trying to kill orphaned process: {kill_e}"
+            )
+
+    def _reconcile_running_task(self, session: Session, task: Task, task_logger):
+        """
+        Reconciles a single task that was in 'running' state during engine restart.
+        Checks for an orphaned process and terminates it if found.
+
+        Args:
+            session (Session): The SQLAlchemy database session.
+            task (Task): The running task to reconcile.
+            task_logger: A logger instance bound to the task ID.
+        """
+        try:
+            # Use pgrep to check if a locust process with a specific task-id exists.
+            cmd = ["pgrep", "-f", f"locust .*--task-id {task.id}"]
+            subprocess.check_output(cmd, stderr=subprocess.DEVNULL)  # nosec B603
+
+            # If pgrep succeeds, the process exists and is now an orphan.
+            task_logger.warning(
+                f"Something went wrong with engine service."
+                f"Terminating it and marking task as FAILED."
+            )
+            self._kill_orphaned_process(task, task_logger)
+
+            error_message = "Task process was orphaned by an engine restart and has been terminated."
+            self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
+
+        except subprocess.CalledProcessError:
+            # pgrep returns a non-zero exit code, meaning no process was found.
+            task_logger.warning(
+                f"Task {task.id} was in '{task.status}' state, but no active process found. "
+                f"Marking as FAILED. This likely occurred during an engine restart."
+            )
+            error_message = "Task process was not found after an engine restart."
+            self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
+        except FileNotFoundError as e:
+            task_logger.warning(
+                f"Process inspection command is missing: {e}. "
+                "Skipping startup reconciliation for this task and keeping current status."
+            )
+
+    def _reconcile_single_task(self, session: Session, task: Task):
+        """
+        Reconciles a single stale task found during engine startup.
+
+        Args:
+            session (Session): The SQLAlchemy database session.
+            task (Task): The task to reconcile.
+        """
+        task_logger = logger.bind(task_id=task.id)
+        task_engine_id = getattr(task, "engine_id", None)
+
+        # Extra defensive guard in case this method is called with
+        # a broader query in the future.
+        if not task_engine_id:
+            task_logger.warning(
+                "Task has no engine binding (engine_id is empty). "
+                "Skipping startup reconciliation to avoid cross-instance misjudgment."
+            )
+            return
+        if task_engine_id != ENGINE_ID:
+            task_logger.info(
+                f"Task is bound to engine_id={task_engine_id}, "
+                f"current engine_id={ENGINE_ID}. Skipping reconciliation."
+            )
+            return
+
+        if task.status == TASK_STATUS_LOCKED:
+            # The task was locked, but the engine restarted before the process
+            # was created. Mark it as failed directly.
+            task_logger.warning(
+                f"Task {task.id} was in '{task.status}' state during restart. "
+                f"Task {task.id}, Marking as FAILED as it never started."
+            )
+            error_message = (
+                "Task was aborted before execution due to an engine restart."
+            )
+            self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
+            return
+
+        # For tasks in 'running' state, check for an orphaned process.
+        self._reconcile_running_task(session, task, task_logger)
+
     def reconcile_tasks_on_startup(self, session: Session):
         """
         Reconciles tasks on engine startup by checking for tasks in 'running' or
-        'locked' states and cleaning up any that no longer have an active process.
+        'locked' states owned by the current engine instance and cleaning up any
+        that no longer have an active process.
 
         This is crucial for handling state inconsistencies that arise when the
         engine is restarted while tasks are being processed.
@@ -275,13 +383,15 @@ class TaskService:
         """
         logger.info("Reconciling tasks on startup...")
         try:
-            # Find all tasks that were in a transient state (locked or running)
-            # during the last shutdown.
+            # Find tasks in transient states (locked/running) that belong to
+            # this engine instance. In multi-replica deployments, other pods may
+            # legitimately keep tasks running, so we must not reconcile them here.
             stale_tasks = (
                 session.execute(
                     select(Task)
                     .where(Task.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED]))
                     .where(Task.is_deleted == 0)
+                    .where(Task.engine_id == ENGINE_ID)
                 )
                 .scalars()
                 .all()
@@ -297,82 +407,7 @@ class TaskService:
                 try:
                     # Temporarily add a log sink for this specific task to capture reconciliation logs.
                     handler_id = add_task_log_sink(task.id)
-                    task_logger = logger.bind(task_id=task.id)
-
-                    if task.status == TASK_STATUS_LOCKED:
-                        # The task was locked, but the engine restarted before the process
-                        # was created. Mark it as failed directly.
-                        task_logger.warning(
-                            f"Task {task.id} was in '{task.status}' state during restart. "
-                            f"Task {task.id}, Marking as FAILED as it never started."
-                        )
-                        error_message = "Task was aborted before execution due to an engine restart."
-                        self.update_task_status(
-                            session, task, TASK_STATUS_FAILED, error_message
-                        )
-                        continue
-
-                    # For tasks in 'running' state, check for an orphaned process.
-                    try:
-                        # Use pgrep to check if a locust process with a specific task-id exists.
-                        cmd = ["pgrep", "-f", f"locust .*--task-id {task.id}"]
-                        subprocess.check_output(
-                            cmd, stderr=subprocess.DEVNULL
-                        )  # nosec B603
-
-                        # If pgrep succeeds, the process exists and is now an orphan.
-                        task_logger.warning(
-                            f"Something went wrong with engine service."
-                            f"Terminating it and marking task as FAILED."
-                        )
-                        try:
-                            kill_cmd = ["pkill", "-f", f"locust .*--task-id {task.id}"]
-                            subprocess.run(kill_cmd, check=True)  # nosec B603
-                            task_logger.info(
-                                f"Successfully terminated orphaned process."
-                            )
-                        except subprocess.CalledProcessError as e:
-                            if e.returncode > 1:
-                                task_logger.error(
-                                    f"Failed to kill orphaned process: {e}"
-                                )
-                            else:
-                                task_logger.warning(
-                                    f"Orphaned process cleanup for task {task.id} was interrupted or the process was already gone (exit code {e.returncode}). This is likely safe to ignore."
-                                )
-                        except Exception as kill_e:
-                            task_logger.error(
-                                f"An unexpected error occurred while trying to kill orphaned process: {kill_e}"
-                            )
-
-                        error_message = "Task process was orphaned by an engine restart and has been terminated."
-                        self.update_task_status(
-                            session, task, TASK_STATUS_FAILED, error_message
-                        )
-
-                    except subprocess.CalledProcessError:
-                        # pgrep returns a non-zero exit code, meaning no process was found.
-                        task_logger.warning(
-                            f"Task {task.id} was in '{task.status}' state, but no active process found. "
-                            f"Marking as FAILED. This likely occurred during an engine restart."
-                        )
-                        error_message = (
-                            "Task process was not found after an engine restart."
-                        )
-                        self.update_task_status(
-                            session, task, TASK_STATUS_FAILED, error_message
-                        )
-                    except FileNotFoundError as e:
-                        task_logger.error(
-                            f"Process inspection command is missing: {e}. "
-                            "Marking as FAILED to avoid stale RUNNING state."
-                        )
-                        self.update_task_status(
-                            session,
-                            task,
-                            TASK_STATUS_FAILED,
-                            "Engine process inspection command (pgrep/pkill) is missing after restart.",
-                        )
+                    self._reconcile_single_task(session, task)
                 finally:
                     # Clean up the temporary log sink.
                     if handler_id is not None:
@@ -398,6 +433,77 @@ class TaskService:
             except Exception:
                 logger.debug(
                     "Failed to rollback session after reconciliation error.",
+                    exc_info=True,
+                )
+
+    def reconcile_dead_engine_tasks(self, session: Session):
+        """Mark running/locked tasks from dead engine instances as failed.
+
+        An engine is considered dead when its heartbeat timestamp is older
+        than ``HEARTBEAT_STALE_SECONDS``.  This handles the scenario where
+        ``docker compose --scale`` removes replicas while tasks are still
+        running inside them.
+        """
+        from service.heartbeat import get_stale_engine_ids
+
+        try:
+            stale_ids = get_stale_engine_ids(session)
+            if not stale_ids:
+                return
+
+            orphan_tasks = (
+                session.execute(
+                    select(Task)
+                    .where(Task.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED]))
+                    .where(Task.is_deleted == 0)
+                    .where(Task.engine_id.in_(stale_ids))
+                )
+                .scalars()
+                .all()
+            )
+
+            if not orphan_tasks:
+                return
+
+            logger.info(
+                f"Found {len(orphan_tasks)} orphaned LLM task(s) from "
+                f"dead engine(s): {stale_ids}"
+            )
+            for task in orphan_tasks:
+                handler_id = None
+                try:
+                    handler_id = add_task_log_sink(task.id)
+                    task_logger = logger.bind(task_id=task.id)
+                    task_logger.warning(
+                        f"Engine '{task.engine_id}' has been discontinued. Marking as FAILED."
+                    )
+                    self.update_task_status(
+                        session,
+                        task,
+                        TASK_STATUS_FAILED,
+                        f"Engine instance '{task.engine_id}' is no longer "
+                        "alive. Task has been marked as failed due to "
+                        "engine shutdown.",
+                    )
+                finally:
+                    if handler_id is not None:
+                        remove_task_log_sink(handler_id)
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(f"DB error during dead-engine reconciliation: {e}")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback after dead-engine reconciliation.",
+                    exc_info=True,
+                )
+        except Exception as e:
+            logger.debug(f"Dead-engine reconciliation error (non-fatal): {e}")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback after dead-engine reconciliation.",
                     exc_info=True,
                 )
 
@@ -438,6 +544,22 @@ class TaskService:
         try:
             # Add task log sink first
             handler_id = add_task_log_sink(task.id)
+
+            # Re-check soft-delete flag to handle the race where a user deletes
+            # a "created" task right after the poller locked it but before
+            # execution starts.
+            try:
+                session.refresh(task)
+            except Exception:
+                task_logger.debug(
+                    "Could not refresh task before execution check.",
+                    exc_info=True,
+                )
+            if getattr(task, "is_deleted", 0) == 1:
+                task_logger.info(
+                    f"Task {task.id} was soft-deleted before execution. Skipping."
+                )
+                return
 
             # Update task status to running
             self.update_task_status(session, task, TASK_STATUS_RUNNING)

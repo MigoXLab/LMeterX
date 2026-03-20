@@ -270,6 +270,24 @@ def _append_captured_response(captured: List[_CapturedRequest], response: Any) -
         logger.debug("Failed to capture response: {}", e)
 
 
+async def _launch_browser(p):
+    """Launch Chromium with a user-friendly error on failure."""
+    try:
+        return await p.chromium.launch(headless=True)
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "executable doesn't exist" in err_msg:
+            raise RuntimeError(
+                "Chromium browser is not installed. "
+                "Please run: playwright install --with-deps chromium"
+            ) from e
+        raise RuntimeError(
+            "Failed to launch Chromium browser. "
+            "Please ensure Playwright browsers are installed: "
+            "playwright install --with-deps chromium"
+        ) from e
+
+
 async def _analyze_page(
     target_url: str,
     *,
@@ -283,7 +301,7 @@ async def _analyze_page(
     ctx_opts, cookies_to_add = _build_context_options(target_url, browser_context)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await _launch_browser(p)
         context = await browser.new_context(**ctx_opts)
         if cookies_to_add:
             await context.add_cookies(cookies_to_add)

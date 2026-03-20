@@ -695,11 +695,6 @@ const WebOneClickModal: React.FC<Props> = ({
             <Tag color={CONFIDENCE_COLOR[api.confidence] || 'default'}>
               {api.confidence}
             </Tag>
-            <Tag>
-              {api.source === 'playwright_xhr_fetch'
-                ? t('components.webOneClick.sourceRuntime', 'Runtime')
-                : t('components.webOneClick.sourceJsScan', 'JS Scan')}
-            </Tag>
             {renderApiStateIcon(api.target_url)}
           </Space>
         }

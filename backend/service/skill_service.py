@@ -845,14 +845,16 @@ async def analyze_url_svc(
     filtered = _filter_requests(raw_requests)
     logger.info("Filtered: {} → {} core API requests", len(raw_requests), len(filtered))
 
-    # ── Step 3: Build discovered APIs (runtime + JS static scan) ──
-    discovered_runtime = _build_discovered_apis(filtered)
-    discovered_js = await _discover_apis_via_js_static_scan(target_url, raw_requests)
-    discovered = _merge_discovered_apis(discovered_runtime, discovered_js)
+    # ── Step 3: Build discovered APIs ──
+    discovered = _build_discovered_apis(filtered)
+    # JS static scan is disabled for now — the APIs it discovers lack complete
+    # request parameters (headers, cookies, body), which causes preflight /
+    # actual calls to fail.  Only runtime-captured XHR/Fetch requests carry
+    # the full context needed for reliable load testing.
+    # discovered_js = await _discover_apis_via_js_static_scan(target_url, raw_requests)
+    # discovered = _merge_discovered_apis(discovered_runtime, discovered_js)
     logger.info(
-        "Discovered APIs merged: runtime={} js_static={} final={}",
-        len(discovered_runtime),
-        len(discovered_js),
+        "Discovered APIs (runtime only): {}",
         len(discovered),
     )
 
@@ -860,8 +862,9 @@ async def analyze_url_svc(
         return AnalyzeUrlResponse(
             status="error",
             message=(
-                f"No core business API requests found in {target_url}"
-                f"(intercepted {len(raw_requests)} requests, no valid JS static candidates)"
+                f"No core business API requests found in {target_url} "
+                f"(intercepted {len(raw_requests)} total requests, "
+                f"none matched XHR/Fetch business API criteria)"
             ),
             target_url=target_url,
         )

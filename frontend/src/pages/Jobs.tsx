@@ -13,8 +13,10 @@ import {
   ExclamationCircleOutlined,
   ExperimentOutlined,
   FileTextOutlined,
+  GlobalOutlined,
   LineChartOutlined,
   MoreOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -41,6 +43,7 @@ import { useNavigate } from 'react-router-dom';
 import { commonJobApi, jobApi } from '../api/services';
 import CreateCommonJobForm from '../components/CreateCommonJobForm';
 import CreateJobForm from '../components/CreateJobForm';
+import WebOneClickModal from '../components/WebOneClickModal';
 import CopyButton from '../components/ui/CopyButton';
 import PageHeader from '../components/ui/PageHeader';
 import StatusTag from '../components/ui/StatusTag';
@@ -80,6 +83,7 @@ const JobsPage: React.FC = () => {
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [webOneClickOpen, setWebOneClickOpen] = useState(false);
 
   // Get message instance from App context
   const { message: messageApi, modal } = App.useApp();
@@ -290,6 +294,155 @@ const JobsPage: React.FC = () => {
       }
     },
     [canManage, messageApi, t]
+  );
+
+  /**
+   * Generate a rerun task name with incrementing suffix (-1, -2, ...)
+   */
+  const getRerunName = useCallback((name?: string): string => {
+    const baseName = name || 'Task';
+    const match = baseName.match(/^(.*)-(\d+)$/);
+    if (match) {
+      return `${match[1]}-${parseInt(match[2]) + 1}`;
+    }
+    return `${baseName}-1`;
+  }, []);
+
+  /**
+   * Handle rerun an LLM job (create a new task based on existing config)
+   */
+  const handleRerunJob = useCallback(
+    async (job: Job) => {
+      if (!canManage(job.created_by)) {
+        messageApi.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      try {
+        const fullJobResp = await jobApi.getJob(job.id);
+        const fullJob = (fullJobResp as any)?.data || job;
+
+        const rerunData: any = {
+          ...fullJob,
+          name: getRerunName(fullJob.name),
+          id: undefined,
+          status: undefined,
+          created_at: undefined,
+          updated_at: undefined,
+          result_id: undefined,
+          temp_task_id: `temp-${Date.now()}`,
+        };
+
+        // Handle headers
+        if (rerunData.headers) {
+          const headerObject =
+            typeof rerunData.headers === 'string'
+              ? safeJsonParse(rerunData.headers, [])
+              : rerunData.headers;
+          rerunData.headers = deepClone(headerObject) || [];
+        }
+
+        // Handle request_payload
+        if (rerunData.request_payload) {
+          rerunData.request_payload =
+            typeof rerunData.request_payload === 'string'
+              ? rerunData.request_payload
+              : safeJsonStringify(rerunData.request_payload);
+        }
+
+        // Handle field_mapping
+        if (rerunData.field_mapping) {
+          const fieldMappingObject =
+            typeof rerunData.field_mapping === 'string'
+              ? safeJsonParse(rerunData.field_mapping, {})
+              : rerunData.field_mapping;
+          rerunData.field_mapping = deepClone(fieldMappingObject) || {};
+        }
+
+        const success = await createJob(rerunData);
+        if (success) {
+          messageApi.success(t('pages.jobs.rerunSuccess'));
+        }
+      } catch (error) {
+        console.error('Failed to rerun job:', error);
+        messageApi.error(t('pages.jobs.rerunFailed'));
+      }
+    },
+    [canManage, createJob, getRerunName, messageApi, t]
+  );
+
+  /**
+   * Handle rerun a common API job
+   */
+  const handleRerunCommonJob = useCallback(
+    async (job: CommonJob) => {
+      if (!canManage(job.created_by)) {
+        messageApi.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      try {
+        const fullJobResponse = await commonJobApi.getJob(job.id);
+        const fullJob = (fullJobResponse.data as CommonJob) || job;
+
+        const rerunData: any = {
+          ...fullJob,
+          name: getRerunName(fullJob.name),
+          id: undefined,
+          status: undefined,
+          created_at: undefined,
+          updated_at: undefined,
+          temp_task_id: `temp-${Date.now()}`,
+          request_body:
+            typeof fullJob.request_body === 'string'
+              ? fullJob.request_body
+              : (fullJob.request_body ?? ''),
+        };
+
+        const success = await createCommonJob(rerunData);
+        if (success) {
+          messageApi.success(t('pages.jobs.rerunSuccess'));
+        }
+      } catch (error) {
+        console.error('Failed to rerun common job:', error);
+        messageApi.error(t('pages.jobs.rerunFailed'));
+      }
+    },
+    [canManage, createCommonJob, getRerunName, messageApi, t]
+  );
+
+  /**
+   * Show confirmation dialog for rerunning a job
+   */
+  const showRerunConfirm = useCallback(
+    (record: Job | CommonJob, type: 'llm' | 'common') => {
+      modal.confirm({
+        title: t('pages.jobs.rerunConfirmTitle'),
+        icon: <PlayCircleOutlined style={{ color: '#52c41a' }} />,
+        content: (
+          <div>
+            <p>
+              {t('pages.jobs.rerunConfirmContent')}{' '}
+              <Text code>{record.name || record.id}</Text>
+            </p>
+            <p style={{ color: '#faad14', marginTop: 8, marginBottom: 0 }}>
+              {t('pages.jobs.rerunDatasetTip')}
+            </p>
+          </div>
+        ),
+        okText: t('pages.jobs.confirmRerun'),
+        okButtonProps: {
+          style: {
+            backgroundColor: '#52c41a',
+            borderColor: '#52c41a',
+          },
+        },
+        cancelText: t('common.cancel'),
+        onOk: () =>
+          type === 'llm'
+            ? handleRerunJob(record as Job)
+            : handleRerunCommonJob(record as CommonJob),
+      });
+    },
+    [handleRerunCommonJob, handleRerunJob, modal, t]
   );
 
   /**
@@ -593,6 +746,18 @@ const JobsPage: React.FC = () => {
           const statusLower = record.status?.toLowerCase();
           const moreMenuItems: any[] = [];
 
+          if (canManage(record.created_by)) {
+            moreMenuItems.push({
+              key: 'copy',
+              icon: <CopyOutlined />,
+              label: t('pages.jobs.copyTemplate'),
+              onClick: (info: any) => {
+                info.domEvent.stopPropagation();
+                handleCopyJob(record);
+              },
+            });
+          }
+
           if (
             canManage(record.created_by) &&
             ['running', 'queued'].includes(statusLower)
@@ -653,15 +818,15 @@ const JobsPage: React.FC = () => {
                 />
               </Tooltip>
               {canManage(record.created_by) && (
-                <Tooltip title={t('pages.jobs.copyTemplate')}>
+                <Tooltip title={t('pages.jobs.rerun')}>
                   <Button
                     type='text'
                     size='small'
                     className='action-icon-btn'
-                    icon={<CopyOutlined />}
+                    icon={<PlayCircleOutlined />}
                     onClick={e => {
                       e.stopPropagation();
-                      handleCopyJob(record);
+                      showRerunConfirm(record, 'llm');
                     }}
                   />
                 </Tooltip>
@@ -698,6 +863,7 @@ const JobsPage: React.FC = () => {
     modelFilter,
     openRenameModal,
     renderLoadConfig,
+    showRerunConfirm,
     showStopConfirm,
     statusFilter,
     t,
@@ -856,6 +1022,18 @@ const JobsPage: React.FC = () => {
           const statusLower = record.status?.toLowerCase();
           const moreMenuItems: any[] = [];
 
+          if (canManage(record.created_by)) {
+            moreMenuItems.push({
+              key: 'copy',
+              icon: <CopyOutlined />,
+              label: t('pages.jobs.copyTemplate'),
+              onClick: (info: any) => {
+                info.domEvent.stopPropagation();
+                handleCopyCommonJob(record);
+              },
+            });
+          }
+
           if (
             canManage(record.created_by) &&
             ['running', 'queued'].includes(statusLower)
@@ -913,15 +1091,15 @@ const JobsPage: React.FC = () => {
                 />
               </Tooltip>
               {canManage(record.created_by) && (
-                <Tooltip title={t('pages.jobs.copyTemplate')}>
+                <Tooltip title={t('pages.jobs.rerun')}>
                   <Button
                     type='text'
                     size='small'
                     className='action-icon-btn'
-                    icon={<CopyOutlined />}
+                    icon={<PlayCircleOutlined />}
                     onClick={e => {
                       e.stopPropagation();
-                      handleCopyCommonJob(record);
+                      showRerunConfirm(record, 'common');
                     }}
                   />
                 </Tooltip>
@@ -957,6 +1135,7 @@ const JobsPage: React.FC = () => {
     handleDeleteTask,
     openRenameModal,
     renderLoadConfig,
+    showRerunConfirm,
     showStopConfirm,
     t,
   ]);
@@ -1219,18 +1398,18 @@ const JobsPage: React.FC = () => {
           }}
           items={[
             {
-              key: 'llm',
-              label: (
-                <span className='tab-label'>
-                  {t('pages.jobs.llmTab') || 'LLM Load Test'}
-                </span>
-              ),
-            },
-            {
               key: 'common',
               label: (
                 <span className='tab-label'>
                   {t('pages.jobs.commonApiTab') || 'Business API Load Test'}
+                </span>
+              ),
+            },
+            {
+              key: 'llm',
+              label: (
+                <span className='tab-label'>
+                  {t('pages.jobs.llmTab') || 'LLM Load Test'}
                 </span>
               ),
             },
@@ -1250,6 +1429,22 @@ const JobsPage: React.FC = () => {
             >
               {t('pages.jobs.createNew')}
             </Button>
+            {isCommonMode && (
+              <Tooltip
+                title={t('pages.jobs.webOneClickTooltip')}
+                placement='bottom'
+                styles={{ root: { maxWidth: 280 } }}
+              >
+                <Button
+                  icon={<GlobalOutlined />}
+                  onClick={() => setWebOneClickOpen(true)}
+                  disabled={currentLoading}
+                  className='modern-button-web-quick-test'
+                >
+                  {t('pages.jobs.webOneClick')}
+                </Button>
+              </Tooltip>
+            )}
             {selectedRowKeys.length > 0 && (
               <>
                 {selectedRowKeys.length >= 2 && selectedRowKeys.length <= 5 && (
@@ -1384,6 +1579,12 @@ const JobsPage: React.FC = () => {
           />
         )}
       </Modal>
+
+      <WebOneClickModal
+        open={webOneClickOpen}
+        onClose={() => setWebOneClickOpen(false)}
+        onTaskCreated={() => commonManualRefresh()}
+      />
     </div>
   );
 };

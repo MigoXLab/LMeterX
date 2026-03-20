@@ -287,9 +287,23 @@ class CommonApiUser(HttpUser):
                     else:
                         text_payload = record.get("text", "")
                 except queue.Empty:
-                    text_payload = self.request_body
+                    if self.request_body:
+                        try:
+                            json_payload = json.loads(self.request_body)
+                        except (json.JSONDecodeError, TypeError):
+                            text_payload = self.request_body
+                    else:
+                        text_payload = self.request_body
             else:
-                text_payload = self.request_body
+                # Try to parse request_body as JSON so it is sent with
+                # Content-Type: application/json (matching the test-API behaviour).
+                if self.request_body:
+                    try:
+                        json_payload = json.loads(self.request_body)
+                    except (json.JSONDecodeError, TypeError):
+                        text_payload = self.request_body
+                else:
+                    text_payload = self.request_body
 
             req_kwargs = _build_request_kwargs(
                 self.method,

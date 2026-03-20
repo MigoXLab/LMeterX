@@ -440,6 +440,11 @@ class CommonTaskService:
                 f" Task {task.id} was stopped during execution. Marking stopped."
             )
             self.update_task_status(session, task, TASK_STATUS_STOPPED)
+        elif run_status == "STOPPED":
+            task_logger.info(
+                f" Task {task.id} was stopped (exit signal detected). Marking stopped."
+            )
+            self.update_task_status(session, task, TASK_STATUS_STOPPED)
         elif run_status == "COMPLETED":
             self._handle_completed(session, task, locust_result)
         elif run_status == "FAILED_REQUESTS":
@@ -549,6 +554,10 @@ class CommonTaskService:
         task_logger = logger.bind(task_id=task_id)
         try:
             task_logger.info(f" Received stop request for task {task_id}.")
+
+            # Mark this task as stopped so _finalize_task can detect it
+            self.runner._stopped_task_ids.add(task_id)
+
             process = self.runner._process_dict.get(task_id)
             if not process:
                 task_logger.warning(

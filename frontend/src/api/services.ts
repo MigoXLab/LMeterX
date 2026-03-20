@@ -293,6 +293,53 @@ export const comparisonApi = {
     }>('/common-tasks/comparison', { selected_tasks: selectedTasks }),
 };
 
+// Skills API (Web URL analysis)
+export const skillApi = {
+  /** Analyze a webpage URL to discover business APIs and generate loadtest configs. */
+  analyzeUrl: (data: {
+    target_url: string;
+    cookies?: Array<{ name: string; value: string }>;
+    headers?: Array<{ name: string; value: string }>;
+    wait_seconds?: number;
+    scroll?: boolean;
+    concurrent_users?: number;
+    duration?: number;
+    spawn_rate?: number;
+  }) =>
+    api.post<{
+      status: string;
+      message: string;
+      target_url: string;
+      analysis_summary: string;
+      discovered_apis: Array<{
+        name: string;
+        target_url: string;
+        method: string;
+        headers: Array<{ key: string; value: string }>;
+        request_body: string | null;
+        http_status: number | null;
+        source: string;
+        confidence: string;
+      }>;
+      loadtest_configs: Array<{
+        temp_task_id: string;
+        name: string;
+        method: string;
+        target_url: string;
+        headers: Array<{ key: string; value: string }>;
+        cookies: Array<{ key: string; value: string }>;
+        request_body: string;
+        concurrent_users: number;
+        duration: number;
+        spawn_rate: number;
+        load_mode: string;
+      }>;
+      llm_used: boolean;
+    }>('/skills/analyze-url', data, {
+      timeout: 120000, // 2 minutes timeout for page analysis
+    }),
+};
+
 // Get log content (supports incremental fetching)
 export const logApi = {
   getServiceLogContent: (

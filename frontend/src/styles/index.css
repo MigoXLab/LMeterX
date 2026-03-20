@@ -527,6 +527,48 @@ body {
   cursor: not-allowed;
 }
 
+/* Green variant for web quick load testing button */
+.modern-button-web-quick-test.ant-btn,
+.modern-button-web-quick-test.ant-btn-default,
+.modern-button-web-quick-test {
+  border-radius: var(--radius-md) !important;
+  background: #22c55e !important;
+  border: 1px solid #22c55e !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(34, 197, 94, 0.35) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+
+.modern-button-web-quick-test.ant-btn:hover:not(:disabled),
+.modern-button-web-quick-test.ant-btn-default:hover:not(:disabled),
+.modern-button-web-quick-test:hover {
+  background: #16a34a !important;
+  border-color: #16a34a !important;
+  box-shadow: 0 5px 16px rgba(22, 163, 74, 0.42) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+
+.modern-button-web-quick-test.ant-btn:active:not(:disabled),
+.modern-button-web-quick-test.ant-btn-default:active:not(:disabled),
+.modern-button-web-quick-test:active {
+  background: #15803d !important;
+  border-color: #15803d !important;
+  color: #ffffff !important;
+}
+
+.modern-button-web-quick-test:disabled,
+.modern-button-web-quick-test[disabled],
+.modern-button-web-quick-test.ant-btn:disabled,
+.modern-button-web-quick-test.ant-btn-default:disabled {
+  background: rgba(34, 197, 94, 0.45) !important;
+  border: 1px solid rgba(34, 197, 94, 0.45) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
 .modern-button {
   border-radius: var(--radius-md) !important;
   border: 1px solid var(--color-border) !important;
@@ -1675,15 +1717,6 @@ body {
   box-shadow: var(--shadow-lg) !important;
 }
 
-.api-test-modal-open {
-  overflow: auto !important;
-}
-
-body.api-test-modal-open {
-  overflow: auto !important;
-  padding-right: 0 !important;
-}
-
 .ant-modal-root {
   position: relative !important;
 }
@@ -2007,92 +2040,27 @@ body.api-test-modal-open {
 }
 
 /* ========================================
-   Right-side API Test Modal Utilities
+   API Test Drawer (shared by all test result panels)
    ======================================== */
 
-.api-test-modal-right-side {
-  z-index: 1002 !important;
+.api-test-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--color-border);
 }
 
-.api-test-modal-right-side .ant-modal-wrap {
-  overflow: visible !important;
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  pointer-events: none !important;
-}
-
-.api-test-modal-right-side .ant-modal {
-  position: fixed !important;
-  right: 20px !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  margin: 0 !important;
-  padding-bottom: 0 !important;
-  pointer-events: auto !important;
-  max-height: calc(100vh - 40px) !important;
-}
-
-.api-test-modal-right-side .ant-modal-content {
-  height: 100%;
-  max-height: calc(100vh - 40px);
-  overflow: hidden;
-  margin: 0 !important;
-  pointer-events: auto !important;
-  border-radius: var(--radius-lg) !important;
-  box-shadow: var(--shadow-lg) !important;
-}
-
-.api-test-modal-right-side .ant-modal-body {
+.api-test-drawer .ant-drawer-body {
   padding: 20px;
-  max-height: calc(100vh - 160px);
   overflow-y: auto;
-  pointer-events: auto !important;
 }
 
-.api-test-modal-right-side .ant-modal-header {
-  padding: 16px 24px;
-  border-bottom: none;
-  background: transparent;
-  margin-bottom: 0;
-  flex-shrink: 0;
-  pointer-events: auto !important;
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+.api-test-drawer .ant-descriptions-bordered .ant-descriptions-item-label {
+  min-width: 100px;
+  white-space: nowrap;
 }
 
-.api-test-modal-right-side .ant-modal-footer {
-  padding: 12px 24px;
-  border-top: 1px solid var(--color-border);
-  margin-top: 0;
-  flex-shrink: 0;
-  pointer-events: auto !important;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
-}
-
-@media (max-width: 1400px) {
-  .api-test-modal-right-side .ant-modal {
-    width: 600px !important;
-    right: 10px !important;
-  }
-}
-
-@media (max-width: 1200px) {
-  .api-test-modal-right-side .ant-modal {
-    width: 500px !important;
-    right: 10px !important;
-  }
-}
-
-@media (max-width: 900px) {
-  .api-test-modal-right-side .ant-modal {
-    position: fixed !important;
-    right: 50% !important;
-    top: 50% !important;
-    transform: translate(50%, -50%) !important;
-    width: 90vw !important;
-    max-width: 90vw !important;
+@media (max-width: 768px) {
+  .api-test-drawer {
+    width: 100vw !important;
+    max-width: 100vw !important;
   }
 }
 

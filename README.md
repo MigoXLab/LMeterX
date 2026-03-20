@@ -33,6 +33,8 @@ LMeterX is a professional large language model performance testing platform that
 - **Engine Resource Monitoring** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports real-time monitoring of the load testing machine's CPU, memory, and network bandwidth, accurately identifying local resource bottlenecks.
 - **AI-Driven Data Insights**: AI-powered analysis reports &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> with multi-model comparison, intuitively identifying optimization directions.
 - **One-stop Web Console**: Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
+- **Web parsing & Intelligent load testing**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Enter a web page URL to automatically crawl the page and discover core business APIs, complete connectivity pre-checks, and create load test tasks with zero configuration.
+- **AI Agent Integration**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Built-in MCP Server and [OpenClaw](https://github.com/openclaw) Skills with native support for AI agents such as Claude Code and Cursor — automatically generate load test configurations and launch tasks via natural language instructions.
 - **Enterprise-Grade Security & Scaling**: Supports distributed elastic deployment and LDAP/AD&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />integration for high availability and secure enterprise authentication.
 
 ### Feature Comparison

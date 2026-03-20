@@ -21,21 +21,24 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import {
+  Alert,
   App,
   Button,
   Card,
   CardProps,
   Col,
   Collapse,
+  Descriptions,
+  Drawer,
   Form,
   Input,
   InputNumber,
-  Modal,
   Radio,
   Row,
   Select,
   Space,
   Tabs,
+  Tag,
   theme,
   Tooltip,
   Typography,
@@ -84,6 +87,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   // add state to track if auto sync spawn_rate
   const [autoSyncSpawnRate, setAutoSyncSpawnRate] = useState(true);
   const loadMode = Form.useWatch('load_mode', form) || 'fixed';
+  const watchedApiType = Form.useWatch('api_type', form) || 'openai-chat';
   const [isCopyMode, setIsCopyMode] = useState(false);
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
@@ -395,18 +399,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
     }
   };
 
-  // Handle modal open/close body class management
-  useEffect(() => {
-    if (testModalVisible) {
-      document.body.classList.add('api-test-modal-open');
-    } else {
-      document.body.classList.remove('api-test-modal-open');
-    }
-
-    return () => {
-      document.body.classList.remove('api-test-modal-open');
-    };
-  }, [testModalVisible]);
+  // Body class management removed — Drawer handles overflow natively
 
   // Form values states to replace Form.useWatch
   const [concurrentUsers, setConcurrentUsers] = useState<number>();
@@ -3161,9 +3154,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
 
   // Render tab action buttons
   const renderTabActions = () => {
-    const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
     const isStandardChatApi =
-      currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+      watchedApiType === 'openai-chat' || watchedApiType === 'claude-chat';
 
     if (activeTabKey === '1') {
       return (
@@ -3579,8 +3571,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
         <Space>{renderTabActions()}</Space>
       </div>
 
-      {/* Test Result Modal */}
-      <Modal
+      {/* Test Result Drawer */}
+      <Drawer
         title={
           <Space>
             <BugOutlined />
@@ -3588,232 +3580,127 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
           </Space>
         }
         open={testModalVisible}
-        onCancel={() => setTestModalVisible(false)}
-        footer={[
-          <Button
-            key='close'
-            size='large'
-            onClick={() => setTestModalVisible(false)}
-            type='primary'
-          >
-            {t('components.createJobForm.close')}
-          </Button>,
-        ]}
-        width={800}
-        centered={false}
-        destroyOnHidden
-        mask={false}
-        maskClosable={false}
-        keyboard={false}
-        zIndex={1002}
-        getContainer={false}
-        style={{
-          position: 'fixed',
-          right: '20px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          margin: 0,
-          paddingBottom: 0,
-        }}
-        styles={{
-          body: {
-            padding: '20px',
-            maxHeight: 'calc(100vh - 160px)',
-            overflow: 'auto',
-          },
-          content: {
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)',
-            maxHeight: 'calc(100vh - 120px)',
-            margin: 0,
-          },
-          wrapper: {
-            overflow: 'visible',
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: 'none',
-          },
-        }}
-        wrapClassName='api-test-modal-right-side'
+        onClose={() => setTestModalVisible(false)}
+        width={560}
+        destroyOnClose
+        className='api-test-drawer'
       >
         {testResult && (
           <div
             style={{
-              height: '100%',
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px',
+              height: '100%',
             }}
           >
             {/* Status Section */}
-            <div
-              style={{
-                padding: '16px',
-                backgroundColor: token.colorBgContainer,
-                borderRadius: '8px',
-                border: `1px solid ${token.colorBorder}`,
-                boxShadow: token.boxShadowTertiary,
-              }}
-            >
-              <Row gutter={24} align='middle'>
-                {/* Status Code */}
-                {testResult.response?.status_code !== undefined && (
-                  <Col>
-                    <Space>
-                      <Text strong style={{ fontSize: '16px' }}>
-                        {t('components.createJobForm.testStatusCode')}:
-                      </Text>
-                      <div
-                        style={{
-                          padding: '4px 12px',
-                          borderRadius: '6px',
-                          backgroundColor:
-                            testResult.response.status_code === 200
-                              ? token.colorSuccessBg
-                              : token.colorErrorBg,
-                          color:
-                            testResult.response.status_code === 200
-                              ? token.colorSuccess
-                              : token.colorError,
-                          fontWeight: 'bold',
-                          fontSize: '14px',
-                        }}
-                      >
-                        {testResult.response.status_code}
-                      </div>
-                    </Space>
-                  </Col>
-                )}
-              </Row>
-
-              {/* Error Message */}
-              {testResult.status === 'error' && testResult.error && (
-                <div style={{ marginTop: 12 }}>
-                  <div
-                    style={{
-                      padding: '12px',
-                      backgroundColor: token.colorErrorBg,
-                      borderRadius: '6px',
-                      border: `1px solid ${token.colorErrorBorder}`,
-                    }}
+            <Descriptions column={1} bordered size='small'>
+              {testResult.response?.status_code !== undefined && (
+                <Descriptions.Item
+                  label={t('components.createJobForm.testStatusCode')}
+                >
+                  <Tag
+                    color={
+                      testResult.response.status_code === 200 ? 'green' : 'red'
+                    }
+                    style={{ fontSize: 14, padding: '2px 12px' }}
                   >
-                    <Text strong style={{ color: token.colorError }}>
-                      {t('common.error')}:
-                    </Text>
-                    <Text style={{ color: token.colorError, marginLeft: 8 }}>
-                      {testResult.error}
-                    </Text>
-                  </div>
-                </div>
+                    {testResult.response.status_code}
+                  </Tag>
+                </Descriptions.Item>
               )}
-            </div>
+              {testResult.response?.is_stream !== undefined && (
+                <Descriptions.Item
+                  label={t('components.createJobForm.responseMode')}
+                >
+                  <Tag
+                    color={testResult.response.is_stream ? 'blue' : 'default'}
+                  >
+                    {testResult.response.is_stream
+                      ? `${t('components.createJobForm.stream')}${Array.isArray(testResult.response.data) ? ` (${testResult.response.data.length} ${t('components.createJobForm.chunks')})` : ''}`
+                      : t('components.createJobForm.nonStreaming')}
+                  </Tag>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            {/* Error Message — only show when no response data */}
+            {testResult.status === 'error' &&
+              testResult.error &&
+              testResult.response?.data === undefined && (
+                <Alert
+                  type='error'
+                  message={testResult.error}
+                  style={{ marginTop: 12 }}
+                />
+              )}
 
             {/* Response Data Section */}
             {testResult.response?.data !== undefined && (
               <div
                 style={{
+                  marginTop: 12,
                   flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
                   minHeight: 0,
-                  backgroundColor: token.colorBgContainer,
-                  borderRadius: '8px',
-                  border: `1px solid ${token.colorBorder}`,
-                  boxShadow: token.boxShadowTertiary,
-                  overflow: 'hidden',
                 }}
               >
-                {/* Response Header */}
                 <div
                   style={{
-                    padding: '12px 16px',
-                    backgroundColor: token.colorFillQuaternary,
                     display: 'flex',
-                    alignItems: 'center',
                     justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 4,
                   }}
                 >
-                  <Space>
-                    <Text strong style={{ fontSize: '16px' }}>
-                      {t('components.createJobForm.testResponse')}
-                    </Text>
-                    {testResult.response.is_stream &&
-                      Array.isArray(testResult.response.data) && (
-                        <div
-                          style={{
-                            padding: '2px 8px',
-                            backgroundColor: token.colorPrimaryBg,
-                            color: token.colorPrimary,
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                          }}
-                        >
-                          {t('components.createJobForm.stream')} (
-                          {testResult.response.data.length}{' '}
-                          {t('components.createJobForm.chunks')})
-                        </div>
-                      )}
-                  </Space>
-                  <Tooltip title={t('common.copy')}>
-                    <Button
-                      type='text'
-                      size='small'
-                      icon={<CopyOutlined />}
-                      onClick={() => {
-                        let textToCopy = '';
-                        if (
-                          testResult.response.is_stream &&
-                          Array.isArray(testResult.response.data)
-                        ) {
-                          textToCopy = testResult.response.data.join('\n');
-                        } else if (
-                          typeof testResult.response.data === 'string'
-                        ) {
-                          textToCopy = testResult.response.data;
-                        } else {
-                          textToCopy = JSON.stringify(
-                            testResult.response.data,
-                            null,
-                            2
-                          );
-                        }
-                        copyToClipboard(
-                          textToCopy,
-                          t('common.copySuccess'),
-                          t('common.copyFailed')
+                  <Text type='secondary'>
+                    {t('components.createJobForm.testResponse')}
+                  </Text>
+                  <Button
+                    type='text'
+                    size='small'
+                    icon={<CopyOutlined />}
+                    onClick={() => {
+                      let textToCopy = '';
+                      if (
+                        testResult.response.is_stream &&
+                        Array.isArray(testResult.response.data)
+                      ) {
+                        textToCopy = testResult.response.data.join('\n');
+                      } else if (typeof testResult.response.data === 'string') {
+                        textToCopy = testResult.response.data;
+                      } else {
+                        textToCopy = JSON.stringify(
+                          testResult.response.data,
+                          null,
+                          2
                         );
-                      }}
-                    />
-                  </Tooltip>
+                      }
+                      copyToClipboard(
+                        textToCopy,
+                        t('common.copySuccess'),
+                        t('common.copyFailed')
+                      );
+                    }}
+                  >
+                    {t('common.copy')}
+                  </Button>
                 </div>
 
-                {/* Response Content */}
-                <div
-                  style={{
-                    flex: 1,
-                    overflow: 'auto',
-                    padding: '16px',
-                    backgroundColor: '#fafafa',
-                    maxHeight: '400px', // limit max height to ensure scrolling
-                    scrollbarWidth: 'thin', // Firefox
-                    scrollbarColor: '#bfbfbf #f0f0f0', // Firefox
-                  }}
-                  className='custom-scrollbar'
-                >
-                  {testResult.response.is_stream &&
-                  Array.isArray(testResult.response.data) ? (
-                    // stream response display
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                      }}
-                    >
-                      {testResult.response.data.map((chunk, index) => (
+                {testResult.response.is_stream &&
+                Array.isArray(testResult.response.data) ? (
+                  // Stream response display
+                  <div
+                    style={{
+                      flex: 1,
+                      overflow: 'auto',
+                      maxHeight: 'calc(100vh - 340px)',
+                    }}
+                    className='custom-scrollbar'
+                  >
+                    {testResult.response.data.map(
+                      (chunk: string, index: number) => (
                         <div
                           key={index}
                           style={{
@@ -3822,9 +3709,10 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                               index % 2 === 0 ? '#ffffff' : '#f8f9fa',
                             borderRadius: '4px',
                             border: '1px solid #e8e8e8',
+                            marginBottom: 4,
                             fontSize: '12px',
                             fontFamily:
-                              'Monaco, Consolas, "Courier New", monospace',
+                              "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
                             wordBreak: 'break-all',
                             whiteSpace: 'pre-wrap',
                             lineHeight: '1.4',
@@ -3851,45 +3739,33 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
                             <div style={{ flex: 1 }}>{chunk}</div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    // non-stream response display
-                    <div
-                      style={{
-                        backgroundColor: '#ffffff',
-                        borderRadius: '6px',
-                        border: '1px solid #e8e8e8',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <pre
-                        className='custom-scrollbar'
-                        style={{
-                          margin: 0,
-                          padding: '16px',
-                          whiteSpace: 'pre-wrap',
-                          fontSize: '12px',
-                          fontFamily:
-                            'Monaco, Consolas, "Courier New", monospace',
-                          lineHeight: '1.5',
-                          maxHeight: '300px',
-                          overflow: 'auto',
-                          backgroundColor: 'transparent',
-                        }}
-                      >
-                        {typeof testResult.response.data === 'string'
-                          ? testResult.response.data
-                          : JSON.stringify(testResult.response.data, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
+                      )
+                    )}
+                  </div>
+                ) : (
+                  // Non-stream response display
+                  <TextArea
+                    readOnly
+                    value={
+                      typeof testResult.response.data === 'string'
+                        ? testResult.response.data
+                        : JSON.stringify(testResult.response.data, null, 2)
+                    }
+                    style={{
+                      flex: 1,
+                      minHeight: 300,
+                      fontFamily:
+                        "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
+                      fontSize: 12,
+                      resize: 'vertical',
+                    }}
+                  />
+                )}
               </div>
             )}
           </div>
         )}
-      </Modal>
+      </Drawer>
     </Card>
   );
 };

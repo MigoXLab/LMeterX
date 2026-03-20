@@ -34,6 +34,8 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 - **系统资源监控**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持压测机 CPU、内存与网络带宽的实时监控，精准排除本地资源瓶颈
 - **AI 驱动数据洞察**：AI 辅助分析报告&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />，支持多模型多维度结果对比，直观呈现性能优化方向。
 - **一站式 Web 控制台**：直观管理任务调度、监控与实时日志，显著降低上手门槛与运维成本。
+- **Web 解析和智能压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：输入网页 URL 自动爬取页面、识别核心业务 API，一键完成连通性预检与压测任务创建，零配置启动压测。
+- **AI Agent 集成**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：内置 MCP Server 与 [OpenClaw](https://github.com/openclaw) Skills，原生支持 Claude Code、Cursor 等 AI Agent 通过自然语言指令自动生成压测配置并快速启动任务。
 - **企业级架构安全**：支持分布式弹性部署与 LDAP/AD&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />集成，满足企业级高可用与安全认证需求。
 
 ### 工具对比

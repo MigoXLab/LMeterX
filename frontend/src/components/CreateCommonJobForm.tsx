@@ -8,19 +8,23 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons';
 import {
+  Alert,
   App,
   Button,
   Card,
   Col,
+  Descriptions,
+  Drawer,
   Form,
   Input,
   InputNumber,
-  Modal,
   Radio,
   Row,
   Select,
   Space,
+  Tag,
   Tooltip,
+  Typography,
   Upload,
   theme,
 } from 'antd';
@@ -34,6 +38,7 @@ import parseCurlCommand from '@/utils/curl';
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
+const { Text } = Typography;
 
 interface Props {
   onSubmit: (values: any) => Promise<void>;
@@ -812,7 +817,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
         </Space>
       </Form>
 
-      <Modal
+      <Drawer
         title={
           <Space>
             <BugOutlined />
@@ -820,119 +825,68 @@ const CreateCommonJobForm: React.FC<Props> = ({
           </Space>
         }
         open={testModalVisible}
-        onCancel={() => setTestModalVisible(false)}
-        footer={[
-          <Button
-            key='close'
-            type='primary'
-            onClick={() => setTestModalVisible(false)}
-          >
-            {t('common.close')}
-          </Button>,
-        ]}
-        width={760}
-        destroyOnHidden
-        centered={false}
-        mask={false}
-        maskClosable={false}
-        keyboard={false}
-        getContainer={false}
-        style={{
-          position: 'fixed',
-          right: 20,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          margin: 0,
-          paddingBottom: 0,
-        }}
-        styles={{
-          body: {
-            padding: 16,
-            maxHeight: 'calc(100vh - 160px)',
-            overflow: 'auto',
-          },
-          content: {
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)',
-            margin: 0,
-          },
-          wrapper: {
-            overflow: 'visible',
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: 'none',
-          },
-        }}
-        wrapClassName='api-test-modal-right-side'
+        onClose={() => setTestModalVisible(false)}
+        width={560}
+        destroyOnClose
+        className='api-test-drawer'
       >
         {testResult ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {testResult.http_status !== undefined && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+            }}
+          >
+            {/* Status Section */}
+            <Descriptions column={1} bordered size='small'>
+              {testResult.http_status !== undefined && (
+                <Descriptions.Item
+                  label={t('components.createCommonJobForm.testStatusCode')}
+                >
+                  <Tag
+                    color={testResult.http_status === 200 ? 'green' : 'red'}
+                    style={{ fontSize: 14, padding: '2px 12px' }}
+                  >
+                    {testResult.http_status}
+                  </Tag>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            {/* Error Message — only show when no response body */}
+            {testResult.status === 'error' &&
+              testResult.error &&
+              testResult.body === undefined && (
+                <Alert
+                  type='error'
+                  message={testResult.error}
+                  style={{ marginTop: 12 }}
+                />
+              )}
+
+            {/* Response Body */}
+            {testResult.body !== undefined && (
               <div
                 style={{
-                  fontWeight: 600,
+                  marginTop: 12,
+                  flex: 1,
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
+                  flexDirection: 'column',
+                  minHeight: 0,
                 }}
               >
-                {t('components.createCommonJobForm.testStatusCode')}:{' '}
                 <div
                   style={{
-                    padding: '4px 12px',
-                    borderRadius: 6,
-                    border: `1px solid ${
-                      testResult.http_status === 200
-                        ? token.colorSuccessBorder
-                        : token.colorErrorBorder
-                    }`,
-                    backgroundColor:
-                      testResult.http_status === 200
-                        ? token.colorSuccessBg
-                        : token.colorErrorBg,
-                    color:
-                      testResult.http_status === 200
-                        ? token.colorSuccess
-                        : token.colorError,
-                    fontWeight: 'bold',
-                    minWidth: 60,
-                    textAlign: 'center',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 4,
                   }}
                 >
-                  {testResult.http_status}
-                </div>
-              </div>
-            )}
-            {testResult.status === 'error' && testResult.error && (
-              <div style={{ color: '#d4380d' }}>{testResult.error}</div>
-            )}
-            <div
-              style={{
-                background: '#fafafa',
-                border: '1px solid #f0f0f0',
-                borderRadius: 6,
-                padding: 12,
-                maxHeight: 360,
-                overflow: 'auto',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                fontFamily: 'Monaco, Consolas, "Courier New", monospace',
-                fontSize: 12,
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 600,
-                  marginBottom: 6,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                {t('components.createCommonJobForm.testResponse')}
-                <Tooltip title={t('common.copy')}>
+                  <Text type='secondary'>
+                    {t('components.createCommonJobForm.testResponse')}
+                  </Text>
                   <Button
                     type='text'
                     size='small'
@@ -948,18 +902,33 @@ const CreateCommonJobForm: React.FC<Props> = ({
                         t('common.copyFailed')
                       );
                     }}
-                  />
-                </Tooltip>
+                  >
+                    {t('common.copy')}
+                  </Button>
+                </div>
+                <TextArea
+                  readOnly
+                  value={
+                    typeof testResult.body === 'string'
+                      ? testResult.body
+                      : JSON.stringify(testResult.body ?? {}, null, 2)
+                  }
+                  style={{
+                    flex: 1,
+                    minHeight: 300,
+                    fontFamily:
+                      "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
+                    fontSize: 12,
+                    resize: 'vertical',
+                  }}
+                />
               </div>
-              {typeof testResult.body === 'string'
-                ? testResult.body
-                : JSON.stringify(testResult.body ?? {}, null, 2)}
-            </div>
+            )}
           </div>
         ) : (
           <div>{t('common.noData')}</div>
         )}
-      </Modal>
+      </Drawer>
     </Card>
   );
 };

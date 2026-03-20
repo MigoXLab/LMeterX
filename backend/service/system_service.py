@@ -25,6 +25,12 @@ from utils.masking import mask_api_key, mask_config_value
 
 AI_CONFIG_KEYS = ("ai_service_host", "ai_service_model", "ai_service_api_key")
 
+# Optional AI config keys with their default values.
+# These configs are not required and will use defaults if not set in database.
+_AI_CONFIG_OPTIONAL_DEFAULTS = {
+    "ai_service_ssl_verify": "true",
+}
+
 
 def _to_string(value: Optional[Any]) -> str:
     return str(value) if value is not None else ""
@@ -67,7 +73,8 @@ async def _fetch_configs_by_keys(
 
 
 async def _resolve_ai_service_configs(db: AsyncSession) -> Dict[str, str]:
-    configs = await _fetch_configs_by_keys(db, AI_CONFIG_KEYS)
+    all_keys = list(AI_CONFIG_KEYS) + list(_AI_CONFIG_OPTIONAL_DEFAULTS.keys())
+    configs = await _fetch_configs_by_keys(db, all_keys)
 
     resolved: Dict[str, str] = {}
     missing_configs = []
@@ -86,6 +93,16 @@ async def _resolve_ai_service_configs(db: AsyncSession) -> Dict[str, str]:
         raise ErrorResponse.bad_request(
             f"{ErrorMessages.MISSING_AI_CONFIG}: {', '.join(missing_configs)}"
         )
+
+    # Resolve optional keys with defaults
+    for key, default in _AI_CONFIG_OPTIONAL_DEFAULTS.items():
+        config = configs.get(key)
+        value = (
+            _to_string(config.config_value)
+            if config and config.config_value
+            else default
+        )
+        resolved[key] = value
 
     return resolved
 
@@ -309,10 +326,16 @@ async def get_ai_service_config_svc(request: Request) -> AIServiceConfig:
 
     try:
         configs = await _resolve_ai_service_configs(db)
+        ssl_verify = configs.get("ai_service_ssl_verify", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         return AIServiceConfig(
             host=configs["ai_service_host"],
             model=configs["ai_service_model"],
             api_key=mask_api_key(configs["ai_service_api_key"]),
+            ssl_verify=ssl_verify,
         )
 
     except ErrorResponse:
@@ -339,10 +362,16 @@ async def get_ai_service_config_internal_svc(request: Request) -> AIServiceConfi
 
     try:
         configs = await _resolve_ai_service_configs(db)
+        ssl_verify = configs.get("ai_service_ssl_verify", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         return AIServiceConfig(
             host=configs["ai_service_host"],
             model=configs["ai_service_model"],
             api_key=configs["ai_service_api_key"],
+            ssl_verify=ssl_verify,
         )
 
     except ErrorResponse:

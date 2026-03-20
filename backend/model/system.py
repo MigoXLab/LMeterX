@@ -110,8 +110,17 @@ class AIServiceConfig(BaseModel):
         host: The AI service host URL.
         model: The AI model name.
         api_key: The API key for authentication.
+        ssl_verify: Whether to verify SSL certificates when calling the AI service.
     """
 
     host: str = Field(..., description="AI service host URL")
     model: str = Field(..., description="AI model name")
     api_key: str = Field(..., description="API key for authentication")
+    ssl_verify: bool = Field(
+        default=True,
+        description=(
+            "Whether to verify SSL certificates when calling the AI service. "
+            "Defaults to True for security. Set to False only for development "
+            "or trusted internal environments with self-signed certificates."
+        ),
+    )

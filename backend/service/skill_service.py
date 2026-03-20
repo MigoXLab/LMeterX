@@ -480,6 +480,8 @@ async def _collect_script_urls_from_html(target_url: str) -> List[str]:
     script_urls: List[str] = []
     try:
         timeout = httpx.Timeout(_JS_SCAN_TIMEOUT_SECONDS)
+        # verify=False: Target URLs provided by users for load testing may use
+        # self-signed certificates in staging/internal environments.
         async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
             resp = await client.get(target_url)
             resp.raise_for_status()
@@ -533,6 +535,8 @@ async def _discover_apis_via_js_static_scan(
 
     discovered: List[DiscoveredApiItem] = []
     timeout = httpx.Timeout(_JS_SCAN_TIMEOUT_SECONDS)
+    # verify=False: Target URLs provided by users for load testing may use
+    # self-signed certificates in staging/internal environments.
     async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
         for script_url in script_urls:
             try:
@@ -676,7 +680,9 @@ async def _generate_configs_via_llm(
 
     try:
         timeout = httpx.Timeout(60.0)
-        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+        async with httpx.AsyncClient(
+            timeout=timeout, verify=ai_config.ssl_verify
+        ) as client:
             resp = await client.post(url, headers=headers, json=data)
             resp.raise_for_status()
 
@@ -688,10 +694,17 @@ async def _generate_configs_via_llm(
         # Strip thinking tags
         content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
 
-        # Extract JSON array from content (handle markdown code fences)
-        json_match = re.search(r"\[.*\]", content, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
+        # Extract JSON array from content (handle markdown code fences).
+        # Use non-greedy .*? so we don't accidentally swallow text beyond
+        # the real closing bracket.  Iterate over all candidate matches and
+        # return the first one that parses as a valid JSON array.
+        for json_match in re.finditer(r"\[.*?\]", content, re.DOTALL):
+            try:
+                parsed = json.loads(json_match.group())
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                continue
 
         logger.warning(
             "LLM response did not contain valid JSON array: {}", content[:300]

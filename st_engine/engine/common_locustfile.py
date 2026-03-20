@@ -80,6 +80,19 @@ def _format_context(
     return " | ".join(parts) if parts else ""
 
 
+def _parse_request_body(request_body: str):
+    """Parse request_body string into (json_payload, text_payload) tuple.
+
+    Attempts JSON parsing first; falls back to raw text on failure.
+    """
+    if request_body:
+        try:
+            return json.loads(request_body), None
+        except (json.JSONDecodeError, TypeError):
+            return None, request_body
+    return None, request_body
+
+
 def _build_request_kwargs(
     method: str,
     api_path: str,
@@ -287,23 +300,11 @@ class CommonApiUser(HttpUser):
                     else:
                         text_payload = record.get("text", "")
                 except queue.Empty:
-                    if self.request_body:
-                        try:
-                            json_payload = json.loads(self.request_body)
-                        except (json.JSONDecodeError, TypeError):
-                            text_payload = self.request_body
-                    else:
-                        text_payload = self.request_body
+                    json_payload, text_payload = _parse_request_body(self.request_body)
             else:
                 # Try to parse request_body as JSON so it is sent with
                 # Content-Type: application/json (matching the test-API behaviour).
-                if self.request_body:
-                    try:
-                        json_payload = json.loads(self.request_body)
-                    except (json.JSONDecodeError, TypeError):
-                        text_payload = self.request_body
-                else:
-                    text_payload = self.request_body
+                json_payload, text_payload = _parse_request_body(self.request_body)
 
             req_kwargs = _build_request_kwargs(
                 self.method,

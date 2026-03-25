@@ -560,7 +560,11 @@ body {
 .modern-button-web-quick-test[disabled],
 .modern-button-web-quick-test.ant-btn:disabled,
 .modern-button-web-quick-test.ant-btn-default:disabled {
-  background: linear-gradient(135deg, rgba(184, 169, 232, 0.5) 0%, rgba(196, 160, 208, 0.5) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(184, 169, 232, 0.5) 0%,
+    rgba(196, 160, 208, 0.5) 100%
+  ) !important;
   border: none !important;
   color: rgba(255, 255, 255, 0.7) !important;
   box-shadow: none !important;
@@ -600,7 +604,11 @@ body {
 .modern-button-teal-light[disabled],
 .modern-button-teal-light.ant-btn:disabled,
 .modern-button-teal-light.ant-btn-default:disabled {
-  background: linear-gradient(135deg, rgba(91, 155, 213, 0.45) 0%, rgba(107, 171, 219, 0.45) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(91, 155, 213, 0.45) 0%,
+    rgba(107, 171, 219, 0.45) 100%
+  ) !important;
   border: none !important;
   color: rgba(255, 255, 255, 0.7) !important;
   box-shadow: none !important;
@@ -640,7 +648,11 @@ body {
 .modern-button-teal[disabled],
 .modern-button-teal.ant-btn:disabled,
 .modern-button-teal.ant-btn-default:disabled {
-  background: linear-gradient(135deg, rgba(137, 196, 244, 0.45) 0%, rgba(160, 210, 247, 0.45) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(137, 196, 244, 0.45) 0%,
+    rgba(160, 210, 247, 0.45) 100%
+  ) !important;
   border: none !important;
   color: rgba(255, 255, 255, 0.7) !important;
   box-shadow: none !important;

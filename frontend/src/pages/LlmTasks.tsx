@@ -1378,14 +1378,13 @@ const LlmTasks: React.FC = () => {
       cancelText: t('common.cancel'),
       onOk: async () => {
         setBatchRerunning(true);
-        let successCount = 0;
-        let failCount = 0;
 
-        for (const task of manageableTasks) {
-          try {
+        const results = await Promise.allSettled(
+          manageableTasks.map(async task => {
             if (useHttp) {
               const fullJobResponse = await httpTaskApi.getJob(task.id);
-              const fullJob = (fullJobResponse.data as HttpTask) || task;
+              const fullJob =
+                (fullJobResponse.data as HttpTask) || (task as HttpTask);
               const rerunData: any = {
                 ...fullJob,
                 name: getRerunName(fullJob.name),
@@ -1401,50 +1400,50 @@ const LlmTasks: React.FC = () => {
               };
               // Call API directly to avoid per-task toast from hook
               const resp = await httpTaskApi.createJob(rerunData);
-              if (resp.status === 200 || resp.status === 201) successCount++;
-              else failCount++;
-            } else {
-              const fullJobResp = await llmTaskApi.getJob(task.id);
-              const fullJob = (fullJobResp as any)?.data || task;
-              const rerunData: any = {
-                ...fullJob,
-                name: getRerunName(fullJob.name),
-                id: undefined,
-                status: undefined,
-                created_at: undefined,
-                updated_at: undefined,
-                result_id: undefined,
-                temp_task_id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              };
-              if (rerunData.headers) {
-                const headerObject =
-                  typeof rerunData.headers === 'string'
-                    ? safeJsonParse(rerunData.headers, [])
-                    : rerunData.headers;
-                rerunData.headers = deepClone(headerObject) || [];
-              }
-              if (rerunData.request_payload) {
-                rerunData.request_payload =
-                  typeof rerunData.request_payload === 'string'
-                    ? rerunData.request_payload
-                    : safeJsonStringify(rerunData.request_payload);
-              }
-              if (rerunData.field_mapping) {
-                const fieldMappingObject =
-                  typeof rerunData.field_mapping === 'string'
-                    ? safeJsonParse(rerunData.field_mapping, {})
-                    : rerunData.field_mapping;
-                rerunData.field_mapping = deepClone(fieldMappingObject) || {};
-              }
-              // Call API directly to avoid per-task toast from hook
-              const resp = await llmTaskApi.createJob(rerunData);
-              if ((resp as any)?.data?.task_id) successCount++;
-              else failCount++;
+              return resp.status === 200 || resp.status === 201;
             }
-          } catch {
-            failCount++;
-          }
-        }
+            const fullJobResp = await llmTaskApi.getJob(task.id);
+            const fullJob = (fullJobResp as any)?.data || task;
+            const rerunData: any = {
+              ...fullJob,
+              name: getRerunName(fullJob.name),
+              id: undefined,
+              status: undefined,
+              created_at: undefined,
+              updated_at: undefined,
+              result_id: undefined,
+              temp_task_id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            };
+            if (rerunData.headers) {
+              const headerObject =
+                typeof rerunData.headers === 'string'
+                  ? safeJsonParse(rerunData.headers, [])
+                  : rerunData.headers;
+              rerunData.headers = deepClone(headerObject) || [];
+            }
+            if (rerunData.request_payload) {
+              rerunData.request_payload =
+                typeof rerunData.request_payload === 'string'
+                  ? rerunData.request_payload
+                  : safeJsonStringify(rerunData.request_payload);
+            }
+            if (rerunData.field_mapping) {
+              const fieldMappingObject =
+                typeof rerunData.field_mapping === 'string'
+                  ? safeJsonParse(rerunData.field_mapping, {})
+                  : rerunData.field_mapping;
+              rerunData.field_mapping = deepClone(fieldMappingObject) || {};
+            }
+            // Call API directly to avoid per-task toast from hook
+            const resp = await llmTaskApi.createJob(rerunData);
+            return !!(resp as any)?.data?.task_id;
+          })
+        );
+
+        const successCount = results.filter(
+          r => r.status === 'fulfilled' && r.value
+        ).length;
+        const failCount = results.length - successCount;
 
         // Refresh task list once after all tasks are created
         if (useHttp) {

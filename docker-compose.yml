@@ -45,7 +45,7 @@ services:
           cpus: '0.5'
           memory: 1G
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8428/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
       interval: 10s
       timeout: 5s
       retries: 5

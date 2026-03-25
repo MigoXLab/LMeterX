@@ -1,6 +1,6 @@
 /**
- * @file useBenchmarkJobs.ts
- * @description Custom hook for managing benchmark jobs
+ * @file useLlmTaskHistory.ts
+ * @description Custom hook for managing LLM task history
  * @author Charm
  * @copyright 2025
  * */
@@ -8,7 +8,7 @@ import type { MessageInstance } from 'antd/es/message/interface';
 import axios from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pagination as ApiPagination, BenchmarkJob } from '../types/benchmark';
+import { Pagination as ApiPagination, LlmTask } from '../types/job';
 import { getApiBaseUrl } from '../utils/runtimeConfig';
 
 // Frontend pagination state uses Ant Design's format
@@ -20,9 +20,9 @@ interface AntdPagination {
 
 const VITE_API_BASE_URL = getApiBaseUrl();
 
-export const useBenchmarkJobs = (messageApi: MessageInstance) => {
+export const useLlmTaskHistory = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
-  const [jobs, setJobs] = useState<BenchmarkJob[]>([]);
+  const [jobs, setJobs] = useState<LlmTask[]>([]);
   const [pagination, setPagination] = useState<AntdPagination>({
     current: 1,
     pageSize: 10,
@@ -51,10 +51,10 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
 
       try {
         const response = await axios.get<{
-          data: BenchmarkJob[];
+          data: LlmTask[];
           pagination?: ApiPagination;
           total?: number;
-        }>(`${VITE_API_BASE_URL}/tasks`, {
+        }>(`${VITE_API_BASE_URL}/llm-tasks`, {
           params: {
             page: pagination.current,
             pageSize: pagination.pageSize,
@@ -128,10 +128,13 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     abortControllerRef.current = controller;
 
     try {
-      const response = await axios.get(`${VITE_API_BASE_URL}/tasks/status`, {
-        signal: controller.signal,
-        timeout: 30000, // Increase to 30 seconds for status polling
-      });
+      const response = await axios.get(
+        `${VITE_API_BASE_URL}/llm-tasks/status`,
+        {
+          signal: controller.signal,
+          timeout: 30000, // Increase to 30 seconds for status polling
+        }
+      );
 
       if (controller.signal.aborted) return;
 
@@ -188,7 +191,7 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
       clearInterval(pollingTimerRef.current);
       pollingTimerRef.current = null;
       try {
-        localStorage.removeItem('benchmark_polling_active');
+        localStorage.removeItem('llm_task_history_polling_active');
       } catch (e) {
         // localStorage error in stopPolling cleanup
       }
@@ -216,14 +219,17 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     try {
       const now = Date.now();
       const existingPollingTimestamp = parseInt(
-        localStorage.getItem('benchmark_polling_timestamp') || '0'
+        localStorage.getItem('llm_task_history_polling_timestamp') || '0'
       );
       if (now - existingPollingTimestamp < 25000) {
         // Slightly less than interval
         return; // Another tab is polling
       }
-      localStorage.setItem('benchmark_polling_timestamp', now.toString());
-      localStorage.setItem('benchmark_polling_active', 'true');
+      localStorage.setItem(
+        'llm_task_history_polling_timestamp',
+        now.toString()
+      );
+      localStorage.setItem('llm_task_history_polling_active', 'true');
     } catch (e) {
       // Could not set localStorage for polling coordination
     }
@@ -237,7 +243,7 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
       try {
         // Keep alive for this tab
         localStorage.setItem(
-          'benchmark_polling_timestamp',
+          'llm_task_history_polling_timestamp',
           Date.now().toString()
         );
       } catch (e) {
@@ -311,11 +317,14 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
 
   const createJob = useCallback(
     async (
-      values: Omit<BenchmarkJob, 'id' | 'status' | 'created_at' | 'updated_at'>
+      values: Omit<LlmTask, 'id' | 'status' | 'created_at' | 'updated_at'>
     ) => {
       setLoading(true);
       try {
-        const response = await axios.post(`${VITE_API_BASE_URL}/tasks`, values);
+        const response = await axios.post(
+          `${VITE_API_BASE_URL}/llm-tasks`,
+          values
+        );
         if (response.data?.task_id) {
           messageApi.success(t('common.createSuccess'));
           await fetchJobs(true); // Refresh list to show the new job
@@ -339,7 +348,7 @@ export const useBenchmarkJobs = (messageApi: MessageInstance) => {
     async (jobId: string) => {
       messageApi.loading({ content: t('common.stoppingTask'), key: jobId });
       try {
-        await axios.post(`${VITE_API_BASE_URL}/tasks/stop/${jobId}`);
+        await axios.post(`${VITE_API_BASE_URL}/llm-tasks/stop/${jobId}`);
         messageApi.success({ content: t('common.taskStopping'), key: jobId });
         setTimeout(() => fetchJobs(true), 1000); // Refresh list after a short delay
       } catch (error: any) {

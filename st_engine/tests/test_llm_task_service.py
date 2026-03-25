@@ -13,12 +13,12 @@ from config.business import (
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
 )
-from service.task_service import ENGINE_ID, TaskService
+from service.llm_task_service import ENGINE_ID, LlmTaskService
 
 
 @pytest.fixture
 def task_service():
-    return TaskService()
+    return LlmTaskService()
 
 
 def test_cleanup_task_files_removes_files(task_service, tmp_path):
@@ -160,10 +160,10 @@ def test_reconcile_skips_tasks_owned_by_other_engine(task_service):
     mock_session.execute.return_value = mock_result
 
     with (
-        patch("service.task_service.add_task_log_sink", return_value=1),
-        patch("service.task_service.remove_task_log_sink"),
+        patch("service.llm_task_service.add_task_log_sink", return_value=1),
+        patch("service.llm_task_service.remove_task_log_sink"),
         patch.object(task_service, "update_task_status") as mock_update_status,
-        patch("service.task_service.subprocess.check_output") as mock_check_output,
+        patch("service.llm_task_service.subprocess.check_output") as mock_check_output,
     ):
         task_service.reconcile_tasks_on_startup(mock_session)
 
@@ -179,8 +179,8 @@ def test_pipeline_skips_soft_deleted_task(task_service):
     mock_task.is_deleted = 1  # simulates value after session.refresh
 
     with (
-        patch("service.task_service.add_task_log_sink", return_value=1),
-        patch("service.task_service.remove_task_log_sink"),
+        patch("service.llm_task_service.add_task_log_sink", return_value=1),
+        patch("service.llm_task_service.remove_task_log_sink"),
         patch.object(task_service, "update_task_status") as mock_update_status,
         patch.object(task_service, "start_task") as mock_start_task,
     ):
@@ -199,8 +199,8 @@ def test_pipeline_runs_non_deleted_task(task_service):
     mock_task.status = TASK_STATUS_RUNNING
 
     with (
-        patch("service.task_service.add_task_log_sink", return_value=1),
-        patch("service.task_service.remove_task_log_sink"),
+        patch("service.llm_task_service.add_task_log_sink", return_value=1),
+        patch("service.llm_task_service.remove_task_log_sink"),
         patch.object(task_service, "update_task_status"),
         patch.object(
             task_service,
@@ -230,11 +230,11 @@ def test_reconcile_keeps_running_when_pgrep_missing(task_service):
     mock_session.execute.return_value = mock_result
 
     with (
-        patch("service.task_service.add_task_log_sink", return_value=1),
-        patch("service.task_service.remove_task_log_sink"),
+        patch("service.llm_task_service.add_task_log_sink", return_value=1),
+        patch("service.llm_task_service.remove_task_log_sink"),
         patch.object(task_service, "update_task_status") as mock_update_status,
         patch(
-            "service.task_service.subprocess.check_output",
+            "service.llm_task_service.subprocess.check_output",
             side_effect=FileNotFoundError("pgrep"),
         ),
     ):

@@ -139,7 +139,7 @@ def _build_stat_row(task_id: str, name: str, stat) -> Dict:
 
 @events.init_command_line_parser.add_listener
 def init_parser(parser):
-    """Add custom CLI options for common API tasks."""
+    """Add custom CLI options for HTTP API tasks."""
     parser.add_argument("--task-id", type=str, default="", help="Task identifier")
     parser.add_argument("--api_path", type=str, default="/", help="Request path")
     parser.add_argument("--method", type=str, default="GET", help="HTTP method")
@@ -210,7 +210,7 @@ def on_test_stop(environment, **kwargs):
         # task_logger.debug(f"locust_stats: {locust_stats}")
         result_file = _write_result_file(task_id, locust_stats)
     except Exception as e:  # pragma: no cover - defensive
-        task_logger.error(f"Failed to aggregate common stats: {e}", exc_info=True)
+        task_logger.error(f"Failed to aggregate HTTP stats: {e}", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +227,7 @@ class CommonApiUser(HttpUser):
     """Simple user class that replays a single API request."""
 
     def wait_time(self):  # type: ignore[override]
-        """Disable wait time between requests for common API tasks."""
+        """Disable wait time between requests for HTTP API tasks."""
         return 0
 
     def on_start(self):

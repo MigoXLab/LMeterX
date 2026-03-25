@@ -7,21 +7,21 @@ import os
 import shutil
 from typing import List
 
-from engine.runner import LocustRunner
-from model.common_task import CommonTask
+from engine.llm_runner import LlmLocustRunner
+from model.http_task import HttpTask
 
 
-class CommonLocustRunner(LocustRunner):
+class HttpLocustRunner(LlmLocustRunner):
     """Locust runner dedicated to common HTTP API load tests."""
 
     def __init__(self, base_dir: str):
         """Create a runner rooted at the given repository directory."""
         super().__init__(base_dir)
         self._locustfile_path = os.path.join(
-            self.base_dir, "engine", "common_locustfile.py"
+            self.base_dir, "engine", "http_locustfile.py"
         )
 
-    def _build_locust_command(self, task: CommonTask, task_logger) -> List[str]:
+    def _build_locust_command(self, task: HttpTask, task_logger) -> List[str]:
         """Build Locust command for common API tests."""
         locust_bin = shutil.which("locust") or "locust"
         load_mode = self._get_load_mode(task)
@@ -76,6 +76,6 @@ class CommonLocustRunner(LocustRunner):
 
         return cmd
 
-    def _run_warmup_phase(self, task: CommonTask, task_logger) -> None:
-        """Common API tasks do not require LLM warmup; skip to avoid missing fields."""
-        task_logger.debug("Skipping warmup phase for common API task.")
+    def _run_warmup_phase(self, task: HttpTask, task_logger) -> None:
+        """HTTP API tasks do not require LLM warmup; skip to avoid missing fields."""
+        task_logger.debug("Skipping warmup phase for HTTP API task.")

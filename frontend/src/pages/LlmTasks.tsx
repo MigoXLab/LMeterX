@@ -1,6 +1,6 @@
 /**
- * @file Jobs.tsx
- * @description Jobs page component
+ * @file LlmTasks.tsx
+ * @description Tasks page component
  * @author Charm
  * @copyright 2025
  * */
@@ -40,16 +40,16 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { commonJobApi, jobApi } from '../api/services';
-import CreateCommonJobForm from '../components/CreateCommonJobForm';
-import CreateJobForm from '../components/CreateJobForm';
+import { httpTaskApi, llmTaskApi } from '../api/services';
+import CreateHttpTaskForm from '../components/CreateHttpTaskForm';
+import CreateLlmTaskForm from '../components/CreateLlmTaskForm';
 import WebOneClickModal from '../components/WebOneClickModal';
 import CopyButton from '../components/ui/CopyButton';
 import PageHeader from '../components/ui/PageHeader';
 import StatusTag from '../components/ui/StatusTag';
-import { useCommonJobs } from '../hooks/useCommonJobs';
-import { useJobs } from '../hooks/useJobs';
-import { CommonJob, Job } from '../types/job';
+import { useHttpTasks } from '../hooks/useHttpTasks';
+import { useLlmTasks } from '../hooks/useLlmTasks';
+import { HttpTask, LlmTask } from '../types/job';
 import { getStoredUser } from '../utils/auth';
 import { TASK_STATUS_MAP, UI_CONFIG } from '../utils/constants';
 import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
@@ -62,22 +62,22 @@ const { Text } = Typography;
 const MODE_STORAGE_KEY = 'jobsActiveMode';
 const LDAP_ENABLED = getLdapEnabled();
 
-const JobsPage: React.FC = () => {
+const LlmTasks: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   // State managed by the component
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [taskToCopy, setTaskToCopy] = useState<Partial<Job> | null>(null);
-  const [commonTaskToCopy, setCommonTaskToCopy] =
-    useState<Partial<CommonJob> | null>(null);
-  const [activeMode, setActiveMode] = useState<'llm' | 'common'>(() => {
+  const [taskToCopy, setTaskToCopy] = useState<Partial<LlmTask> | null>(null);
+  const [httpTaskToCopy, setHttpTaskToCopy] =
+    useState<Partial<HttpTask> | null>(null);
+  const [activeMode, setActiveMode] = useState<'llm' | 'http'>(() => {
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
-    return stored === 'common' ? 'common' : 'llm';
+    return stored === 'http' || stored === 'common' ? 'http' : 'llm';
   });
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
     name?: string;
-    type: 'llm' | 'common';
+    type: 'llm' | 'http';
     created_by?: string;
   } | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -124,33 +124,33 @@ const JobsPage: React.FC = () => {
     setStatusFilter,
     setModelFilter,
     setCreatorFilter,
-  } = useJobs(messageApi);
+  } = useLlmTasks(messageApi);
   const {
-    filteredJobs: commonFilteredJobs,
-    pagination: commonPagination,
-    loading: commonLoading,
-    refreshing: commonRefreshing,
-    error: commonError,
-    lastRefreshTime: commonLastRefresh,
-    searchInput: commonSearchInput,
-    statusFilter: commonStatusFilter,
-    creatorFilter: commonCreatorFilter,
-    createJob: createCommonJob,
-    stopJob: stopCommonJob,
-    updateJobName: updateCommonJobName,
-    deleteJob: deleteCommonJob,
-    manualRefresh: commonManualRefresh,
-    performSearch: commonPerformSearch,
-    updateSearchInput: updateCommonSearchInput,
-    setStatusFilter: setCommonStatusFilter,
-    setCreatorFilter: setCommonCreatorFilter,
-  } = useCommonJobs(messageApi);
+    filteredJobs: httpFilteredJobs,
+    pagination: httpPagination,
+    loading: httpLoading,
+    refreshing: httpRefreshing,
+    error: httpError,
+    lastRefreshTime: httpLastRefresh,
+    searchInput: httpSearchInput,
+    statusFilter: httpStatusFilter,
+    creatorFilter: httpCreatorFilter,
+    createJob: createHttpTask,
+    stopJob: stopHttpTask,
+    updateJobName: updateHttpTaskName,
+    deleteJob: deleteHttpTask,
+    manualRefresh: httpManualRefresh,
+    performSearch: httpPerformSearch,
+    updateSearchInput: updateHttpSearchInput,
+    setStatusFilter: setHttpStatusFilter,
+    setCreatorFilter: setHttpCreatorFilter,
+  } = useHttpTasks(messageApi);
 
   /**
    * Handle copying a job template
    */
   const handleCopyJob = useCallback(
-    async (job: Job) => {
+    async (job: LlmTask) => {
       if (!canManage(job.created_by)) {
         messageApi.warning(t('pages.jobs.ownerOnly'));
         return;
@@ -161,10 +161,10 @@ const JobsPage: React.FC = () => {
           : `Copy Task ${job.id.substring(0, 8)}`;
 
         // Always fetch full task detail to preserve headers, datasets and mapping
-        const fullJobResp = await jobApi.getJob(job.id);
+        const fullJobResp = await llmTaskApi.getJob(job.id);
         const fullJob = (fullJobResp as any)?.data || job;
 
-        const jobToCopyData: Partial<Job> = {
+        const jobToCopyData: Partial<LlmTask> = {
           ...fullJob,
           name: copiedName,
           id: undefined,
@@ -246,24 +246,24 @@ const JobsPage: React.FC = () => {
   );
 
   /**
-   * Handle copying a common API job template
+   * Handle copying an HTTP API task template
    */
-  const handleCopyCommonJob = useCallback(
-    async (job: CommonJob) => {
+  const handleCopyHttpTask = useCallback(
+    async (job: HttpTask) => {
       try {
         if (!canManage(job.created_by)) {
           messageApi.warning(t('pages.jobs.ownerOnly'));
           return;
         }
         // Fetch full task details to get request_body and other fields
-        const fullJobResponse = await commonJobApi.getJob(job.id);
-        const fullJob = (fullJobResponse.data as CommonJob) || job;
+        const fullJobResponse = await httpTaskApi.getJob(job.id);
+        const fullJob = (fullJobResponse.data as HttpTask) || job;
 
         const copiedName = fullJob.name
           ? `${fullJob.name} (Copy)`
           : `Copy Task ${fullJob.id.substring(0, 8)}`;
 
-        const jobToCopyData: Partial<CommonJob> = {
+        const jobToCopyData: Partial<HttpTask> = {
           ...fullJob,
           name: copiedName,
           id: undefined,
@@ -277,7 +277,7 @@ const JobsPage: React.FC = () => {
               : (fullJob.request_body ?? ''),
         };
 
-        setCommonTaskToCopy(jobToCopyData);
+        setHttpTaskToCopy(jobToCopyData);
         setIsModalVisible(true);
 
         messageApi.destroy();
@@ -312,13 +312,13 @@ const JobsPage: React.FC = () => {
    * Handle rerun an LLM job (create a new task based on existing config)
    */
   const handleRerunJob = useCallback(
-    async (job: Job) => {
+    async (job: LlmTask) => {
       if (!canManage(job.created_by)) {
         messageApi.warning(t('pages.jobs.ownerOnly'));
         return;
       }
       try {
-        const fullJobResp = await jobApi.getJob(job.id);
+        const fullJobResp = await llmTaskApi.getJob(job.id);
         const fullJob = (fullJobResp as any)?.data || job;
 
         const rerunData: any = {
@@ -371,17 +371,17 @@ const JobsPage: React.FC = () => {
   );
 
   /**
-   * Handle rerun a common API job
+   * Handle rerun an HTTP API task
    */
-  const handleRerunCommonJob = useCallback(
-    async (job: CommonJob) => {
+  const handleRerunHttpTask = useCallback(
+    async (job: HttpTask) => {
       if (!canManage(job.created_by)) {
         messageApi.warning(t('pages.jobs.ownerOnly'));
         return;
       }
       try {
-        const fullJobResponse = await commonJobApi.getJob(job.id);
-        const fullJob = (fullJobResponse.data as CommonJob) || job;
+        const fullJobResponse = await httpTaskApi.getJob(job.id);
+        const fullJob = (fullJobResponse.data as HttpTask) || job;
 
         const rerunData: any = {
           ...fullJob,
@@ -397,23 +397,23 @@ const JobsPage: React.FC = () => {
               : (fullJob.request_body ?? ''),
         };
 
-        const success = await createCommonJob(rerunData);
+        const success = await createHttpTask(rerunData);
         if (success) {
           messageApi.success(t('pages.jobs.rerunSuccess'));
         }
       } catch (error) {
-        console.error('Failed to rerun common job:', error);
+        console.error('Failed to rerun HTTP task:', error);
         messageApi.error(t('pages.jobs.rerunFailed'));
       }
     },
-    [canManage, createCommonJob, getRerunName, messageApi, t]
+    [canManage, createHttpTask, getRerunName, messageApi, t]
   );
 
   /**
    * Show confirmation dialog for rerunning a job
    */
   const showRerunConfirm = useCallback(
-    (record: Job | CommonJob, type: 'llm' | 'common') => {
+    (record: LlmTask | HttpTask, type: 'llm' | 'http') => {
       modal.confirm({
         title: t('pages.jobs.rerunConfirmTitle'),
         icon: <PlayCircleOutlined style={{ color: '#52c41a' }} />,
@@ -438,11 +438,11 @@ const JobsPage: React.FC = () => {
         cancelText: t('common.cancel'),
         onOk: () =>
           type === 'llm'
-            ? handleRerunJob(record as Job)
-            : handleRerunCommonJob(record as CommonJob),
+            ? handleRerunJob(record as LlmTask)
+            : handleRerunHttpTask(record as HttpTask),
       });
     },
-    [handleRerunCommonJob, handleRerunJob, modal, t]
+    [handleRerunHttpTask, handleRerunJob, modal, t]
   );
 
   /**
@@ -468,14 +468,14 @@ const JobsPage: React.FC = () => {
         },
         cancelText: t('common.cancel'),
         onOk: () =>
-          activeMode === 'llm' ? stopJob(jobId) : stopCommonJob(jobId),
+          activeMode === 'llm' ? stopJob(jobId) : stopHttpTask(jobId),
       });
     },
-    [activeMode, modal, stopCommonJob, stopJob, t]
+    [activeMode, modal, stopHttpTask, stopJob, t]
   );
 
   const openRenameModal = useCallback(
-    (record: Job | CommonJob, type: 'llm' | 'common') => {
+    (record: LlmTask | HttpTask, type: 'llm' | 'http') => {
       if (!canManage(record.created_by)) {
         messageApi.warning(t('pages.jobs.ownerOnly'));
         return;
@@ -497,13 +497,13 @@ const JobsPage: React.FC = () => {
     const success =
       renameTarget.type === 'llm'
         ? await updateJobName(renameTarget.id, renameValue)
-        : await updateCommonJobName(renameTarget.id, renameValue);
+        : await updateHttpTaskName(renameTarget.id, renameValue);
     setRenaming(false);
     if (success) {
       setRenameTarget(null);
       setRenameValue('');
     }
-  }, [renameTarget, renameValue, updateCommonJobName, updateJobName]);
+  }, [renameTarget, renameValue, updateHttpTaskName, updateJobName]);
 
   const closeRenameModal = useCallback(() => {
     setRenameTarget(null);
@@ -511,7 +511,7 @@ const JobsPage: React.FC = () => {
   }, []);
 
   const handleDeleteTask = useCallback(
-    (record: Job | CommonJob, type: 'llm' | 'common') => {
+    (record: LlmTask | HttpTask, type: 'llm' | 'http') => {
       if (!canManage(record.created_by)) {
         messageApi.warning(t('pages.jobs.ownerOnly'));
         return;
@@ -539,10 +539,10 @@ const JobsPage: React.FC = () => {
         okType: 'danger',
         cancelText: t('common.cancel'),
         onOk: () =>
-          type === 'llm' ? deleteJob(record.id) : deleteCommonJob(record.id),
+          type === 'llm' ? deleteJob(record.id) : deleteHttpTask(record.id),
       });
     },
-    [canManage, deleteCommonJob, deleteJob, messageApi, modal, t]
+    [canManage, deleteHttpTask, deleteJob, messageApi, modal, t]
   );
 
   const renderLoadConfig = useCallback(
@@ -567,7 +567,7 @@ const JobsPage: React.FC = () => {
   /**
    * Table column definitions
    */
-  const columns: ColumnsType<Job> = useMemo(() => {
+  const columns: ColumnsType<LlmTask> = useMemo(() => {
     const createdByColumn = {
       title: t('pages.jobs.createdBy'),
       dataIndex: 'created_by',
@@ -586,7 +586,7 @@ const JobsPage: React.FC = () => {
       filterMultiple: false,
     };
 
-    const tableColumns: ColumnsType<Job> = [
+    const tableColumns: ColumnsType<LlmTask> = [
       {
         title: t('pages.jobs.taskId'),
         dataIndex: 'id',
@@ -619,7 +619,7 @@ const JobsPage: React.FC = () => {
         key: 'name',
         width: 600,
         ellipsis: true,
-        render: (name: string, record: Job) => (
+        render: (name: string, record: LlmTask) => (
           <div className='table-cell-with-copy'>
             <div className='table-cell-text'>
               <Tooltip title={name} placement='top'>
@@ -629,12 +629,12 @@ const JobsPage: React.FC = () => {
                   tabIndex={0}
                   onClick={e => {
                     e.stopPropagation();
-                    window.open(`/results/${record.id}`, '_blank');
+                    window.open(`/llm-results/${record.id}`, '_blank');
                   }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.stopPropagation();
-                      window.open(`/results/${record.id}`, '_blank');
+                      window.open(`/llm-results/${record.id}`, '_blank');
                     }
                   }}
                 >
@@ -801,7 +801,7 @@ const JobsPage: React.FC = () => {
                   icon={<LineChartOutlined />}
                   onClick={e => {
                     e.stopPropagation();
-                    window.open(`/results/${record.id}`, '_blank');
+                    window.open(`/llm-results/${record.id}`, '_blank');
                   }}
                 />
               </Tooltip>
@@ -869,7 +869,7 @@ const JobsPage: React.FC = () => {
     t,
   ]);
 
-  const commonColumns: ColumnsType<CommonJob> = useMemo(() => {
+  const httpColumns: ColumnsType<HttpTask> = useMemo(() => {
     const createdByColumn = {
       title: t('pages.jobs.createdBy'),
       dataIndex: 'created_by',
@@ -882,13 +882,13 @@ const JobsPage: React.FC = () => {
         { text: t('pages.jobs.filterMine'), value: 'mine' },
         // { text: t('pages.jobs.filterAll'), value: 'all' },
       ],
-      // Use 'mine' as filteredValue when commonCreatorFilter matches currentUsername
+      // Use 'mine' as filteredValue when httpCreatorFilter matches currentUsername
       // This ensures Ant Design Table maintains the filter state during pagination
-      filteredValue: commonCreatorFilter ? ['mine'] : null,
+      filteredValue: httpCreatorFilter ? ['mine'] : null,
       filterMultiple: false,
     };
 
-    const tableColumns: ColumnsType<CommonJob> = [
+    const tableColumns: ColumnsType<HttpTask> = [
       {
         title: t('pages.jobs.taskId'),
         dataIndex: 'id',
@@ -921,7 +921,7 @@ const JobsPage: React.FC = () => {
         key: 'name',
         width: 600,
         ellipsis: true,
-        render: (name: string, record: CommonJob) => (
+        render: (name: string, record: HttpTask) => (
           <div className='table-cell-with-copy'>
             <div className='table-cell-text'>
               <Tooltip title={name} placement='top'>
@@ -931,12 +931,12 @@ const JobsPage: React.FC = () => {
                   tabIndex={0}
                   onClick={e => {
                     e.stopPropagation();
-                    window.open(`/common-results/${record.id}`, '_blank');
+                    window.open(`/http-results/${record.id}`, '_blank');
                   }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.stopPropagation();
-                      window.open(`/common-results/${record.id}`, '_blank');
+                      window.open(`/http-results/${record.id}`, '_blank');
                     }
                   }}
                 >
@@ -953,7 +953,7 @@ const JobsPage: React.FC = () => {
                   icon={<EditOutlined />}
                   onClick={e => {
                     e.stopPropagation();
-                    openRenameModal(record, 'common');
+                    openRenameModal(record, 'http');
                   }}
                 />
               </div>
@@ -997,9 +997,7 @@ const JobsPage: React.FC = () => {
           text: t(`status.${key}`),
           value: key,
         })),
-        filteredValue: commonStatusFilter
-          ? commonStatusFilter.split(',')
-          : null,
+        filteredValue: httpStatusFilter ? httpStatusFilter.split(',') : null,
         render: (status: string) => <StatusTag status={status} />,
       },
       ...(LDAP_ENABLED ? [createdByColumn] : []),
@@ -1029,7 +1027,7 @@ const JobsPage: React.FC = () => {
               label: t('pages.jobs.copyTemplate'),
               onClick: (info: any) => {
                 info.domEvent.stopPropagation();
-                handleCopyCommonJob(record);
+                handleCopyHttpTask(record);
               },
             });
           }
@@ -1059,7 +1057,7 @@ const JobsPage: React.FC = () => {
               disabled: statusLower === 'running' || statusLower === 'stopping',
               onClick: (info: any) => {
                 info.domEvent.stopPropagation();
-                handleDeleteTask(record, 'common');
+                handleDeleteTask(record, 'http');
               },
             });
           }
@@ -1074,7 +1072,7 @@ const JobsPage: React.FC = () => {
                   icon={<LineChartOutlined />}
                   onClick={e => {
                     e.stopPropagation();
-                    window.open(`/common-results/${record.id}`, '_blank');
+                    window.open(`/http-results/${record.id}`, '_blank');
                   }}
                 />
               </Tooltip>
@@ -1099,7 +1097,7 @@ const JobsPage: React.FC = () => {
                     icon={<PlayCircleOutlined />}
                     onClick={e => {
                       e.stopPropagation();
-                      showRerunConfirm(record, 'common');
+                      showRerunConfirm(record, 'http');
                     }}
                   />
                 </Tooltip>
@@ -1128,10 +1126,10 @@ const JobsPage: React.FC = () => {
     return tableColumns;
   }, [
     canManage,
-    commonCreatorFilter,
-    commonStatusFilter,
+    httpCreatorFilter,
+    httpStatusFilter,
     currentUsername,
-    handleCopyCommonJob,
+    handleCopyHttpTask,
     handleDeleteTask,
     openRenameModal,
     renderLoadConfig,
@@ -1143,18 +1141,18 @@ const JobsPage: React.FC = () => {
   /**
    * Handle job creation
    */
-  const handleCreateJob = useCallback(
+  const handleCreateTask = useCallback(
     async (values: any) => {
       const success =
         activeMode === 'llm'
           ? await createJob(values)
-          : await createCommonJob(values);
+          : await createHttpTask(values);
       if (success) {
         setIsModalVisible(false);
         setTaskToCopy(null);
       }
     },
-    [activeMode, createCommonJob, createJob]
+    [activeMode, createHttpTask, createJob]
   );
 
   /**
@@ -1178,10 +1176,10 @@ const JobsPage: React.FC = () => {
         newCreatorFilter = filterValue === 'mine' ? currentUsername : '';
       }
 
-      const useCommon = activeMode === 'common';
-      const prevStatus = useCommon ? commonStatusFilter : statusFilter;
+      const useHttp = activeMode === 'http';
+      const prevStatus = useHttp ? httpStatusFilter : statusFilter;
       const prevModel = modelFilter;
-      const prevCreator = useCommon ? commonCreatorFilter : creatorFilter;
+      const prevCreator = useHttp ? httpCreatorFilter : creatorFilter;
 
       const isFilterChange =
         newStatusFilter !== prevStatus ||
@@ -1191,22 +1189,22 @@ const JobsPage: React.FC = () => {
       const nextPage = isFilterChange ? 1 : newPagination.current || 1;
       const nextPageSize =
         newPagination.pageSize ||
-        (useCommon ? commonPagination.pageSize : pagination.pageSize);
+        (useHttp ? httpPagination.pageSize : pagination.pageSize);
 
-      if (useCommon) {
+      if (useHttp) {
         // Update filters first if changed
-        if (newStatusFilter !== commonStatusFilter) {
-          setCommonStatusFilter(newStatusFilter);
+        if (newStatusFilter !== httpStatusFilter) {
+          setHttpStatusFilter(newStatusFilter);
         }
-        if (newCreatorFilter !== commonCreatorFilter) {
-          setCommonCreatorFilter(newCreatorFilter);
+        if (newCreatorFilter !== httpCreatorFilter) {
+          setHttpCreatorFilter(newCreatorFilter);
         }
         // Trigger fetch with new pagination - manualRefresh will update pagination state
-        commonManualRefresh({
+        httpManualRefresh({
           page: nextPage,
           pageSize: nextPageSize,
           status: newStatusFilter,
-          search: commonSearchInput,
+          search: httpSearchInput,
           creator: newCreatorFilter,
         });
       } else {
@@ -1229,19 +1227,19 @@ const JobsPage: React.FC = () => {
     },
     [
       activeMode,
-      commonCreatorFilter,
-      commonPagination.pageSize,
-      commonPagination.total,
-      commonManualRefresh,
-      commonSearchInput,
-      commonStatusFilter,
+      httpCreatorFilter,
+      httpPagination.pageSize,
+      httpPagination.total,
+      httpManualRefresh,
+      httpSearchInput,
+      httpStatusFilter,
       creatorFilter,
       currentUsername,
       modelFilter,
       pagination.pageSize,
       pagination.total,
-      setCommonCreatorFilter,
-      setCommonStatusFilter,
+      setHttpCreatorFilter,
+      setHttpStatusFilter,
       setCreatorFilter,
       setModelFilter,
       setPagination,
@@ -1278,11 +1276,11 @@ const JobsPage: React.FC = () => {
   }, []);
 
   const handleResetFilters = useCallback(() => {
-    if (activeMode === 'common') {
-      updateCommonSearchInput('');
-      commonManualRefresh({
+    if (activeMode === 'http') {
+      updateHttpSearchInput('');
+      httpManualRefresh({
         page: 1,
-        pageSize: commonPagination.pageSize,
+        pageSize: httpPagination.pageSize,
         status: '',
         search: '',
         creator: '',
@@ -1301,14 +1299,14 @@ const JobsPage: React.FC = () => {
     }));
   }, [
     activeMode,
-    commonManualRefresh,
-    commonPagination.pageSize,
+    httpManualRefresh,
+    httpPagination.pageSize,
     performSearch,
     setCreatorFilter,
     setModelFilter,
     setPagination,
     setStatusFilter,
-    updateCommonSearchInput,
+    updateHttpSearchInput,
     updateSearchInput,
   ]);
 
@@ -1334,7 +1332,7 @@ const JobsPage: React.FC = () => {
       messageApi.warning(t('pages.jobs.selectMinForCompare'));
       return;
     }
-    const mode = activeMode === 'llm' ? 'model' : 'common';
+    const mode = activeMode === 'llm' ? 'model' : 'http';
     const taskIds = selectedRowKeys.join(',');
     navigate(`/result-comparison?tasks=${taskIds}&mode=${mode}`);
   }, [activeMode, messageApi, navigate, selectedRowKeys, t]);
@@ -1350,7 +1348,7 @@ const JobsPage: React.FC = () => {
       onChange: handleSelectionChange,
       preserveSelectedRowKeys: true,
       columnTitle: ' ',
-      getCheckboxProps: (record: Job | CommonJob) => ({
+      getCheckboxProps: (record: LlmTask | HttpTask) => ({
         disabled: !COMPARABLE_STATUSES.includes(
           record.status?.toLowerCase() ?? ''
         ),
@@ -1359,24 +1357,22 @@ const JobsPage: React.FC = () => {
     [selectedRowKeys, handleSelectionChange, COMPARABLE_STATUSES]
   );
 
-  const isCommonMode = activeMode === 'common';
-  const currentJobs = isCommonMode ? commonFilteredJobs : filteredJobs;
-  const currentPagination = isCommonMode ? commonPagination : pagination;
-  const currentLoading = isCommonMode ? commonLoading : loading;
-  const currentRefreshing = isCommonMode ? commonRefreshing : refreshing;
-  const currentError = isCommonMode ? commonError : error;
-  const currentLastRefresh = isCommonMode ? commonLastRefresh : lastRefreshTime;
-  const currentSearchInput = isCommonMode ? commonSearchInput : searchInput;
-  const currentPerformSearch = isCommonMode
-    ? commonPerformSearch
-    : performSearch;
-  const currentUpdateSearchInput = isCommonMode
-    ? updateCommonSearchInput
+  const isHttpMode = activeMode === 'http';
+  const currentJobs = isHttpMode ? httpFilteredJobs : filteredJobs;
+  const currentPagination = isHttpMode ? httpPagination : pagination;
+  const currentLoading = isHttpMode ? httpLoading : loading;
+  const currentRefreshing = isHttpMode ? httpRefreshing : refreshing;
+  const currentError = isHttpMode ? httpError : error;
+  const currentLastRefresh = isHttpMode ? httpLastRefresh : lastRefreshTime;
+  const currentSearchInput = isHttpMode ? httpSearchInput : searchInput;
+  const currentPerformSearch = isHttpMode ? httpPerformSearch : performSearch;
+  const currentUpdateSearchInput = isHttpMode
+    ? updateHttpSearchInput
     : updateSearchInput;
-  const currentManualRefresh = isCommonMode
-    ? () => commonManualRefresh()
+  const currentManualRefresh = isHttpMode
+    ? () => httpManualRefresh()
     : () => manualRefresh();
-  const currentColumns = isCommonMode ? commonColumns : columns;
+  const currentColumns = isHttpMode ? httpColumns : columns;
 
   return (
     <div className='page-container'>
@@ -1392,16 +1388,16 @@ const JobsPage: React.FC = () => {
         <Tabs
           activeKey={activeMode}
           onChange={key => {
-            setActiveMode(key as 'llm' | 'common');
-            localStorage.setItem(MODE_STORAGE_KEY, key as 'llm' | 'common');
+            setActiveMode(key as 'llm' | 'http');
+            localStorage.setItem(MODE_STORAGE_KEY, key);
             setSelectedRowKeys([]);
           }}
           items={[
             {
-              key: 'common',
+              key: 'http',
               label: (
                 <span className='tab-label'>
-                  {t('pages.jobs.commonApiTab') || 'Business API Load Test'}
+                  {t('pages.jobs.httpApiTab') || 'HTTP API Load Test'}
                 </span>
               ),
             },
@@ -1429,7 +1425,7 @@ const JobsPage: React.FC = () => {
             >
               {t('pages.jobs.createNew')}
             </Button>
-            {isCommonMode && (
+            {isHttpMode && (
               <Tooltip
                 title={t('pages.jobs.webOneClickTooltip')}
                 placement='bottom'
@@ -1472,8 +1468,8 @@ const JobsPage: React.FC = () => {
             {renderLastRefreshTime(currentLastRefresh)}
             <Search
               placeholder={
-                isCommonMode
-                  ? t('pages.jobs.searchPlaceholderCommon')
+                isHttpMode
+                  ? t('pages.jobs.searchPlaceholderHttp')
                   : t('pages.jobs.searchPlaceholder')
               }
               value={currentSearchInput}
@@ -1563,19 +1559,19 @@ const JobsPage: React.FC = () => {
         maskClosable={false}
       >
         {activeMode === 'llm' ? (
-          <CreateJobForm
-            onSubmit={handleCreateJob}
+          <CreateLlmTaskForm
+            onSubmit={handleCreateTask}
             onCancel={handleModalCancel}
             loading={currentLoading}
             initialData={taskToCopy}
             suppressCopyWarning={!!taskToCopy}
           />
         ) : (
-          <CreateCommonJobForm
-            onSubmit={handleCreateJob}
+          <CreateHttpTaskForm
+            onSubmit={handleCreateTask}
             onCancel={handleModalCancel}
             loading={currentLoading}
-            initialData={commonTaskToCopy}
+            initialData={httpTaskToCopy}
           />
         )}
       </Modal>
@@ -1583,10 +1579,10 @@ const JobsPage: React.FC = () => {
       <WebOneClickModal
         open={webOneClickOpen}
         onClose={() => setWebOneClickOpen(false)}
-        onTaskCreated={() => commonManualRefresh()}
+        onTaskCreated={() => httpManualRefresh()}
       />
     </div>
   );
 };
 
-export default JobsPage;
+export default LlmTasks;

@@ -1,6 +1,6 @@
 /**
- * @file CommonResults.tsx
- * @description Results page for common API jobs with Statistics and Charts tabs
+ * @file HttpResults.tsx
+ * @description Results page for HTTP API tasks with Statistics and Charts tabs
  */
 import {
   DownloadOutlined,
@@ -36,18 +36,18 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
-import { commonJobApi, monitoringApi } from '@/api/services';
+import { httpTaskApi, monitoringApi } from '@/api/services';
 import { LoadingSpinner } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { RealtimeMetricPoint } from '@/types/job';
 import { getStoredUser } from '@/utils/auth';
 import { formatDate } from '@/utils/date';
 
-const CommonResults: React.FC = () => {
+const HttpResults: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const getTabStorageKey = useCallback(
-    (jobId?: string) => `common-results-active-tab:${jobId || 'unknown'}`,
+    (jobId?: string) => `http-results-active-tab:${jobId || 'unknown'}`,
     []
   );
   const getStoredActiveTab = useCallback(
@@ -86,8 +86,8 @@ const CommonResults: React.FC = () => {
       setLoading(true);
       try {
         const [taskRes, resultRes] = await Promise.all([
-          commonJobApi.getJob(id),
-          commonJobApi.getJobResult(id),
+          httpTaskApi.getJob(id),
+          httpTaskApi.getJobResult(id),
         ]);
         setTaskInfo(taskRes.data);
         const resBody: any = resultRes.data;
@@ -152,7 +152,7 @@ const CommonResults: React.FC = () => {
     fetchingRef.current = true;
     try {
       const since = lastMetricTs.current;
-      const res = await commonJobApi.getRealtimeMetrics(id, since);
+      const res = await httpTaskApi.getRealtimeMetrics(id, since);
       const body: any = res.data;
       const points: RealtimeMetricPoint[] = body?.data ?? [];
       if (points.length > 0) {
@@ -183,7 +183,7 @@ const CommonResults: React.FC = () => {
 
     const interval = setInterval(async () => {
       try {
-        const statusRes = await commonJobApi.getJobStatus(id);
+        const statusRes = await httpTaskApi.getJobStatus(id);
         const statusData = statusRes.data as any;
         if (statusData) {
           setTaskInfo((prev: any) => ({
@@ -331,10 +331,10 @@ const CommonResults: React.FC = () => {
       onOk: async () => {
         setIsStopping(true);
         try {
-          await commonJobApi.stopJob(id);
+          await httpTaskApi.stopJob(id);
           message.success(t('pages.jobs.stopSuccess'));
           // Refresh task info to update status
-          const taskRes = await commonJobApi.getJob(id);
+          const taskRes = await httpTaskApi.getJob(id);
           setTaskInfo(taskRes.data);
         } catch {
           message.error(t('pages.jobs.stopFailed'));
@@ -445,7 +445,7 @@ const CommonResults: React.FC = () => {
       const link = document.createElement('a');
       link.href = image;
       const suffix = activeTab === 'charts' ? 'charts' : 'results';
-      link.download = `common-task-${suffix}-${taskInfo?.name || taskInfo?.id || ''}.png`;
+      link.download = `http-task-${suffix}-${taskInfo?.name || taskInfo?.id || ''}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1215,4 +1215,4 @@ const CommonResults: React.FC = () => {
   );
 };
 
-export default CommonResults;
+export default HttpResults;

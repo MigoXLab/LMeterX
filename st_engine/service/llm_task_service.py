@@ -21,19 +21,19 @@ from config.business import (
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
 )
+from engine.llm_runner import LlmLocustRunner
 from engine.process_manager import (
     cleanup_task_resources,
     get_task_process_status,
     terminate_locust_process_group,
 )
-from engine.runner import LocustRunner
-from model.task import Task
-from service.result_service import ResultService
+from model.llm_task import Task
+from service.llm_result_service import LlmResultService
 from utils.logger import add_task_log_sink, logger, remove_task_log_sink
 from utils.vm_push import ENGINE_ID
 
 
-class TaskService:
+class LlmTaskService:
     """
     Provides services for managing the entire lifecycle of a performance test task.
     This includes creating, locking, executing, and stopping tasks.
@@ -41,8 +41,8 @@ class TaskService:
 
     def __init__(self):
         """Initializes the TaskService with a LocustRunner instance."""
-        self.runner = LocustRunner(ST_ENGINE_DIR)
-        self.result_service = ResultService()
+        self.runner = LlmLocustRunner(ST_ENGINE_DIR)
+        self.result_service = LlmResultService()
 
     def _cleanup_task_files(self, task: Task):
         """

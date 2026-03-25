@@ -17,8 +17,8 @@ from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
-from model.common_task import CommonTask
-from model.task import (
+from model.http_task import HttpTask
+from model.llm_task import (
     ComparisonMetrics,
     ComparisonRequest,
     ComparisonResponse,
@@ -154,8 +154,8 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
     }
 
 
-def _build_common_task_detail(task: CommonTask) -> Dict[str, Any]:
-    """Build a task-like payload for common API tasks so shared pages work."""
+def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
+    """Build a task-like payload for HTTP API tasks so shared pages work."""
     return {
         "id": task.id,
         "name": task.name,
@@ -361,7 +361,7 @@ async def get_tasks_status_svc(request: Request, page_size: int):
     query = text(
         """
         SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
-        FROM tasks
+        FROM llm_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
         AND is_deleted = 0
         ORDER BY created_at DESC
@@ -667,10 +667,10 @@ async def get_task_svc(request: Request, task_id: str):
         if task and getattr(task, "is_deleted", 0) == 0:
             return _build_task_detail(task)
 
-        # Fallback to common API task to support shared log/detail pages
-        common_task = await db.get(CommonTask, task_id)
-        if common_task and getattr(common_task, "is_deleted", 0) == 0:
-            return _build_common_task_detail(common_task)
+        # Fallback to HTTP API task to support shared log/detail pages
+        http_task = await db.get(HttpTask, task_id)
+        if http_task and getattr(http_task, "is_deleted", 0) == 0:
+            return _build_http_task_detail(http_task)
 
         logger.warning("Get request for non-existent task ID: {}", task_id)
         raise ErrorResponse.not_found("Task not found")
@@ -706,17 +706,17 @@ async def get_task_status_svc(request: Request, task_id: str):
         task_data = result.first()
 
         if not task_data:
-            # Fallback to common task
+            # Fallback to HTTP task
             common_query = (
                 select(
-                    CommonTask.id,
-                    CommonTask.name,
-                    CommonTask.status,
-                    CommonTask.error_message,
-                    CommonTask.updated_at,
+                    HttpTask.id,
+                    HttpTask.name,
+                    HttpTask.status,
+                    HttpTask.error_message,
+                    HttpTask.updated_at,
                 )
-                .where(CommonTask.id == task_id)
-                .where(CommonTask.is_deleted == 0)
+                .where(HttpTask.id == task_id)
+                .where(HttpTask.is_deleted == 0)
             )
             common_result = await db.execute(common_query)
             common_data = common_result.first()

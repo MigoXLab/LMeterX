@@ -5,11 +5,11 @@ Copyright (c) 2025, All Rights Reserved.
 
 from sqlalchemy.orm import Session
 
-from model.task import TaskResult
+from model.llm_task import TaskResult
 from utils.logger import logger
 
 
-class ResultService:
+class LlmResultService:
     """
     A service class for handling operations related to test results.
     """

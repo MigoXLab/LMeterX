@@ -143,7 +143,7 @@ def push_realtime_perf_metrics(
 
     Args:
         task_id: The task identifier.
-        task_type: Either ``"llm"`` or ``"common"``.
+        task_type: Either ``"llm"`` or ``"http"``.
         snapshot: A metrics snapshot dict as returned by
             ``collect_realtime_snapshot()``.
         timestamp_ms: Optional explicit timestamp in milliseconds.

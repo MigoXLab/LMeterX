@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Query, Request
 
-from model.task import (
+from model.llm_task import (
     ComparisonRequest,
     ComparisonResponse,
     ModelListResponse,
@@ -19,7 +19,7 @@ from model.task import (
     TaskStatusRsp,
     TaskTestReq,
 )
-from service.task_service import (
+from service.llm_task_service import (
     compare_performance_svc,
     create_task_svc,
     delete_task_svc,

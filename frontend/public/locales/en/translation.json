@@ -54,8 +54,8 @@
       "rerunConfirmContent": "A new task will be created based on the configuration of",
       "confirmRerun": "Confirm Rerun",
       "rerunDatasetTip": "Tip: If you need to upload a dataset for load testing, please use the \"Copy\" feature to re-upload the dataset and start the task.",
-      "rerunSuccess": "Rerun task created successfully",
-      "rerunFailed": "Failed to create rerun task",
+      "rerunSuccess": "Rerun task successful",
+      "rerunFailed": "Rerun task failed",
       "stop": "Stop",
       "results": "Results",
       "logs": "Logs",
@@ -69,6 +69,7 @@
       "lastRefresh": "Last refresh",
       "llmTab": "LLM API",
       "commonApiTab": "Business API",
+      "httpApiTab": "HTTP API",
       "searchPlaceholderCommon": "Search task name or ID",
       "createSuccess": "Task created successfully",
       "createFailed": "Failed to create task",
@@ -204,12 +205,20 @@
       "chartsNoData": "No real-time metrics data available for this task.",
       "refreshCharts": "Refresh",
       "chartsRetentionTip": "Please download the report in time. Real-time metrics data will be automatically cleaned up after 7 days.",
+      "tokenLengthStats": "Token Length",
+      "tokenLengthAvg": "Avg (tokens)",
+      "tokenLengthMedian": "Median (tokens)",
+      "tokenLengthMax": "Max (tokens)",
+      "tokenLengthMin": "Min (tokens)",
+      "tokenLengthP95": "P95 (tokens)",
       "metricExplanations": {
         "Time_to_first_output_token": "Time to output the first token in the final answer (content field)",
         "Time_to_output_completion": "Generation time for the final answer",
         "Total_time": "Total time to complete the entire request",
         "Time_to_first_reasoning_token": "Time to output the first token in the reasoning part (reasoning_content field)",
-        "Time_to_reasoning_completion": "Generation time for the reasoning part"
+        "Time_to_reasoning_completion": "Generation time for the reasoning part",
+        "Input_tokens": "Number of input tokens (prompt tokens) per request",
+        "Completion_tokens": "Number of output tokens (completion tokens) per request"
       },
       "statisticExplanations": {
         "RPS": "Number of requests sent per second",
@@ -276,6 +285,7 @@
       "title": "Perf Insight",
       "modelTasks": "LLM API",
       "commonTasks": "Business API",
+      "httpTasks": "HTTP API",
       "selectModels": "Select Models",
       "compare": "Compare",
       "addModel": "Add Model",
@@ -639,7 +649,7 @@
       "warmupEnabled": "Enabled",
       "warmupDisabled": "Disabled"
     },
-    "createCommonJobForm": {
+    "createHttpTaskForm": {
       "taskName": "Task Name",
       "taskNamePlaceholder": "e.g. API Load Test",
       "taskNameRequired": "Please enter task name",

@@ -1,6 +1,6 @@
 /**
- * @file BenchmarkJobs.tsx
- * @description Benchmark jobs page component
+ * @file LlmTaskHistory.tsx
+ * @description LLM task history page component
  * @author Charm
  * @copyright 2025
  * */
@@ -29,12 +29,12 @@ import type { ColumnsType } from 'antd/es/table';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import CreateJobForm from '../components/CreateJobForm';
+import CreateLlmTaskForm from '../components/CreateLlmTaskForm';
 import CopyButton from '../components/ui/CopyButton';
 import PageHeader from '../components/ui/PageHeader';
 import StatusTag from '../components/ui/StatusTag';
-import { useBenchmarkJobs } from '../hooks/useBenchmarkJobs';
-import { BenchmarkJob } from '../types/benchmark';
+import { useLlmTaskHistory } from '../hooks/useLlmTaskHistory';
+import { LlmTask } from '../types/job';
 import { TASK_STATUS_MAP, UI_CONFIG } from '../utils/constants';
 import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
 import { formatDate, getTimestamp } from '../utils/date';
@@ -42,13 +42,11 @@ import { formatDate, getTimestamp } from '../utils/date';
 const { Search } = Input;
 const { Text } = Typography;
 
-const BenchmarkJobs: React.FC = () => {
+const LlmTaskHistory: React.FC = () => {
   const { t } = useTranslation();
   // State managed by the component
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [taskToCopy, setTaskToCopy] = useState<Partial<BenchmarkJob> | null>(
-    null
-  );
+  const [taskToCopy, setTaskToCopy] = useState<Partial<LlmTask> | null>(null);
 
   // Get message instance from App context
   const { message: messageApi, modal } = App.useApp();
@@ -70,18 +68,18 @@ const BenchmarkJobs: React.FC = () => {
     performSearch,
     updateSearchInput,
     setStatusFilter,
-  } = useBenchmarkJobs(messageApi);
+  } = useLlmTaskHistory(messageApi);
 
   /**
    * Handle copying a job template
    */
   const handleCopyJob = useCallback(
-    (job: BenchmarkJob) => {
+    (job: LlmTask) => {
       const copiedName = job.name
         ? `${job.name} (Copy)`
         : `Copy Task ${job.id.substring(0, 8)}`;
 
-      const jobToCopyData: Partial<BenchmarkJob> = {
+      const jobToCopyData: Partial<LlmTask> = {
         ...job,
         name: copiedName,
         id: undefined,
@@ -180,7 +178,7 @@ const BenchmarkJobs: React.FC = () => {
   /**
    * Table column definitions
    */
-  const columns: ColumnsType<BenchmarkJob> = useMemo(
+  const columns: ColumnsType<LlmTask> = useMemo(
     () => [
       {
         title: t('pages.benchmarkJobs.taskId'),
@@ -210,7 +208,7 @@ const BenchmarkJobs: React.FC = () => {
         dataIndex: 'target_host',
         key: 'target_host',
         width: 250,
-        render: (target_host: string, record: BenchmarkJob) => {
+        render: (target_host: string, record: LlmTask) => {
           const apiPath = record.api_path || '/chat/completions';
           const fullUrl = target_host + apiPath;
           return (
@@ -318,7 +316,7 @@ const BenchmarkJobs: React.FC = () => {
                 type='primary'
                 onClick={e => {
                   e.stopPropagation();
-                  window.open(`/results/${record.id}`, '_blank');
+                  window.open(`/llm-results/${record.id}`, '_blank');
                 }}
               >
                 {t('pages.benchmarkJobs.results')}
@@ -462,7 +460,7 @@ const BenchmarkJobs: React.FC = () => {
         .ant-table-row:hover { cursor: pointer; }
       `}</style>
 
-      <Table<BenchmarkJob>
+      <Table<LlmTask>
         columns={columns}
         rowKey='id'
         dataSource={filteredJobs}
@@ -500,7 +498,7 @@ const BenchmarkJobs: React.FC = () => {
         destroyOnHidden
         maskClosable={false}
       >
-        <CreateJobForm
+        <CreateLlmTaskForm
           onSubmit={handleCreateJob}
           onCancel={handleModalCancel}
           loading={loading}
@@ -511,4 +509,4 @@ const BenchmarkJobs: React.FC = () => {
   );
 };
 
-export default BenchmarkJobs;
+export default LlmTaskHistory;

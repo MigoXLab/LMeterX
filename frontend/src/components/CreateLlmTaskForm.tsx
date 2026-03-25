@@ -1,6 +1,6 @@
 /**
- * @file CreateJobForm.tsx
- * @description Create job form component
+ * @file CreateLlmTaskForm.tsx
+ * @description Create LLM task form component
  * @author Charm
  * @copyright 2025
  * */
@@ -47,12 +47,12 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-  jobApi,
+  llmTaskApi,
   uploadCertificateFiles,
   uploadDatasetFile,
 } from '@/api/services';
 import { useI18n } from '@/hooks/useI18n';
-import { Job } from '@/types/job';
+import { LlmTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import { safeJsonParse } from '@/utils/data';
 
@@ -62,15 +62,15 @@ const { Text } = Typography;
 // API Type definitions
 type ApiType = 'openai-chat' | 'claude-chat' | 'embeddings' | 'custom-chat';
 
-interface CreateJobFormProps {
+interface CreateLlmTaskFormProps {
   onSubmit: (values: any) => Promise<void>;
   onCancel: () => void;
   loading?: boolean;
-  initialData?: Partial<Job> | null;
+  initialData?: Partial<LlmTask> | null;
   suppressCopyWarning?: boolean;
 }
 
-const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
+const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
   onSubmit,
   onCancel,
   loading,
@@ -864,7 +864,7 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
       }
 
       // Call test API
-      const apiResponse = await jobApi.testApiEndpoint(testData);
+      const apiResponse = await llmTaskApi.testApiEndpoint(testData);
       // Extract the actual backend response data
       const result = apiResponse.data;
 
@@ -3770,8 +3770,8 @@ const CreateJobFormContent: React.FC<CreateJobFormProps> = ({
   );
 };
 
-const CreateJobForm: React.FC<CreateJobFormProps> = props => (
-  <CreateJobFormContent {...props} />
+const CreateLlmTaskForm: React.FC<CreateLlmTaskFormProps> = props => (
+  <CreateLlmTaskFormContent {...props} />
 );
 
-export default CreateJobForm;
+export default CreateLlmTaskForm;

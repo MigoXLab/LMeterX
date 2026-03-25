@@ -28,12 +28,12 @@ from engine.process_manager import (
     register_locust_process_group,
     terminate_locust_process_group,
 )
-from model.task import Task
+from model.llm_task import Task
 from utils.common import mask_sensitive_command
 from utils.logger import logger
 
 
-class LocustRunner:
+class LlmLocustRunner:
     """
     Enhanced Locust runner with robust multiprocess management.
     """
@@ -49,7 +49,9 @@ class LocustRunner:
     def __init__(self, base_dir: str):
         """Create a runner rooted at the given repository directory."""
         self.base_dir = base_dir
-        self._locustfile_path = os.path.join(self.base_dir, "engine", "locustfile.py")
+        self._locustfile_path = os.path.join(
+            self.base_dir, "engine", "llm_locustfile.py"
+        )
 
     # --- Shared stepped load helpers ---
 
@@ -67,7 +69,7 @@ class LocustRunner:
     def _get_stepped_env(self, task) -> Dict[str, str]:
         """Build environment variables for stepped load mode.
 
-        Works with any task object that has step_* attributes (Task or CommonTask).
+        Works with any task object that has step_* attributes (Task or HttpTask).
         """
         return {
             "LOAD_MODE": "stepped",
@@ -171,7 +173,7 @@ class LocustRunner:
     def _prepare_task(self, task: Task, task_logger) -> None:
         """Prepare task environment: validate config and files."""
         # NOTE: Avoid global process cleanup here; it can terminate unrelated
-        # Locust runs (e.g., model vs common API tasks) that are running
+        # Locust runs (e.g., model vs HTTP API tasks) that are running
         # concurrently. Stale processes are reconciled in pollers/startup
         # routines instead of per-task execution.
         if not os.path.exists(self._locustfile_path):

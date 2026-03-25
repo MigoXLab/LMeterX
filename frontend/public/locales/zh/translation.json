@@ -54,8 +54,8 @@
       "rerunConfirmContent": "将基于以下任务的配置创建新任务：",
       "confirmRerun": "确认重新运行",
       "rerunDatasetTip": "提示：如需上传数据集压测，请使用「复制」功能，重新上传数据集后启动压测任务。",
-      "rerunSuccess": "重新运行任务已成功创建",
-      "rerunFailed": "创建重新运行任务失败",
+      "rerunSuccess": "任务已重新运行",
+      "rerunFailed": "重新运行任务失败",
       "stop": "停止",
       "results": "结果",
       "logs": "日志",
@@ -69,6 +69,7 @@
       "lastRefresh": "最后刷新",
       "llmTab": "LLM API",
       "commonApiTab": "业务API",
+      "httpApiTab": "HTTP API",
       "searchPlaceholderCommon": "搜索任务名称或ID",
       "createSuccess": "任务创建成功",
       "createFailed": "任务创建失败",
@@ -205,12 +206,20 @@
       "chartsNoData": "该任务暂无实时指标数据。",
       "refreshCharts": "刷新",
       "chartsRetentionTip": "请及时下载报告，实时指标数据将在 7 天后自动清理",
+      "tokenLengthStats": "Token 长度",
+      "tokenLengthAvg": "平均 (tokens)",
+      "tokenLengthMedian": "中位数 (tokens)",
+      "tokenLengthMax": "最大 (tokens)",
+      "tokenLengthMin": "最小 (tokens)",
+      "tokenLengthP95": "P95 (tokens)",
       "metricExplanations": {
         "Time_to_first_output_token": "输出第一个Token的时间（content字段）",
         "Time_to_output_completion": "最终答案的生成时间",
         "Total_time": "完成整个请求的总时间",
         "Time_to_first_reasoning_token": "输出第一个Token的时间（reasoning_content字段）",
-        "Time_to_reasoning_completion": "推理部分的生成时间"
+        "Time_to_reasoning_completion": "推理部分的生成时间",
+        "Input_tokens": "每请求的输入Token数量（prompt tokens）",
+        "Completion_tokens": "每请求的输出Token数量（completion tokens）"
       },
       "statisticExplanations": {
         "RPS": "每秒发送的请求数",
@@ -277,6 +286,7 @@
       "title": "性能对比",
       "modelTasks": "LLM API",
       "commonTasks": "业务API",
+      "httpTasks": "HTTP API",
       "selectModels": "选择模型",
       "compare": "对比",
       "addModel": "添加模型",
@@ -640,7 +650,7 @@
       "warmupEnabled": "已开启",
       "warmupDisabled": "已关闭"
     },
-    "createCommonJobForm": {
+    "createHttpTaskForm": {
       "taskName": "任务名称",
       "taskNamePlaceholder": "例如：API 压测任务",
       "taskNameRequired": "请输入任务名称",

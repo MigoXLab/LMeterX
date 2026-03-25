@@ -49,7 +49,7 @@ import {
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { commonJobApi, skillApi } from '@/api/services';
+import { httpTaskApi, skillApi } from '@/api/services';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -301,7 +301,7 @@ const WebOneClickModal: React.FC<Props> = ({
     const key = api.target_url;
     setApiStates(prev => ({ ...prev, [key]: 'testing' }));
     try {
-      const resp = await commonJobApi.testJob({
+      const resp = await httpTaskApi.testJob({
         method: api.method,
         target_url: api.target_url,
         headers: api.headers || [],
@@ -348,7 +348,7 @@ const WebOneClickModal: React.FC<Props> = ({
       const key = apiUrl;
       setApiStates(prev => ({ ...prev, [key]: 'creating' }));
       try {
-        await commonJobApi.createJob({
+        await httpTaskApi.createJob({
           temp_task_id: cfg.temp_task_id,
           name: cfg.name,
           method: cfg.method,
@@ -401,7 +401,7 @@ const WebOneClickModal: React.FC<Props> = ({
     const results = await Promise.allSettled(
       targets.map(api => {
         const cfg = configMap[api.target_url]!;
-        return commonJobApi.createJob({
+        return httpTaskApi.createJob({
           temp_task_id: cfg.temp_task_id,
           name: cfg.name,
           method: cfg.method,
@@ -954,7 +954,7 @@ const WebOneClickModal: React.FC<Props> = ({
                       style={{ width: 170, fontSize: 12, marginBottom: 0 }}
                     >
                       {t(
-                        'components.createCommonJobForm.spawnRate',
+                        'components.createHttpTaskForm.spawnRate',
                         'Spawn Rate'
                       )}
                     </Text>
@@ -1110,7 +1110,7 @@ const WebOneClickModal: React.FC<Props> = ({
               {testResult.status !== undefined && (
                 <Descriptions.Item
                   label={t(
-                    'components.createCommonJobForm.testStatusCode',
+                    'components.createHttpTaskForm.testStatusCode',
                     'Status Code'
                   )}
                 >
@@ -1150,7 +1150,7 @@ const WebOneClickModal: React.FC<Props> = ({
                 >
                   <Text type='secondary'>
                     {t(
-                      'components.createCommonJobForm.testResponse',
+                      'components.createHttpTaskForm.testResponse',
                       'Response'
                     )}
                   </Text>

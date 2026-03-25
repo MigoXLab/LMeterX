@@ -1,6 +1,6 @@
 /**
- * @file Results.tsx
- * @description Results page component
+ * @file LlmResults.tsx
+ * @description Results page component for LLM tasks
  * @author Charm
  * @copyright 2025
  * */
@@ -40,7 +40,12 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { analysisApi, jobApi, monitoringApi, resultApi } from '../api/services';
+import {
+  analysisApi,
+  llmTaskApi,
+  monitoringApi,
+  resultApi,
+} from '../api/services';
 import { CopyButton } from '../components/ui/CopyButton';
 import { IconTooltip } from '../components/ui/IconTooltip';
 import { LoadingSpinner } from '../components/ui/LoadingState';
@@ -61,6 +66,8 @@ const SUMMARY_METRIC_TYPES = new Set([
   'failure',
   'total_tokens_per_second',
   'completion_tokens_per_second',
+  'Input_tokens',
+  'Completion_tokens',
 ]);
 
 const statisticWrapperStyle: React.CSSProperties = {
@@ -74,7 +81,7 @@ const statisticValueStyle: React.CSSProperties = {
   textAlign: 'left',
 };
 
-const TaskResults: React.FC = () => {
+const LlmResults: React.FC = () => {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguage();
   const { id } = useParams<{ id: string }>();
@@ -117,6 +124,7 @@ const TaskResults: React.FC = () => {
   const detailsCardRef = useRef<HTMLDivElement | null>(null);
   const metricsDetailCardRef = useRef<HTMLDivElement | null>(null);
   const chartsRef = useRef<HTMLDivElement | null>(null);
+  const tokenLengthCardRef = useRef<HTMLDivElement | null>(null);
 
   const getNumericValue = (item: any, fields: string[]): number | undefined => {
     if (!item) {
@@ -187,7 +195,7 @@ const TaskResults: React.FC = () => {
 
         // Handle task information acquisition separately
         try {
-          const taskResponse = await jobApi.getJob(id);
+          const taskResponse = await llmTaskApi.getJob(id);
           setTaskInfo(taskResponse.data);
         } catch (err: any) {
           // Failed to get task info - continue with results
@@ -278,7 +286,7 @@ const TaskResults: React.FC = () => {
     fetchingRef.current = true;
     try {
       const since = lastMetricTs.current;
-      const res = await jobApi.getRealtimeMetrics(id, since);
+      const res = await llmTaskApi.getRealtimeMetrics(id, since);
       const body: any = res.data;
       const points: RealtimeMetricPoint[] = body?.data ?? [];
       if (points.length > 0) {
@@ -307,7 +315,7 @@ const TaskResults: React.FC = () => {
 
     const interval = setInterval(async () => {
       try {
-        const statusRes = await jobApi.getJobStatus(id);
+        const statusRes = await llmTaskApi.getJobStatus(id);
         const statusData = statusRes.data as any;
         if (statusData) {
           setTaskInfo((prev: any) => ({
@@ -434,9 +442,9 @@ const TaskResults: React.FC = () => {
       onOk: async () => {
         setIsStopping(true);
         try {
-          await jobApi.stopJob(id);
+          await llmTaskApi.stopJob(id);
           message.success(t('pages.jobs.stopSuccess'));
-          const taskRes = await jobApi.getJob(id);
+          const taskRes = await llmTaskApi.getJob(id);
           setTaskInfo(taskRes.data);
         } catch {
           message.error(t('pages.jobs.stopFailed'));
@@ -866,6 +874,15 @@ const TaskResults: React.FC = () => {
     item => item.metric_type === 'Time_to_output_completion'
   );
   const failResult = results.find(item => item.metric_type === 'failure');
+  const inputTokensResult = results.find(
+    item => item.metric_type === 'Input_tokens'
+  );
+  const completionTokensResult = results.find(
+    item => item.metric_type === 'Completion_tokens'
+  );
+  const tokenLengthData = [inputTokensResult, completionTokensResult].filter(
+    Boolean
+  );
 
   const requestMetricTypeSet = useMemo(() => {
     const typeSet = new Set<string>();
@@ -946,7 +963,7 @@ const TaskResults: React.FC = () => {
       dataIndex: 'request_count',
       key: 'request_count',
       width: 110,
-      align: 'right' as const,
+      align: 'left' as const,
       render: (_: number, record: any) => {
         const requestCount = getRequestCountValue(record);
         return requestCount !== undefined ? requestCount.toLocaleString() : '0';
@@ -957,7 +974,7 @@ const TaskResults: React.FC = () => {
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
       width: 120,
-      align: 'right' as const,
+      align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -971,7 +988,7 @@ const TaskResults: React.FC = () => {
       dataIndex: 'max_response_time',
       key: 'max_response_time',
       width: 120,
-      align: 'right' as const,
+      align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -985,7 +1002,7 @@ const TaskResults: React.FC = () => {
       dataIndex: 'min_response_time',
       key: 'min_response_time',
       width: 120,
-      align: 'right' as const,
+      align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -999,7 +1016,7 @@ const TaskResults: React.FC = () => {
       dataIndex: 'percentile_95_response_time',
       key: 'percentile_95_response_time',
       width: 120,
-      align: 'right' as const,
+      align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -1013,7 +1030,7 @@ const TaskResults: React.FC = () => {
       dataIndex: 'median_response_time',
       key: 'median_response_time',
       width: 120,
-      align: 'right' as const,
+      align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
         if (record.metric_type === 'Time_to_output_completion' && text < 10) {
@@ -1022,13 +1039,80 @@ const TaskResults: React.FC = () => {
         return (text / 1000).toFixed(3);
       },
     },
+  ];
+
+  const tokenLengthColumns = [
     {
-      title: t('pages.results.rps'),
-      dataIndex: 'rps',
-      key: 'rps',
-      width: 100,
-      align: 'right' as const,
-      render: (text: number) => (text ? text.toFixed(2) : '0.00'),
+      title: t('pages.results.metricType'),
+      dataIndex: 'metric_type',
+      key: 'metric_type',
+      width: 200,
+      ellipsis: true,
+      render: (text: string) => {
+        const explanation = metricExplanations[text];
+        if (explanation) {
+          return (
+            <span>
+              {text}{' '}
+              <Tooltip title={explanation}>
+                <InfoCircleOutlined className='ml-4' />
+              </Tooltip>
+            </span>
+          );
+        }
+        return text;
+      },
+    },
+    {
+      title: t('pages.results.totalRequests'),
+      dataIndex: 'request_count',
+      key: 'request_count',
+      width: 110,
+      align: 'left' as const,
+      render: (_: number, record: any) => {
+        const requestCount = getRequestCountValue(record);
+        return requestCount !== undefined ? requestCount.toLocaleString() : '0';
+      },
+    },
+    {
+      title: t('pages.results.tokenLengthAvg', 'Avg (tokens)'),
+      dataIndex: 'avg_response_time',
+      key: 'avg_response_time',
+      width: 120,
+      align: 'left' as const,
+      render: (text: number) => (text != null ? Math.round(text) : '-'),
+    },
+    {
+      title: t('pages.results.tokenLengthMax', 'Max (tokens)'),
+      dataIndex: 'max_response_time',
+      key: 'max_response_time',
+      width: 120,
+      align: 'left' as const,
+      render: (text: number) => (text != null ? Math.round(text) : '-'),
+    },
+    {
+      title: t('pages.results.tokenLengthMin', 'Min (tokens)'),
+      dataIndex: 'min_response_time',
+      key: 'min_response_time',
+      width: 120,
+      align: 'left' as const,
+      render: (text: number) => (text != null ? Math.round(text) : '-'),
+    },
+    {
+      title: t('pages.results.tokenLengthP95', 'P95 (tokens)'),
+      dataIndex: 'percentile_95_response_time',
+      key: 'percentile_95_response_time',
+      width: 120,
+      align: 'left' as const,
+      render: (text: number) => (text != null ? Math.round(text) : '-'),
+    },
+    {
+      title: t('pages.results.tokenLengthMedian', 'Median (tokens)'),
+      dataIndex: 'median_response_time',
+      key: 'median_response_time',
+      width: 120,
+      align: 'left' as const,
+      render: (text: number) => (text != null ? Math.round(text) : '-'),
     },
   ];
 
@@ -1882,23 +1966,64 @@ const TaskResults: React.FC = () => {
                           </span>
                         </div>
                         <div className='section-content'>
-                          <Table
-                            dataSource={results.filter(
-                              item =>
-                                item.metric_type !==
-                                  'total_tokens_per_second' &&
-                                item.metric_type !==
-                                  'completion_tokens_per_second' &&
-                                item.metric_type !== 'token_metrics' &&
-                                (results.length <= 1 ||
-                                  !requestMetricTypeSet.has(item.metric_type))
-                            )}
-                            columns={columns}
-                            rowKey='metric_type'
-                            pagination={false}
-                            scroll={{ x: 1000 }}
-                            className='modern-table'
-                          />
+                          {/* Sub-section: Response Time */}
+                          <div
+                            style={{
+                              marginBottom: tokenLengthData.length > 0 ? 24 : 0,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 14,
+                                fontWeight: 600,
+                                marginBottom: 12,
+                                color: 'rgba(0, 0, 0, 0.85)',
+                              }}
+                            >
+                              {t('pages.results.responseTime')}
+                            </div>
+                            <Table
+                              dataSource={results.filter(
+                                item =>
+                                  item.metric_type !==
+                                    'total_tokens_per_second' &&
+                                  item.metric_type !==
+                                    'completion_tokens_per_second' &&
+                                  item.metric_type !== 'token_metrics' &&
+                                  (results.length <= 1 ||
+                                    !requestMetricTypeSet.has(item.metric_type))
+                              )}
+                              columns={columns}
+                              rowKey='metric_type'
+                              pagination={false}
+                              scroll={{ x: 1000 }}
+                              className='modern-table'
+                            />
+                          </div>
+
+                          {/* Sub-section: Token Length */}
+                          {tokenLengthData.length > 0 && (
+                            <div ref={tokenLengthCardRef}>
+                              <div
+                                style={{
+                                  fontSize: 14,
+                                  fontWeight: 600,
+                                  marginBottom: 12,
+                                  color: 'rgba(0, 0, 0, 0.85)',
+                                }}
+                              >
+                                {t('pages.results.tokenLengthStats')}
+                              </div>
+                              <Table
+                                dataSource={tokenLengthData}
+                                columns={tokenLengthColumns}
+                                rowKey='metric_type'
+                                pagination={false}
+                                scroll={{ x: 800 }}
+                                className='modern-table'
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -2001,4 +2126,4 @@ const TaskResults: React.FC = () => {
   );
 };
 
-export default TaskResults;
+export default LlmResults;

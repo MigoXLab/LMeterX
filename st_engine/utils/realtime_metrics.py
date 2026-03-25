@@ -44,7 +44,7 @@ def calc_metrics_interval() -> int:
         else:  # > 60 min
             return 5
 
-    # Fixed concurrency — unified intervals for both common & LLM API
+    # Fixed concurrency — unified intervals for both HTTP & LLM API
     if duration <= 600:  # ≤ 10 min
         return 2
     elif duration <= 1800:  # 10 – 30 min
@@ -124,7 +124,7 @@ def realtime_metrics_greenlet(environment, *, include_entries: bool = False):
     )
     task_logger = logger.bind(task_id=task_id)
 
-    task_type = "llm" if include_entries else "common"
+    task_type = "llm" if include_entries else "http"
     interval = calc_metrics_interval()
     task_logger.info(
         f"Real-time metrics collector started (interval={interval}s, sink=VictoriaMetrics)"

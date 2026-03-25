@@ -1,6 +1,6 @@
 /**
- * @file useCommonJobs.ts
- * @description Custom hook for managing common API jobs
+ * @file useHttpTasks.ts
+ * @description Custom hook for managing HTTP API tasks
  */
 import type { MessageInstance } from 'antd/es/message/interface';
 import axios from 'axios';
@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getApiBaseUrl } from '../utils/runtimeConfig';
 
-import { Pagination as ApiPagination, CommonJob } from '../types/job';
+import { Pagination as ApiPagination, HttpTask } from '../types/job';
 import { getToken } from '../utils/auth';
 
 interface AntdPagination {
@@ -37,9 +37,9 @@ const isActiveStatus = (status?: string) =>
     status?.toLowerCase() || ''
   );
 
-export const useCommonJobs = (messageApi: MessageInstance) => {
+export const useHttpTasks = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
-  const [jobs, setJobs] = useState<CommonJob[]>([]);
+  const [jobs, setJobs] = useState<HttpTask[]>([]);
   const [pagination, setPagination] = useState<AntdPagination>({
     current: 1,
     pageSize: 10,
@@ -92,7 +92,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
   }, [creatorFilter]);
 
   // Use ref to always access the latest jobs in polling callbacks (avoid stale closure)
-  const jobsRef = useRef<CommonJob[]>(jobs);
+  const jobsRef = useRef<HttpTask[]>(jobs);
   useEffect(() => {
     jobsRef.current = jobs;
   }, [jobs]);
@@ -145,10 +145,10 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
 
       try {
         const response = await axios.get<{
-          data: CommonJob[];
+          data: HttpTask[];
           pagination?: ApiPagination;
           total?: number;
-        }>(`${VITE_API_BASE_URL}/common-tasks`, {
+        }>(`${VITE_API_BASE_URL}/http-tasks`, {
           params: {
             page: currentParams.page,
             pageSize: currentParams.pageSize,
@@ -229,7 +229,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
 
     try {
       const response = await axios.get(
-        `${VITE_API_BASE_URL}/common-tasks/status`,
+        `${VITE_API_BASE_URL}/http-tasks/status`,
         {
           signal: controller.signal,
           timeout: 10000,
@@ -386,7 +386,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
       try {
         setLoading(true);
         const response = await axios.post(
-          `${VITE_API_BASE_URL}/common-tasks`,
+          `${VITE_API_BASE_URL}/http-tasks`,
           data,
           { headers: buildAuthHeaders() }
         );
@@ -413,7 +413,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     async (taskId: string) => {
       try {
         const response = await axios.post(
-          `${VITE_API_BASE_URL}/common-tasks/stop/${taskId}`,
+          `${VITE_API_BASE_URL}/http-tasks/stop/${taskId}`,
           null,
           { headers: buildAuthHeaders() }
         );
@@ -444,7 +444,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
       setLoading(true);
       try {
         await axios.put(
-          `${VITE_API_BASE_URL}/common-tasks/${taskId}`,
+          `${VITE_API_BASE_URL}/http-tasks/${taskId}`,
           { name: trimmedName },
           { headers: buildAuthHeaders() }
         );
@@ -467,7 +467,7 @@ export const useCommonJobs = (messageApi: MessageInstance) => {
     async (taskId: string) => {
       setLoading(true);
       try {
-        await axios.delete(`${VITE_API_BASE_URL}/common-tasks/${taskId}`, {
+        await axios.delete(`${VITE_API_BASE_URL}/http-tasks/${taskId}`, {
           headers: buildAuthHeaders(),
         });
         messageApi.success(t('pages.jobs.deleteSuccess'));

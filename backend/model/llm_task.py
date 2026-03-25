@@ -709,10 +709,10 @@ class ModelTasksResponse(BaseModel):
 
 class Task(Base):
     """
-    SQLAlchemy model representing a task in the 'tasks' table.
+    SQLAlchemy model representing a task in the 'llm_tasks' table.
     """
 
-    __tablename__ = "tasks"
+    __tablename__ = "llm_tasks"
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     status = Column(String(32), nullable=False)
@@ -755,10 +755,10 @@ class Task(Base):
 
 class TaskResult(Base):
     """
-    SQLAlchemy model for storing performance results of a task in the 'task_results' table.
+    SQLAlchemy model for storing performance results of a task in the 'llm_task_results' table.
     """
 
-    __tablename__ = "task_results"
+    __tablename__ = "llm_task_results"
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(String(40), nullable=False)
     metric_type = Column(String(36), nullable=False)

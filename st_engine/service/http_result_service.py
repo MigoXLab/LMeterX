@@ -5,12 +5,12 @@ Copyright (c) 2025, All Rights Reserved.
 
 from sqlalchemy.orm import Session
 
-from model.common_task import CommonTaskResult
+from model.http_task import HttpTaskResult
 from utils.logger import logger
 
 
-class CommonResultService:
-    """Handle insertion of common API task results."""
+class HttpResultService:
+    """Handle insertion of HTTP API task results."""
 
     def insert_locust_results(
         self, session: Session, locust_result: dict, task_id: str
@@ -72,7 +72,7 @@ class CommonResultService:
                             else 0.0
                         ),
                     }
-                    task_result = CommonTaskResult(**mapped_stat)
+                    task_result = HttpTaskResult(**mapped_stat)
                     session.add(task_result)
                     task_logger.debug(
                         f" Inserted stat for {metric_type}: "

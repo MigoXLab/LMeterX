@@ -12,7 +12,7 @@ Base = declarative_base()
 
 
 class TaskResult(Base):
-    __tablename__ = "task_results"
+    __tablename__ = "llm_task_results"
     __table_args__ = (Index("idx_task_id", "task_id"),)
     id = Column(Integer, primary_key=True, autoincrement=True, comment="Primary key ID")
     task_id = Column(String(36), nullable=False, comment="Task ID")

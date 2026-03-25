@@ -22,14 +22,14 @@ from config.business import (
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
 )
-from engine.common_runner import CommonLocustRunner
+from engine.http_runner import HttpLocustRunner
 from engine.process_manager import (
     cleanup_task_resources,
     get_task_process_status,
     terminate_locust_process_group,
 )
-from model.common_task import CommonTask
-from service.common_result_service import CommonResultService
+from model.http_task import HttpTask
+from service.http_result_service import HttpResultService
 from utils.logger import (  # type: ignore[attr-defined]
     add_task_log_sink,
     logger,
@@ -38,18 +38,18 @@ from utils.logger import (  # type: ignore[attr-defined]
 from utils.vm_push import ENGINE_ID
 
 
-class CommonTaskService:
-    """Lifecycle management for common API load test tasks."""
+class HttpTaskService:
+    """Lifecycle management for HTTP API load test tasks."""
 
     def __init__(self):
-        """Initialize runner and result service for common API tasks."""
-        self.runner = CommonLocustRunner(ST_ENGINE_DIR)
-        self.result_service = CommonResultService()
+        """Initialize runner and result service for HTTP API tasks."""
+        self.runner = HttpLocustRunner(ST_ENGINE_DIR)
+        self.result_service = HttpResultService()
 
     def update_task_status(
         self,
         session: Session,
-        task: CommonTask,
+        task: HttpTask,
         status: str,
         error_message: str | None = None,
     ):
@@ -95,7 +95,7 @@ class CommonTaskService:
         """Update task status by task id when a task instance is not provided."""
         task_logger = logger.bind(task_id=task_id)
         try:
-            task = session.get(CommonTask, task_id)
+            task = session.get(HttpTask, task_id)
             if task:
                 self.update_task_status(session, task, status)
             else:
@@ -123,13 +123,13 @@ class CommonTaskService:
                     exc_info=True,
                 )
 
-    def get_and_lock_task(self, session: Session) -> CommonTask | None:
+    def get_and_lock_task(self, session: Session) -> HttpTask | None:
         """Fetch a pending task and mark it as locked in the same transaction."""
         try:
             query = (
-                select(CommonTask)
-                .where(CommonTask.status == "created")
-                .where(CommonTask.is_deleted == 0)
+                select(HttpTask)
+                .where(HttpTask.status == "created")
+                .where(HttpTask.is_deleted == 0)
                 .with_for_update()
                 .limit(1)
             )
@@ -170,9 +170,7 @@ class CommonTaskService:
     def get_stopping_task_ids(self, session: Session) -> List[str]:
         """Return all task ids that are currently stopping."""
         try:
-            query = select(CommonTask.id).where(
-                CommonTask.status == TASK_STATUS_STOPPING
-            )
+            query = select(HttpTask.id).where(HttpTask.status == TASK_STATUS_STOPPING)
             result = session.execute(query).scalars().all()
             return [str(task_id) for task_id in result]
         except (OperationalError, pymysql.err.OperationalError) as e:
@@ -200,16 +198,16 @@ class CommonTaskService:
             return []
 
     def reconcile_tasks_on_startup(self, session: Session):
-        """Best-effort reconciliation for stale common tasks owned by current engine."""
+        """Best-effort reconciliation for stale HTTP tasks owned by current engine."""
         try:
             stale_tasks = (
                 session.execute(
-                    select(CommonTask)
+                    select(HttpTask)
                     .where(
-                        CommonTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
+                        HttpTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
                     )
-                    .where(CommonTask.is_deleted == 0)
-                    .where(CommonTask.engine_id == ENGINE_ID)
+                    .where(HttpTask.is_deleted == 0)
+                    .where(HttpTask.engine_id == ENGINE_ID)
                 )
                 .scalars()
                 .all()
@@ -330,7 +328,7 @@ class CommonTaskService:
                 )
 
     def reconcile_dead_engine_tasks(self, session: Session):
-        """Mark running/locked common tasks from dead engines as failed.
+        """Mark running/locked HTTP tasks from dead engines as failed.
 
         An engine is considered dead when its heartbeat timestamp is older
         than the configured stale threshold.  This handles the scenario
@@ -346,12 +344,12 @@ class CommonTaskService:
 
             orphan_tasks = (
                 session.execute(
-                    select(CommonTask)
+                    select(HttpTask)
                     .where(
-                        CommonTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
+                        HttpTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
                     )
-                    .where(CommonTask.is_deleted == 0)
-                    .where(CommonTask.engine_id.in_(stale_ids))
+                    .where(HttpTask.is_deleted == 0)
+                    .where(HttpTask.engine_id.in_(stale_ids))
                 )
                 .scalars()
                 .all()
@@ -361,7 +359,7 @@ class CommonTaskService:
                 return
 
             logger.info(
-                f"Found {len(orphan_tasks)} orphaned common task(s) "
+                f"Found {len(orphan_tasks)} orphaned HTTP task(s) "
                 f"from dead engine(s): {stale_ids}"
             )
             for task in orphan_tasks:
@@ -396,8 +394,8 @@ class CommonTaskService:
                     exc_info=True,
                 )
 
-    def start_task(self, task: CommonTask) -> dict:
-        """Run the common task and return the runner result payload."""
+    def start_task(self, task: HttpTask) -> dict:
+        """Run the HTTP task and return the runner result payload."""
         task_logger = logger.bind(task_id=task.id)
         try:
             task_logger.info(f"Starting execution for task {task.id}.")
@@ -411,7 +409,7 @@ class CommonTaskService:
                 "return_code": -1,
             }
 
-    def _safe_refresh_task(self, session: Session, task: CommonTask, task_logger):
+    def _safe_refresh_task(self, session: Session, task: HttpTask, task_logger):
         """Refresh task state from DB, rolling back on connection errors."""
         try:
             session.refresh(task)
@@ -429,7 +427,7 @@ class CommonTaskService:
                 )
 
     def _resolve_task_status(
-        self, session: Session, task: CommonTask, run_result: dict, task_logger
+        self, session: Session, task: HttpTask, run_result: dict, task_logger
     ):
         """Decide and persist the final task status based on run results."""
         run_status = run_result.get("status")
@@ -457,9 +455,7 @@ class CommonTaskService:
             error_message = run_result.get("stderr") or "Runner failed to start."
             self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
 
-    def _handle_completed(
-        self, session: Session, task: CommonTask, locust_result: dict
-    ):
+    def _handle_completed(self, session: Session, task: HttpTask, locust_result: dict):
         """Handle a successfully completed run, persisting results or marking failed."""
         self.update_task_status(session, task, TASK_STATUS_COMPLETED)
         if locust_result:
@@ -473,7 +469,7 @@ class CommonTaskService:
             )
 
     def _handle_pipeline_db_error(
-        self, session: Session, task: CommonTask, task_logger, error: Exception
+        self, session: Session, task: HttpTask, task_logger, error: Exception
     ):
         """Handle database connection errors during pipeline execution."""
         task_logger.warning(
@@ -500,7 +496,7 @@ class CommonTaskService:
             )
 
     def _handle_pipeline_error(
-        self, session: Session, task: CommonTask, task_logger, error: Exception
+        self, session: Session, task: HttpTask, task_logger, error: Exception
     ):
         """Handle unexpected errors during pipeline execution."""
         task_logger.error(f" Pipeline error: {error}")
@@ -518,7 +514,7 @@ class CommonTaskService:
                 f" Critical: Failed to update status for task {task.id}: {status_update_error}"
             )
 
-    def process_task_pipeline(self, task: CommonTask, session: Session):
+    def process_task_pipeline(self, task: HttpTask, session: Session):
         """Process a single task end-to-end and persist its status/results."""
         handler_id = None
         task_logger = logger.bind(task_id=task.id)

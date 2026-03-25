@@ -8,10 +8,10 @@ from sqlalchemy import Column, DateTime, Float, Integer, String, Text, func
 from db.mysql import Base
 
 
-class CommonTask(Base):
-    """SQLAlchemy model for common API load test tasks."""
+class HttpTask(Base):
+    """SQLAlchemy model for HTTP API load test tasks."""
 
-    __tablename__ = "common_tasks"
+    __tablename__ = "http_tasks"
 
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)
@@ -47,10 +47,10 @@ class CommonTask(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
-class CommonTaskResult(Base):
-    """SQLAlchemy model for common API task results."""
+class HttpTaskResult(Base):
+    """SQLAlchemy model for HTTP API task results."""
 
-    __tablename__ = "common_task_results"
+    __tablename__ = "http_task_results"
 
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(String(40), nullable=False)

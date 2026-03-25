@@ -7,7 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app import app
-from model.task import (
+from model.llm_task import (
     Pagination,
     TaskCreateRsp,
     TaskResponse,
@@ -22,7 +22,7 @@ client = TestClient(app)
 class TestTaskAPI:
     """Task-related API tests."""
 
-    @patch("api.api_task.get_tasks_svc")
+    @patch("api.api_llm_task.get_tasks_svc")
     def test_get_tasks_default_params(self, mock_get_tasks):
         mock_response = TaskResponse(
             data=[
@@ -38,14 +38,14 @@ class TestTaskAPI:
         )
         mock_get_tasks.return_value = mock_response
 
-        response = client.get("/api/tasks")
+        response = client.get("/api/llm-tasks")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert len(data["data"]) == 1
         assert data["data"][0]["id"] == "task_123"
 
-    @patch("api.api_task.get_tasks_svc")
+    @patch("api.api_llm_task.get_tasks_svc")
     def test_get_tasks_with_filters(self, mock_get_tasks):
         mock_response = TaskResponse(
             data=[],
@@ -54,11 +54,13 @@ class TestTaskAPI:
         )
         mock_get_tasks.return_value = mock_response
 
-        response = client.get("/api/tasks?page=1&pageSize=5&status=running&search=test")
+        response = client.get(
+            "/api/llm-tasks?page=1&pageSize=5&status=running&search=test"
+        )
         assert response.status_code == 200
         mock_get_tasks.assert_called_once()
 
-    @patch("api.api_task.get_tasks_status_svc")
+    @patch("api.api_llm_task.get_tasks_status_svc")
     def test_get_tasks_status(self, mock_get_status):
         mock_response = TaskStatusRsp(
             data=[
@@ -71,13 +73,13 @@ class TestTaskAPI:
         )
         mock_get_status.return_value = mock_response
 
-        response = client.get("/api/tasks/status")
+        response = client.get("/api/llm-tasks/status")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert len(data["data"]) == 3
 
-    @patch("api.api_task.create_task_svc")
+    @patch("api.api_llm_task.create_task_svc")
     def test_create_task_success(self, mock_create_task):
         task_data = {
             "temp_task_id": "temp_123",
@@ -98,7 +100,7 @@ class TestTaskAPI:
         )
         mock_create_task.return_value = mock_response
 
-        response = client.post("/api/tasks", json=task_data)
+        response = client.post("/api/llm-tasks", json=task_data)
         assert response.status_code == 200
         data = response.json()
         assert data["task_id"] == "task_456"
@@ -107,23 +109,23 @@ class TestTaskAPI:
 
     def test_create_task_validation_error(self):
         invalid_data = {"name": "Test Task"}
-        response = client.post("/api/tasks", json=invalid_data)
+        response = client.post("/api/llm-tasks", json=invalid_data)
         assert response.status_code == 422
 
-    @patch("api.api_task.stop_task_svc")
+    @patch("api.api_llm_task.stop_task_svc")
     def test_stop_task(self, mock_stop_task):
         mock_response = TaskCreateRsp(
             task_id="task_789", status="stopping", message="Stop request sent"
         )
         mock_stop_task.return_value = mock_response
 
-        response = client.post("/api/tasks/stop/task_789")
+        response = client.post("/api/llm-tasks/stop/task_789")
         assert response.status_code == 200
         data = response.json()
         assert data["task_id"] == "task_789"
         assert data["status"] == "stopping"
 
-    @patch("api.api_task.get_task_result_svc")
+    @patch("api.api_llm_task.get_task_result_svc")
     def test_get_task_results(self, mock_get_results):
         result_item = TaskResultItem(
             id=1,
@@ -150,14 +152,14 @@ class TestTaskAPI:
         )
         mock_get_results.return_value = mock_response
 
-        response = client.get("/api/tasks/task_123/results")
+        response = client.get("/api/llm-tasks/task_123/results")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert len(data["results"]) == 1
         assert data["results"][0]["task_id"] == "task_123"
 
-    @patch("api.api_task.get_task_svc")
+    @patch("api.api_llm_task.get_task_svc")
     def test_get_single_task(self, mock_get_task):
         mock_response = {
             "id": "task_123",
@@ -169,7 +171,7 @@ class TestTaskAPI:
         }
         mock_get_task.return_value = mock_response
 
-        response = client.get("/api/tasks/task_123")
+        response = client.get("/api/llm-tasks/task_123")
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == "task_123"
@@ -179,7 +181,7 @@ class TestTaskAPI:
 class TestTaskErrors:
     """Task API error handling tests."""
 
-    @patch("api.api_task.get_task_svc")
+    @patch("api.api_llm_task.get_task_svc")
     def test_task_not_found(self, mock_get_task):
         from fastapi import HTTPException
 
@@ -187,12 +189,12 @@ class TestTaskErrors:
             status_code=404, detail="Task not found"
         )
 
-        response = client.get("/api/tasks/nonexistent_task")
+        response = client.get("/api/llm-tasks/nonexistent_task")
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data.lower()
 
-    @patch("api.api_task.create_task_svc")
+    @patch("api.api_llm_task.create_task_svc")
     def test_create_task_server_error(self, mock_create_task):
         mock_response = TaskCreateRsp(
             task_id="temp_error", status="error", message="Database connection failed"
@@ -213,7 +215,7 @@ class TestTaskErrors:
             "headers": [],
         }
 
-        response = client.post("/api/tasks", json=task_data)
+        response = client.post("/api/llm-tasks", json=task_data)
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "error"
@@ -224,9 +226,9 @@ class TestTaskParameterValidation:
     """Task API parameter validation tests."""
 
     def test_get_tasks_invalid_page(self):
-        response = client.get("/api/tasks?page=0")
+        response = client.get("/api/llm-tasks?page=0")
         assert response.status_code == 422
 
     def test_get_tasks_invalid_page_size(self):
-        response = client.get("/api/tasks?pageSize=101")
+        response = client.get("/api/llm-tasks?pageSize=101")
         assert response.status_code == 422

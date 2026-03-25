@@ -1,12 +1,12 @@
 /**
- * @file useJobs.ts
- * @description Custom hook for managing jobs
+ * @file useLlmTasks.ts
+ * @description Custom hook for managing LLM tasks
  */
 import type { MessageInstance } from 'antd/es/message/interface';
 import axios from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pagination as ApiPagination, Job } from '../types/job';
+import { Pagination as ApiPagination, LlmTask } from '../types/job';
 import { getToken } from '../utils/auth';
 import { getApiBaseUrl } from '../utils/runtimeConfig';
 
@@ -36,9 +36,9 @@ const isActiveStatus = (status?: string) =>
     status?.toLowerCase() || ''
   );
 
-export const useJobs = (messageApi: MessageInstance) => {
+export const useLlmTasks = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<LlmTask[]>([]);
   const [pagination, setPagination] = useState<AntdPagination>({
     current: 1,
     pageSize: 10,
@@ -61,7 +61,7 @@ export const useJobs = (messageApi: MessageInstance) => {
   const initialLoadDoneRef = useRef(false);
 
   // Use ref to always access the latest jobs in polling callbacks (avoid stale closure)
-  const jobsRef = useRef<Job[]>(jobs);
+  const jobsRef = useRef<LlmTask[]>(jobs);
   useEffect(() => {
     jobsRef.current = jobs;
   }, [jobs]);
@@ -76,10 +76,10 @@ export const useJobs = (messageApi: MessageInstance) => {
 
       try {
         const response = await axios.get<{
-          data: Job[];
+          data: LlmTask[];
           pagination?: ApiPagination;
           total?: number;
-        }>(`${VITE_API_BASE_URL}/tasks`, {
+        }>(`${VITE_API_BASE_URL}/llm-tasks`, {
           params: {
             page: pagination.current,
             pageSize: pagination.pageSize,
@@ -162,11 +162,14 @@ export const useJobs = (messageApi: MessageInstance) => {
     abortControllerRef.current = controller;
 
     try {
-      const response = await axios.get(`${VITE_API_BASE_URL}/tasks/status`, {
-        signal: controller.signal,
-        timeout: 10000,
-        headers: buildAuthHeaders(),
-      });
+      const response = await axios.get(
+        `${VITE_API_BASE_URL}/llm-tasks/status`,
+        {
+          signal: controller.signal,
+          timeout: 10000,
+          headers: buildAuthHeaders(),
+        }
+      );
 
       if (controller.signal.aborted) return;
 
@@ -280,7 +283,7 @@ export const useJobs = (messageApi: MessageInstance) => {
     const fetchAllModels = async () => {
       try {
         const response = await axios.get<{ data: string[]; status: string }>(
-          `${VITE_API_BASE_URL}/tasks/models`,
+          `${VITE_API_BASE_URL}/llm-tasks/models`,
           { headers: buildAuthHeaders() }
         );
         if (response.data?.data) {
@@ -329,12 +332,12 @@ export const useJobs = (messageApi: MessageInstance) => {
 
   const createJob = useCallback(
     async (
-      values: Omit<Job, 'id' | 'status' | 'created_at' | 'updated_at'>
+      values: Omit<LlmTask, 'id' | 'status' | 'created_at' | 'updated_at'>
     ) => {
       setLoading(true);
       try {
         const response = await axios.post(
-          `${VITE_API_BASE_URL}/tasks`,
+          `${VITE_API_BASE_URL}/llm-tasks`,
           values,
           { headers: buildAuthHeaders() }
         );
@@ -361,7 +364,7 @@ export const useJobs = (messageApi: MessageInstance) => {
     async (jobId: string) => {
       messageApi.loading({ content: t('common.stoppingTask'), key: jobId });
       try {
-        await axios.post(`${VITE_API_BASE_URL}/tasks/stop/${jobId}`, null, {
+        await axios.post(`${VITE_API_BASE_URL}/llm-tasks/stop/${jobId}`, null, {
           headers: buildAuthHeaders(),
         });
         messageApi.success({ content: t('common.taskStopping'), key: jobId });
@@ -385,7 +388,7 @@ export const useJobs = (messageApi: MessageInstance) => {
       setLoading(true);
       try {
         await axios.put(
-          `${VITE_API_BASE_URL}/tasks/${taskId}`,
+          `${VITE_API_BASE_URL}/llm-tasks/${taskId}`,
           { name: trimmedName },
           { headers: buildAuthHeaders() }
         );
@@ -408,7 +411,7 @@ export const useJobs = (messageApi: MessageInstance) => {
     async (taskId: string) => {
       setLoading(true);
       try {
-        await axios.delete(`${VITE_API_BASE_URL}/tasks/${taskId}`, {
+        await axios.delete(`${VITE_API_BASE_URL}/llm-tasks/${taskId}`, {
           headers: buildAuthHeaders(),
         });
         messageApi.success(t('pages.jobs.deleteSuccess'));

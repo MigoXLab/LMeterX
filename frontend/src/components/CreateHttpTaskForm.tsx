@@ -1,6 +1,6 @@
 /**
- * @file CreateCommonJobForm.tsx
- * @description Form for creating common API jobs
+ * @file CreateHttpTaskForm.tsx
+ * @description Form for creating HTTP API tasks
  */
 import {
   BugOutlined,
@@ -31,8 +31,8 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { commonJobApi, uploadDatasetFile } from '@/api/services';
-import { CommonJob } from '@/types/job';
+import { httpTaskApi, uploadDatasetFile } from '@/api/services';
+import { HttpTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import parseCurlCommand from '@/utils/curl';
 
@@ -44,7 +44,7 @@ interface Props {
   onSubmit: (values: any) => Promise<void>;
   onCancel: () => void;
   loading?: boolean;
-  initialData?: Partial<CommonJob> | null;
+  initialData?: Partial<HttpTask> | null;
 }
 
 const HTTP_METHOD_OPTIONS = [
@@ -57,7 +57,7 @@ const HTTP_METHOD_OPTIONS = [
   // 'OPTIONS',
 ];
 
-const CreateCommonJobForm: React.FC<Props> = ({
+const CreateHttpTaskForm: React.FC<Props> = ({
   onSubmit,
   onCancel,
   loading,
@@ -261,18 +261,18 @@ const CreateCommonJobForm: React.FC<Props> = ({
   const handleCurlParse = () => {
     const curl = form.getFieldValue('curl_command') as string;
     if (!curl) {
-      message.warning(t('components.createCommonJobForm.curlParseEmpty'));
+      message.warning(t('components.createHttpTaskForm.curlParseEmpty'));
       return;
     }
     const maxCurlLength = 8000;
     if (curl.length > maxCurlLength) {
       message.warning(
-        t('components.createCommonJobForm.curlTooLong', { max: maxCurlLength })
+        t('components.createHttpTaskForm.curlTooLong', { max: maxCurlLength })
       );
     }
     const parsed = parseCurlCommand(curl);
     if (!parsed.url) {
-      message.error(t('components.createCommonJobForm.curlParseNoUrl'));
+      message.error(t('components.createHttpTaskForm.curlParseNoUrl'));
       return;
     }
     const headerText = (parsed.headers || [])
@@ -284,7 +284,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
       headers: headerText,
       request_body: parsed.body || '',
     });
-    message.success(t('components.createCommonJobForm.curlParseSuccess'));
+    message.success(t('components.createHttpTaskForm.curlParseSuccess'));
   };
 
   const handleFinish = async (values: any) => {
@@ -301,7 +301,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
       // Get current form values
       const allValues = form.getFieldsValue(true);
 
-      // Build test-only payload - only include fields needed by CommonTaskTestReq
+      // Build test-only payload - only include fields needed by HttpTaskTestReq
       const headersStr = (allValues.headers || '').trim();
       const parsedHeaders = headersStr
         ? headersStr
@@ -322,7 +322,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
       };
 
       setTesting(true);
-      const res = await commonJobApi.testJob(payload);
+      const res = await httpTaskApi.testJob(payload);
       const data = (res as any)?.data ?? {};
       const httpStatus = data?.http_status ?? data?.status ?? res?.status;
       setTestResult({
@@ -351,7 +351,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
         errData?.error ||
         detailText ||
         err?.message ||
-        t('components.createCommonJobForm.testFailed');
+        t('components.createHttpTaskForm.testFailed');
 
       message.error(errorMsg);
       setTestResult({
@@ -383,11 +383,11 @@ const CreateCommonJobForm: React.FC<Props> = ({
         temp_task_id: (res as any)?.task_id || effectiveTaskId,
       });
       setDatasetFileName(file.name);
-      message.success(t('components.createCommonJobForm.datasetUploadSuccess'));
+      message.success(t('components.createHttpTaskForm.datasetUploadSuccess'));
       if (onSuccess) onSuccess(res, file);
     } catch (err: any) {
       message.error(
-        err?.message || t('components.createCommonJobForm.datasetUploadFailed')
+        err?.message || t('components.createHttpTaskForm.datasetUploadFailed')
       );
       if (onError) onError(err);
     } finally {
@@ -416,19 +416,17 @@ const CreateCommonJobForm: React.FC<Props> = ({
         </Form.Item>
 
         <Form.Item
-          label={t('components.createCommonJobForm.taskName')}
+          label={t('components.createHttpTaskForm.taskName')}
           name='name'
           rules={[
             {
               required: true,
-              message: t('components.createCommonJobForm.taskNameRequired'),
+              message: t('components.createHttpTaskForm.taskNameRequired'),
             },
           ]}
         >
           <Input
-            placeholder={t(
-              'components.createCommonJobForm.taskNamePlaceholder'
-            )}
+            placeholder={t('components.createHttpTaskForm.taskNamePlaceholder')}
             maxLength={100}
           />
         </Form.Item>
@@ -436,10 +434,10 @@ const CreateCommonJobForm: React.FC<Props> = ({
         <Form.Item
           label={
             <Space>
-              {t('components.createCommonJobForm.curlLabel')}
+              {t('components.createHttpTaskForm.curlLabel')}
               <Tooltip
                 title={t(
-                  'components.createCommonJobForm.curlParseHint',
+                  'components.createHttpTaskForm.curlParseHint',
                   'Paste full curl to auto-fill request info'
                 )}
               >
@@ -451,7 +449,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
         >
           <TextArea
             rows={3}
-            placeholder={t('components.createCommonJobForm.curlPlaceholder')}
+            placeholder={t('components.createHttpTaskForm.curlPlaceholder')}
           />
         </Form.Item>
         <Button
@@ -459,25 +457,23 @@ const CreateCommonJobForm: React.FC<Props> = ({
           onClick={handleCurlParse}
           style={{ marginBottom: 12 }}
         >
-          {t('components.createCommonJobForm.curlParseButtonOneClick')}
+          {t('components.createHttpTaskForm.curlParseButtonOneClick')}
         </Button>
 
         <Form.Item
-          label={t('components.createCommonJobForm.targetUrl')}
+          label={t('components.createHttpTaskForm.targetUrl')}
           name='target_url'
           rules={[
             {
               required: true,
-              message: t('components.createCommonJobForm.targetUrlRequired'),
+              message: t('components.createHttpTaskForm.targetUrlRequired'),
             },
             {
               validator(_, value) {
                 if (!value || /^https?:\/\//i.test(value))
                   return Promise.resolve();
                 return Promise.reject(
-                  new Error(
-                    t('components.createCommonJobForm.targetUrlInvalid')
-                  )
+                  new Error(t('components.createHttpTaskForm.targetUrlInvalid'))
                 );
               },
             },
@@ -485,7 +481,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
         >
           <Input
             placeholder={t(
-              'components.createCommonJobForm.targetUrlPlaceholder'
+              'components.createHttpTaskForm.targetUrlPlaceholder'
             )}
           />
         </Form.Item>
@@ -493,13 +489,13 @@ const CreateCommonJobForm: React.FC<Props> = ({
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
-              label={t('components.createCommonJobForm.httpMethod')}
+              label={t('components.createHttpTaskForm.httpMethod')}
               name='method'
               rules={[
                 {
                   required: true,
                   message: t(
-                    'components.createCommonJobForm.httpMethodRequired'
+                    'components.createHttpTaskForm.httpMethodRequired'
                   ),
                 },
               ]}
@@ -508,7 +504,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
                 showSearch
                 optionFilterProp='label'
                 placeholder={t(
-                  'components.createCommonJobForm.httpMethodPlaceholder'
+                  'components.createHttpTaskForm.httpMethodPlaceholder'
                 )}
                 options={HTTP_METHOD_OPTIONS.map(m => ({
                   label: m,
@@ -519,7 +515,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
           </Col>
           <Col span={12}>
             <Form.Item
-              label={t('components.createCommonJobForm.responseMode')}
+              label={t('components.createHttpTaskForm.responseMode')}
               name='response_mode'
             >
               <Select
@@ -527,11 +523,11 @@ const CreateCommonJobForm: React.FC<Props> = ({
                 value='non-stream'
                 options={[
                   {
-                    label: t('components.createCommonJobForm.stream'),
+                    label: t('components.createHttpTaskForm.stream'),
                     value: 'stream',
                   },
                   {
-                    label: t('components.createCommonJobForm.nonStreaming'),
+                    label: t('components.createHttpTaskForm.nonStreaming'),
                     value: 'non-stream',
                   },
                 ]}
@@ -543,10 +539,10 @@ const CreateCommonJobForm: React.FC<Props> = ({
         <Form.Item
           label={
             <Space>
-              {t('components.createCommonJobForm.headers')}
+              {t('components.createHttpTaskForm.headers')}
               <Tooltip
                 title={t(
-                  'components.createCommonJobForm.headersHint',
+                  'components.createHttpTaskForm.headersHint',
                   'One per line, e.g. Key: Value'
                 )}
               >
@@ -558,38 +554,38 @@ const CreateCommonJobForm: React.FC<Props> = ({
         >
           <TextArea
             rows={4}
-            placeholder={t('components.createCommonJobForm.headersPlaceholder')}
+            placeholder={t('components.createHttpTaskForm.headersPlaceholder')}
           />
         </Form.Item>
 
         <Form.Item
-          label={t('components.createCommonJobForm.body')}
+          label={t('components.createHttpTaskForm.body')}
           name='request_body'
         >
           <TextArea
             rows={4}
-            placeholder={t('components.createCommonJobForm.bodyPlaceholder')}
+            placeholder={t('components.createHttpTaskForm.bodyPlaceholder')}
             maxLength={100000}
             showCount
           />
         </Form.Item>
 
         <Form.Item
-          label={t('components.createCommonJobForm.datasetSource')}
+          label={t('components.createHttpTaskForm.datasetSource')}
           name='dataset_source'
           tooltip={t(
-            'components.createCommonJobForm.datasetInfoTip',
+            'components.createHttpTaskForm.datasetInfoTip',
             'If not using dataset, original body will be used; if upload, provide full request body JSONL.'
           )}
         >
           <Select
             options={[
               {
-                label: t('components.createCommonJobForm.datasetNone'),
+                label: t('components.createHttpTaskForm.datasetNone'),
                 value: 'none',
               },
               {
-                label: t('components.createCommonJobForm.datasetUpload'),
+                label: t('components.createHttpTaskForm.datasetUpload'),
                 value: 'upload',
               },
             ]}
@@ -598,14 +594,12 @@ const CreateCommonJobForm: React.FC<Props> = ({
 
         {datasetSource === 'upload' && (
           <Form.Item
-            label={t('components.createCommonJobForm.datasetFile')}
+            label={t('components.createHttpTaskForm.datasetFile')}
             name='dataset_file'
             rules={[
               {
                 required: true,
-                message: t(
-                  'components.createCommonJobForm.datasetFileRequired'
-                ),
+                message: t('components.createHttpTaskForm.datasetFileRequired'),
               },
             ]}
           >
@@ -618,7 +612,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
               showUploadList={false}
               accept='.jsonl,.json'
             >
-              <p>{t('components.createCommonJobForm.datasetUploadTip')}</p>
+              <p>{t('components.createHttpTaskForm.datasetUploadTip')}</p>
               {datasetFileName && <p>{datasetFileName}</p>}
             </Dragger>
           </Form.Item>
@@ -626,15 +620,15 @@ const CreateCommonJobForm: React.FC<Props> = ({
 
         {/* Load mode selector: fixed concurrency vs stepped */}
         <Form.Item
-          label={t('components.createCommonJobForm.loadMode')}
+          label={t('components.createHttpTaskForm.loadMode')}
           name='load_mode'
         >
           <Radio.Group>
             <Radio.Button value='fixed'>
-              {t('components.createCommonJobForm.loadModeFixed')}
+              {t('components.createHttpTaskForm.loadModeFixed')}
             </Radio.Button>
             <Radio.Button value='stepped'>
-              {t('components.createCommonJobForm.loadModeStepped')}
+              {t('components.createHttpTaskForm.loadModeStepped')}
             </Radio.Button>
           </Radio.Group>
         </Form.Item>
@@ -644,13 +638,13 @@ const CreateCommonJobForm: React.FC<Props> = ({
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item
-                label={t('components.createCommonJobForm.concurrentUsers')}
+                label={t('components.createHttpTaskForm.concurrentUsers')}
                 name='concurrent_users'
                 rules={[
                   {
                     required: loadMode === 'fixed',
                     message: t(
-                      'components.createCommonJobForm.concurrentUsersRequired'
+                      'components.createHttpTaskForm.concurrentUsersRequired'
                     ),
                   },
                 ]}
@@ -662,9 +656,9 @@ const CreateCommonJobForm: React.FC<Props> = ({
               <Form.Item
                 label={
                   <Space>
-                    {t('components.createCommonJobForm.spawnRate')}
+                    {t('components.createHttpTaskForm.spawnRate')}
                     <Tooltip
-                      title={t('components.createCommonJobForm.spawnRateTip')}
+                      title={t('components.createHttpTaskForm.spawnRateTip')}
                     >
                       <InfoCircleOutlined />
                     </Tooltip>
@@ -675,7 +669,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
                   {
                     required: loadMode === 'fixed',
                     message: t(
-                      'components.createCommonJobForm.spawnRateRequired'
+                      'components.createHttpTaskForm.spawnRateRequired'
                     ),
                   },
                 ]}
@@ -685,13 +679,13 @@ const CreateCommonJobForm: React.FC<Props> = ({
             </Col>
             <Col span={8}>
               <Form.Item
-                label={t('components.createCommonJobForm.duration')}
+                label={t('components.createHttpTaskForm.duration')}
                 name='duration'
                 rules={[
                   {
                     required: loadMode === 'fixed',
                     message: t(
-                      'components.createCommonJobForm.durationRequired'
+                      'components.createHttpTaskForm.durationRequired'
                     ),
                   },
                 ]}
@@ -708,13 +702,13 @@ const CreateCommonJobForm: React.FC<Props> = ({
             <Row gutter={16}>
               <Col span={8}>
                 <Form.Item
-                  label={t('components.createCommonJobForm.stepStartUsers')}
+                  label={t('components.createHttpTaskForm.stepStartUsers')}
                   name='step_start_users'
                   rules={[
                     {
                       required: true,
                       message: t(
-                        'components.createCommonJobForm.stepStartUsersRequired'
+                        'components.createHttpTaskForm.stepStartUsersRequired'
                       ),
                     },
                   ]}
@@ -724,13 +718,13 @@ const CreateCommonJobForm: React.FC<Props> = ({
               </Col>
               <Col span={8}>
                 <Form.Item
-                  label={t('components.createCommonJobForm.stepIncrement')}
+                  label={t('components.createHttpTaskForm.stepIncrement')}
                   name='step_increment'
                   rules={[
                     {
                       required: true,
                       message: t(
-                        'components.createCommonJobForm.stepIncrementRequired'
+                        'components.createHttpTaskForm.stepIncrementRequired'
                       ),
                     },
                   ]}
@@ -740,14 +734,14 @@ const CreateCommonJobForm: React.FC<Props> = ({
               </Col>
               <Col span={8}>
                 <Form.Item
-                  label={t('components.createCommonJobForm.stepDuration')}
+                  label={t('components.createHttpTaskForm.stepDuration')}
                   name='step_duration'
-                  tooltip={t('components.createCommonJobForm.stepDurationTip')}
+                  tooltip={t('components.createHttpTaskForm.stepDurationTip')}
                   rules={[
                     {
                       required: true,
                       message: t(
-                        'components.createCommonJobForm.stepDurationRequired'
+                        'components.createHttpTaskForm.stepDurationRequired'
                       ),
                     },
                   ]}
@@ -759,13 +753,13 @@ const CreateCommonJobForm: React.FC<Props> = ({
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label={t('components.createCommonJobForm.stepMaxUsers')}
+                  label={t('components.createHttpTaskForm.stepMaxUsers')}
                   name='step_max_users'
                   rules={[
                     {
                       required: true,
                       message: t(
-                        'components.createCommonJobForm.stepMaxUsersRequired'
+                        'components.createHttpTaskForm.stepMaxUsersRequired'
                       ),
                     },
                   ]}
@@ -775,18 +769,16 @@ const CreateCommonJobForm: React.FC<Props> = ({
               </Col>
               <Col span={12}>
                 <Form.Item
-                  label={t(
-                    'components.createCommonJobForm.stepSustainDuration'
-                  )}
+                  label={t('components.createHttpTaskForm.stepSustainDuration')}
                   name='step_sustain_duration'
                   tooltip={t(
-                    'components.createCommonJobForm.stepSustainDurationTip'
+                    'components.createHttpTaskForm.stepSustainDurationTip'
                   )}
                   rules={[
                     {
                       required: true,
                       message: t(
-                        'components.createCommonJobForm.stepSustainDurationRequired'
+                        'components.createHttpTaskForm.stepSustainDurationRequired'
                       ),
                     },
                   ]}
@@ -806,13 +798,13 @@ const CreateCommonJobForm: React.FC<Props> = ({
             loading={testing}
             disabled={!isFormReady || testing}
           >
-            {t('components.createCommonJobForm.test')}
+            {t('components.createHttpTaskForm.test')}
           </Button>
           <Button onClick={onCancel}>
-            {t('components.createCommonJobForm.cancel')}
+            {t('components.createHttpTaskForm.cancel')}
           </Button>
           <Button type='primary' htmlType='submit' loading={loading}>
-            {t('components.createCommonJobForm.create')}
+            {t('components.createHttpTaskForm.create')}
           </Button>
         </Space>
       </Form>
@@ -821,7 +813,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
         title={
           <Space>
             <BugOutlined />
-            <span>{t('components.createCommonJobForm.apiTestTitle')}</span>
+            <span>{t('components.createHttpTaskForm.apiTestTitle')}</span>
           </Space>
         }
         open={testModalVisible}
@@ -842,7 +834,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
             <Descriptions column={1} bordered size='small'>
               {testResult.http_status !== undefined && (
                 <Descriptions.Item
-                  label={t('components.createCommonJobForm.testStatusCode')}
+                  label={t('components.createHttpTaskForm.testStatusCode')}
                 >
                   <Tag
                     color={testResult.http_status === 200 ? 'green' : 'red'}
@@ -885,7 +877,7 @@ const CreateCommonJobForm: React.FC<Props> = ({
                   }}
                 >
                   <Text type='secondary'>
-                    {t('components.createCommonJobForm.testResponse')}
+                    {t('components.createHttpTaskForm.testResponse')}
                   </Text>
                   <Button
                     type='text'
@@ -933,4 +925,4 @@ const CreateCommonJobForm: React.FC<Props> = ({
   );
 };
 
-export default CreateCommonJobForm;
+export default CreateHttpTaskForm;

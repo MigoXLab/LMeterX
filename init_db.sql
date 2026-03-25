@@ -5,10 +5,10 @@ CREATE DATABASE IF NOT EXISTS lmeterx;
 USE lmeterx;
 
 -- ----------------------------
--- Table structure for tasks
+-- Table structure for llm_tasks
 -- ----------------------------
-DROP TABLE IF EXISTS `tasks`;
-CREATE TABLE `tasks` (
+DROP TABLE IF EXISTS `llm_tasks`;
+CREATE TABLE `llm_tasks` (
   `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'idle',
@@ -57,10 +57,10 @@ CREATE TABLE `tasks` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
--- Table structure for task_results
+-- Table structure for llm_task_results
 -- ----------------------------
-DROP TABLE IF EXISTS `task_results`;
-CREATE TABLE `task_results` (
+DROP TABLE IF EXISTS `llm_task_results`;
+CREATE TABLE `llm_task_results` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `task_id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'task id',
   `metric_type` varchar(36) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'metric type',
@@ -85,10 +85,10 @@ CREATE TABLE `task_results` (
 ) ENGINE=InnoDB AUTO_INCREMENT=262 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
--- Table structure for common_tasks
+-- Table structure for http_tasks
 -- ----------------------------
-DROP TABLE IF EXISTS `common_tasks`;
-CREATE TABLE `common_tasks` (
+DROP TABLE IF EXISTS `http_tasks`;
+CREATE TABLE `http_tasks` (
   `id` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `status` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -128,10 +128,10 @@ CREATE TABLE `common_tasks` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
--- Table structure for common_task_results
+-- Table structure for http_task_results
 -- ----------------------------
-DROP TABLE IF EXISTS `common_task_results`;
-CREATE TABLE `common_task_results` (
+DROP TABLE IF EXISTS `http_task_results`;
+CREATE TABLE `http_task_results` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `task_id` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'task id',
   `metric_type` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,

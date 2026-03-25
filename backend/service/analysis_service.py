@@ -19,7 +19,7 @@ from model.analysis import (
     GetAnalysisResponse,
     TaskAnalysis,
 )
-from model.task import Task, TaskResult
+from model.llm_task import Task, TaskResult
 from service.system_service import get_ai_service_config_internal_svc
 from utils.converters import truthy
 from utils.error_handler import ErrorMessages, ErrorResponse

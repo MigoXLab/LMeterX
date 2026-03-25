@@ -24,7 +24,7 @@ from utils.event_handler import EventManager
 from utils.logger import logger
 from utils.realtime_metrics import realtime_metrics_greenlet
 from utils.stats_manager import StatsManager
-from utils.token_counter import count_tokens
+from utils.token_counter import AsyncTokenCounter
 
 # Disable the specific InsecureRequestWarning from urllib3
 urllib3.disable_warnings(InsecureRequestWarning)
@@ -35,6 +35,66 @@ _shutdown_in_progress = False
 custom_metrics_aggregated: Dict[str, Any] = {}
 global_state = GlobalStateManager()
 stats_manager = StatsManager()
+# Shared async token counter — offloads tiktoken to OS thread pool
+_async_token_counter = AsyncTokenCounter()
+
+
+def _report_token_stats(
+    input_tokens: int,
+    completion_tokens: int,
+    total_tokens: int,
+    environment,
+    task_logger,
+) -> None:
+    """Fire Locust metric events and update token stats by runner type.
+
+    This is the **only** Locust-specific part of token counting: it fires
+    ``EventManager`` metric events and routes stats through the correct
+    runner type (Master / Worker / Local).
+
+    Called both from the synchronous fast path (inline) and from the async
+    slow path (in background greenlet, after thread pool computation).
+    """
+    if completion_tokens <= 0 and total_tokens <= 0:
+        return
+
+    if input_tokens > 0:
+        EventManager.fire_metric_event("Input_tokens", int(input_tokens), 0)
+    if completion_tokens > 0:
+        EventManager.fire_metric_event("Completion_tokens", int(completion_tokens), 0)
+
+    runner = environment.runner
+    try:
+        from locust.runners import LocalRunner, MasterRunner, WorkerRunner
+
+        if isinstance(runner, (MasterRunner, LocalRunner)):
+            stats_manager.update_stats(
+                reqs=1,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
+        elif isinstance(runner, WorkerRunner):
+            stats_manager.send_stats_to_master(
+                runner,
+                reqs=1,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
+        else:
+            stats_manager.update_stats(
+                reqs=1,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
+            task_logger.warning(f"[Warning] Unknown runner type: {type(runner)}")
+    except Exception as e:
+        task_logger.error(f"Failed to update stats: {e}")
+        # Fallback: update global state directly
+        stats_manager.update_stats(
+            reqs=1,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
 
 
 def _register_signal_handlers(task_logger):
@@ -366,6 +426,20 @@ def on_test_stop(environment, **kwargs):
             task_logger.info("Warmup mode completed - skipping stats collection")
             return
 
+        # Wait for pending async token counting greenlets to complete.
+        # This ensures all token stats (including those sent from Worker
+        # to Master) are fully reported before final aggregation.
+        pending_count = _async_token_counter.pending_count
+        if pending_count > 0:
+            task_logger.info(
+                f"Waiting for {pending_count} pending token calculations..."
+            )
+            remaining = _async_token_counter.join_pending(timeout=5)
+            if remaining > 0:
+                task_logger.warning(
+                    f"{remaining} token calculations did not finish in time"
+                )
+
         # Only Master and LocalRunner need to output report
         if not isinstance(runner, (MasterRunner, LocalRunner)):
             return
@@ -486,115 +560,38 @@ class LLMTestUser(HttpUser):
         content: str,
         usage: Optional[Dict[str, Optional[int]]] = None,
     ) -> None:
-        """Record token counts. Skip in warmup mode."""
-        # Skip token stats collection in warmup mode
+        """Record token counts with non-blocking optimization.
+
+        Delegates to ``AsyncTokenCounter`` which handles the fast/slow path
+        decision internally:
+        - Fast path (usage complete): synchronous callback, zero CPU overhead.
+        - Slow path (tiktoken needed): offloaded to greenlet + OS thread pool,
+          request greenlet returns immediately.
+
+        The ``on_complete`` callback fires Locust metric events and updates
+        stats — this is the only Locust-specific concern kept in this file.
+        """
         if getattr(self.environment, "warmup_mode", False):
             return
 
         try:
-            model_name = self.config.model_name or ""
-            user_prompt = user_prompt or ""
-            reasoning_content = reasoning_content or ""
-            content = content or ""
+            env = self.environment
+            task_log = self.task_logger
 
-            def extract_token_from_usage(usage, keywords):
-                """Extract the first valid integer value from the usage dictionary using fuzzy matching by keywords"""
-                if not isinstance(usage, dict):
-                    return 0
-                for key in usage:
-                    if any(kw in str(key).lower() for kw in keywords):
-                        val = usage[key]
-                        if isinstance(val, int) and val >= 0:
-                            return val
-                return 0
-
-            input_tokens = completion_tokens = total_tokens = 0
-
-            # Step 1: Try to extract from usage (field_mapping / API response)
-            if usage:
-                input_tokens = extract_token_from_usage(usage, ["input", "prompt"])
-                completion_tokens = extract_token_from_usage(
-                    usage, ["output", "completion"]
+            def on_complete(input_tokens, completion_tokens, total_tokens):
+                _report_token_stats(
+                    input_tokens, completion_tokens, total_tokens, env, task_log
                 )
-                total_tokens = extract_token_from_usage(usage, ["total", "all"])
-                # logger.debug(f"usage: {usage}")
 
-            # Step 2: Per-field partial fallback — count only the missing fields
-            # If input_tokens is missing, count from user_prompt
-            if input_tokens == 0 and user_prompt:
-                input_tokens = count_tokens(str(user_prompt), model_name)
-
-            # If completion_tokens is missing, try to derive or count
-            if completion_tokens == 0:
-                if total_tokens > 0 and input_tokens > 0:
-                    # Derive completion from total - input
-                    completion_tokens = max(total_tokens - input_tokens, 0)
-                elif content or reasoning_content:
-                    # Fallback to manual tokenization from response text
-                    reasoning_content_tokens = (
-                        count_tokens(str(reasoning_content), model_name)
-                        if reasoning_content
-                        else 0
-                    )
-                    content_tokens = (
-                        count_tokens(str(content), model_name) if content else 0
-                    )
-                    completion_tokens = reasoning_content_tokens + content_tokens
-
-            # Step 3: Ensure total_tokens consistency
-            if total_tokens == 0:
-                total_tokens = input_tokens + completion_tokens
-
-            if completion_tokens > 0 or total_tokens > 0:
-                # Register token counts in Locust metrics for percentile stats
-                if input_tokens > 0:
-                    EventManager.fire_metric_event("Input_tokens", int(input_tokens), 0)
-                if completion_tokens > 0:
-                    EventManager.fire_metric_event(
-                        "Completion_tokens", int(completion_tokens), 0
-                    )
-                # Select statistics based on runner type
-                runner = self.environment.runner
-                try:
-                    from locust.runners import LocalRunner, MasterRunner, WorkerRunner
-
-                    if isinstance(runner, (MasterRunner, LocalRunner)):
-                        # Single process or Master: directly update local statistics
-                        stats_manager.update_stats(
-                            reqs=1,
-                            completion_tokens=completion_tokens,
-                            total_tokens=total_tokens,
-                        )
-
-                    elif isinstance(runner, WorkerRunner):
-                        # Worker: send message to Master
-                        stats_manager.send_stats_to_master(
-                            runner,
-                            reqs=1,
-                            completion_tokens=completion_tokens,
-                            total_tokens=total_tokens,
-                        )
-
-                    else:
-                        # Unknown type: update local stats
-                        stats_manager.update_stats(
-                            reqs=1,
-                            completion_tokens=completion_tokens,
-                            total_tokens=total_tokens,
-                        )
-                        self.task_logger.warning(
-                            f"[Warning] Unknown runner type: {type(runner)}"
-                        )
-
-                except Exception as e:
-                    self.task_logger.error(f"Failed to update stats: {e}")
-                    # Fallback: update global state
-                    stats_manager.update_stats(
-                        reqs=1,
-                        completion_tokens=completion_tokens,
-                        total_tokens=total_tokens,
-                    )
-
+            _async_token_counter.count_async(
+                user_prompt=user_prompt or "",
+                reasoning_content=reasoning_content or "",
+                content=content or "",
+                model_name=self.config.model_name or "",
+                usage=usage,
+                on_complete=on_complete,
+                task_logger=self.task_logger,
+            )
         except Exception as e:
             self.task_logger.error(f"Failed to count tokens: {e}", exc_info=True)
 

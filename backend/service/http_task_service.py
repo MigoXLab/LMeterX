@@ -14,39 +14,39 @@ from urllib.parse import urlsplit
 import httpx
 
 __all__ = [
-    "get_common_tasks_svc",
-    "get_common_tasks_status_svc",
-    "create_common_task_svc",
-    "update_common_task_svc",
-    "delete_common_task_svc",
-    "test_common_api_svc",
-    "stop_common_task_svc",
-    "get_common_task_result_svc",
-    "get_common_task_svc",
-    "get_common_task_status_svc",
-    "get_common_tasks_for_comparison_svc",
-    "compare_common_performance_svc",
-    "get_common_task_realtime_metrics_svc",
+    "get_http_tasks_svc",
+    "get_http_tasks_status_svc",
+    "create_http_task_svc",
+    "update_http_task_svc",
+    "delete_http_task_svc",
+    "test_http_api_svc",
+    "stop_http_task_svc",
+    "get_http_task_result_svc",
+    "get_http_task_svc",
+    "get_http_task_status_svc",
+    "get_http_tasks_for_comparison_svc",
+    "compare_http_performance_svc",
+    "get_http_task_realtime_metrics_svc",
 ]
 
 from fastapi import Query, Request
 from sqlalchemy import delete, func, or_, select, text
 
-from model.common_task import (
-    CommonComparisonMetrics,
-    CommonComparisonRequest,
-    CommonComparisonResponse,
-    CommonComparisonTaskInfo,
-    CommonComparisonTasksResponse,
-    CommonTask,
-    CommonTaskCreateReq,
-    CommonTaskCreateRsp,
-    CommonTaskPagination,
-    CommonTaskResponse,
-    CommonTaskResult,
-    CommonTaskResultRsp,
-    CommonTaskStatusRsp,
-    CommonTaskTestReq,
+from model.http_task import (
+    HttpComparisonMetrics,
+    HttpComparisonRequest,
+    HttpComparisonResponse,
+    HttpComparisonTaskInfo,
+    HttpComparisonTasksResponse,
+    HttpTask,
+    HttpTaskCreateReq,
+    HttpTaskCreateRsp,
+    HttpTaskPagination,
+    HttpTaskResponse,
+    HttpTaskResult,
+    HttpTaskResultRsp,
+    HttpTaskStatusRsp,
+    HttpTaskTestReq,
 )
 from utils.auth import get_current_user
 from utils.auth_settings import get_auth_settings
@@ -67,7 +67,7 @@ def _split_url(target_url: str) -> tuple[str, str]:
     return host, path
 
 
-def _build_task_summary(task: CommonTask) -> Dict[str, Any]:
+def _build_task_summary(task: HttpTask) -> Dict[str, Any]:
     summary: Dict[str, Any] = {
         "id": task.id,
         "name": task.name,
@@ -97,7 +97,7 @@ def _build_task_summary(task: CommonTask) -> Dict[str, Any]:
     return summary
 
 
-def _build_task_detail(task: CommonTask) -> Dict[str, Any]:
+def _build_task_detail(task: HttpTask) -> Dict[str, Any]:
     headers = json.loads(str(task.headers or "{}"))
     cookies = json.loads(str(task.cookies or "{}"))
     detail = {
@@ -149,59 +149,59 @@ def _resolve_created_by(value: Optional[str]) -> Optional[str]:
 async def _is_task_exist(request: Request, task_id: str) -> bool:
     try:
         db = request.state.db
-        query = select(CommonTask.id).where(CommonTask.id == task_id)
+        query = select(HttpTask.id).where(HttpTask.id == task_id)
         result = await db.execute(query)
         return result.scalar_one_or_none() is not None
     except Exception as e:  # pragma: no cover - defensive logging
-        logger.error("Failed to query common task existence {}: {}", task_id, e)
+        logger.error("Failed to query HTTP task existence {}: {}", task_id, e)
         return False
 
 
-async def get_common_tasks_svc(
+async def get_http_tasks_svc(
     request: Request,
     page: int = Query(1, ge=1, alias="page"),
     page_size: int = Query(10, ge=1, le=100, alias="pageSize"),
     status: Optional[str] = None,
     search: Optional[str] = None,
     creator: Optional[str] = None,
-) -> CommonTaskResponse:
+) -> HttpTaskResponse:
     tasks_data: List[Dict[str, Any]] = []
-    pagination = CommonTaskPagination()
+    pagination = HttpTaskPagination()
     try:
         db = request.state.db
         # Base query excluding soft-deleted tasks
-        query = select(CommonTask).where(CommonTask.is_deleted == 0)
+        query = select(HttpTask).where(HttpTask.is_deleted == 0)
 
         if status:
             status_list = [s.strip() for s in status.split(",") if s.strip()]
             if len(status_list) == 1:
-                query = query.where(CommonTask.status == status_list[0])
+                query = query.where(HttpTask.status == status_list[0])
             else:
-                query = query.where(CommonTask.status.in_(status_list))
+                query = query.where(HttpTask.status.in_(status_list))
 
         if creator:
-            query = query.where(CommonTask.created_by == creator)
+            query = query.where(HttpTask.created_by == creator)
 
         if search:
             query = query.where(
                 or_(
-                    CommonTask.name.ilike(f"%{search}%"),
-                    CommonTask.id.ilike(f"%{search}%"),
-                    CommonTask.target_url.ilike(f"%{search}%"),
-                    CommonTask.created_by.ilike(f"%{search}%"),
+                    HttpTask.name.ilike(f"%{search}%"),
+                    HttpTask.id.ilike(f"%{search}%"),
+                    HttpTask.target_url.ilike(f"%{search}%"),
+                    HttpTask.created_by.ilike(f"%{search}%"),
                 )
             )
 
         total_count_query = select(func.count()).select_from(query.subquery())
         total = await db.scalar(total_count_query)
 
-        query = query.order_by(CommonTask.created_at.desc())
+        query = query.order_by(HttpTask.created_at.desc())
         query = query.offset((page - 1) * page_size).limit(page_size)
 
         result = await db.execute(query)
         tasks = result.scalars().all()
 
-        pagination = CommonTaskPagination(
+        pagination = HttpTaskPagination(
             total=total or 0,
             page=page,
             page_size=page_size,
@@ -209,21 +209,21 @@ async def get_common_tasks_svc(
         )
         tasks_data = [_build_task_summary(task) for task in tasks]
     except Exception as e:
-        logger.error("Error getting common tasks: {}", e, exc_info=True)
-        return CommonTaskResponse(
-            data=[], pagination=CommonTaskPagination(), status="error"
+        logger.error("Error getting HTTP tasks: {}", e, exc_info=True)
+        return HttpTaskResponse(
+            data=[], pagination=HttpTaskPagination(), status="error"
         )
 
-    return CommonTaskResponse(data=tasks_data, pagination=pagination, status="success")
+    return HttpTaskResponse(data=tasks_data, pagination=pagination, status="success")
 
 
-async def get_common_tasks_status_svc(
+async def get_http_tasks_status_svc(
     request: Request, page_size: int = Query(50, ge=1, le=100)
-) -> CommonTaskStatusRsp:
+) -> HttpTaskStatusRsp:
     query = text(
         """
         SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
-        FROM common_tasks
+        FROM http_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
         AND is_deleted = 0
         ORDER BY created_at DESC
@@ -236,18 +236,18 @@ async def get_common_tasks_status_svc(
         result = await db.execute(query, {"limit": page_size})
         status_list = result.mappings().all()
     except Exception as e:
-        logger.error("Error getting common task statuses: {}", e, exc_info=True)
+        logger.error("Error getting HTTP task statuses: {}", e, exc_info=True)
 
-    return CommonTaskStatusRsp(
+    return HttpTaskStatusRsp(
         data=status_list, timestamp=int(time.time()), status="success"
     )
 
 
-async def create_common_task_svc(
-    request: Request, body: CommonTaskCreateReq
-) -> CommonTaskCreateRsp:
+async def create_http_task_svc(
+    request: Request, body: HttpTaskCreateReq
+) -> HttpTaskCreateRsp:
     task_id = str(uuid.uuid4())
-    logger.info("Creating common task '{}' with ID: {}", body.name, task_id)
+    logger.info("Creating HTTP task '{}' with ID: {}", body.name, task_id)
 
     target_host, api_path = _split_url(body.target_url)
     spawn_rate = body.spawn_rate or body.concurrent_users
@@ -272,7 +272,7 @@ async def create_common_task_svc(
             created_by = created_by or "-"
 
         load_mode = body.load_mode or "fixed"
-        new_task = CommonTask(
+        new_task = HttpTask(
             id=task_id,
             name=body.name,
             status="created",
@@ -302,22 +302,22 @@ async def create_common_task_svc(
         db.add(new_task)
         await db.flush()
         await db.commit()
-        return CommonTaskCreateRsp(
+        return HttpTaskCreateRsp(
             task_id=str(new_task.id),
             status="created",
-            message="Common task created successfully",
+            message="HTTP task created successfully",
         )
     except Exception as e:
         await db.rollback()
-        logger.error("Failed to create common task: {}", e, exc_info=True)
-        raise ErrorResponse.internal_server_error("Failed to create common task")
+        logger.error("Failed to create HTTP task: {}", e, exc_info=True)
+        raise ErrorResponse.internal_server_error("Failed to create HTTP task")
 
 
-async def update_common_task_svc(
+async def update_http_task_svc(
     request: Request, task_id: str, payload: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Update mutable fields of a common task (currently supports renaming).
+    Update mutable fields of a HTTP task (currently supports renaming).
     Only the creator can perform this operation when recorded.
     """
     if not task_id:
@@ -331,7 +331,7 @@ async def update_common_task_svc(
 
     db = request.state.db
     try:
-        task = await db.get(CommonTask, task_id)
+        task = await db.get(HttpTask, task_id)
         if not task or getattr(task, "is_deleted", 0) == 1:
             raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
 
@@ -352,13 +352,13 @@ async def update_common_task_svc(
         raise
     except Exception as e:  # pragma: no cover - defensive logging
         await db.rollback()
-        logger.error("Failed to update common task {}: {}", task_id, e, exc_info=True)
+        logger.error("Failed to update HTTP task {}: {}", task_id, e, exc_info=True)
         raise ErrorResponse.internal_server_error(ErrorMessages.TASK_UPDATE_FAILED)
 
 
-async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
+async def delete_http_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
     """
-    Soft delete a common API task by marking it as deleted. Only the creator can delete.
+    Soft delete a HTTP API task by marking it as deleted. Only the creator can delete.
     The task and its related results will be hidden from queries but remain in the database.
     """
     if not task_id:
@@ -366,7 +366,7 @@ async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, An
 
     db = request.state.db
     try:
-        task = await db.get(CommonTask, task_id)
+        task = await db.get(HttpTask, task_id)
         if not task:
             raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
 
@@ -398,15 +398,13 @@ async def delete_common_task_svc(request: Request, task_id: str) -> Dict[str, An
         raise
     except Exception as e:  # pragma: no cover - defensive logging
         await db.rollback()
-        logger.error("Failed to delete common task {}: {}", task_id, e, exc_info=True)
+        logger.error("Failed to delete HTTP task {}: {}", task_id, e, exc_info=True)
         raise ErrorResponse.internal_server_error(ErrorMessages.TASK_DELETION_FAILED)
 
 
-async def test_common_api_svc(
-    request: Request, body: CommonTaskTestReq
-) -> Dict[str, Any]:
+async def test_http_api_svc(request: Request, body: HttpTaskTestReq) -> Dict[str, Any]:
     """
-    Test a common API endpoint with provided configuration (non-stream).
+    Test a HTTP API endpoint with provided configuration (non-stream).
     Uses the original request body directly without dataset file.
     """
     MAX_BODY_LENGTH = 100000
@@ -458,35 +456,35 @@ async def test_common_api_svc(
             hint = (
                 "No valid certificate content found, please confirm the file is correct"
             )
-        logger.error("SSL error when testing common API: {}", e)
+        logger.error("SSL error when testing HTTP API: {}", e)
         return {
             "status": "error",
             "error": f"SSL error: {msg}. {hint}",
             "response": None,
         }
     except httpx.TimeoutException as e:
-        logger.error("Request timeout when testing common API.")
+        logger.error("Request timeout when testing HTTP API.")
         return {
             "status": "error",
             "error": f"Request timeout: {str(e)}",
             "response": None,
         }
     except httpx.ConnectError as e:
-        logger.error("Connection error when testing common API.")
+        logger.error("Connection error when testing HTTP API.")
         return {
             "status": "error",
             "error": f"Connection error: {str(e)}",
             "response": None,
         }
     except asyncio.TimeoutError:
-        logger.error("Asyncio timeout when testing common API")
+        logger.error("Asyncio timeout when testing HTTP API")
         return {
             "status": "error",
             "error": "Operation timeout, please check network connection and target server status",
             "response": None,
         }
     except Exception as e:  # pragma: no cover - defensive
-        logger.error("Error testing common API: {}", e, exc_info=True)
+        logger.error("Error testing HTTP API: {}", e, exc_info=True)
         return {
             "status": "error",
             "error": f"Unexpected error: {str(e)}",
@@ -494,12 +492,12 @@ async def test_common_api_svc(
         }
 
 
-async def stop_common_task_svc(request: Request, task_id: str) -> CommonTaskCreateRsp:
+async def stop_http_task_svc(request: Request, task_id: str) -> HttpTaskCreateRsp:
     try:
         db = request.state.db
-        task = await db.get(CommonTask, task_id)
+        task = await db.get(HttpTask, task_id)
         if not task or getattr(task, "is_deleted", 0) == 1:
-            return CommonTaskCreateRsp(
+            return HttpTaskCreateRsp(
                 status="unknown", task_id=task_id, message="Task not found"
             )
 
@@ -510,7 +508,7 @@ async def stop_common_task_svc(request: Request, task_id: str) -> CommonTaskCrea
                 raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
 
         if task.status != "running":
-            return CommonTaskCreateRsp(
+            return HttpTaskCreateRsp(
                 status=task.status,
                 task_id=task_id,
                 message="Task is not currently running.",
@@ -518,77 +516,73 @@ async def stop_common_task_svc(request: Request, task_id: str) -> CommonTaskCrea
 
         task.status = "stopping"
         await db.commit()
-        return CommonTaskCreateRsp(
+        return HttpTaskCreateRsp(
             status="stopping", task_id=task_id, message="Task is being stopped."
         )
     except Exception as e:
-        logger.error("Failed to stop common task {}: {}", task_id, e, exc_info=True)
-        return CommonTaskCreateRsp(
+        logger.error("Failed to stop HTTP task {}: {}", task_id, e, exc_info=True)
+        return HttpTaskCreateRsp(
             status="error", task_id=task_id, message="Failed to stop task."
         )
 
 
-async def get_common_task_result_svc(
-    request: Request, task_id: str
-) -> CommonTaskResultRsp:
+async def get_http_task_result_svc(request: Request, task_id: str) -> HttpTaskResultRsp:
     if not task_id:
         raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_MISSING)
     if not await _is_task_exist(request, task_id):
         logger.warning(
-            "Attempted to get common results for non-existent task: {}", task_id
+            "Attempted to get HTTP results for non-existent task: {}", task_id
         )
-        return CommonTaskResultRsp(
-            error="Task not found", status="not_found", results=[]
-        )
+        return HttpTaskResultRsp(error="Task not found", status="not_found", results=[])
 
     query_task_result = (
-        select(CommonTaskResult)
-        .where(CommonTaskResult.task_id == task_id)
-        .order_by(CommonTaskResult.created_at.asc())
+        select(HttpTaskResult)
+        .where(HttpTaskResult.task_id == task_id)
+        .order_by(HttpTaskResult.created_at.asc())
     )
     result = await request.state.db.execute(query_task_result)
     task_results = result.scalars().all()
 
     if not task_results:
-        return CommonTaskResultRsp(
+        return HttpTaskResultRsp(
             error="No test results found for this task",
             status="not_found",
             results=[],
         )
 
     result_items = [task_result.to_task_result_item() for task_result in task_results]
-    return CommonTaskResultRsp(results=result_items, status="success", error=None)
+    return HttpTaskResultRsp(results=result_items, status="success", error=None)
 
 
-async def get_common_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
+async def get_http_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
     db = request.state.db
     try:
-        task = await db.get(CommonTask, task_id)
+        task = await db.get(HttpTask, task_id)
         if not task or getattr(task, "is_deleted", 0) == 1:
             raise ErrorResponse.not_found("Task not found")
         return _build_task_detail(task)
     except ErrorResponse:
         raise
     except Exception as e:
-        logger.error("Failed to retrieve common task {}: {}", task_id, e, exc_info=True)
+        logger.error("Failed to retrieve HTTP task {}: {}", task_id, e, exc_info=True)
         raise ErrorResponse.internal_server_error(
-            "An internal error occurred while retrieving the common task."
+            "An internal error occurred while retrieving the HTTP task."
         )
 
 
-async def get_common_task_status_svc(request: Request, task_id: str) -> Dict[str, Any]:
+async def get_http_task_status_svc(request: Request, task_id: str) -> Dict[str, Any]:
     db = request.state.db
     try:
         query = (
             select(
-                CommonTask.id,
-                CommonTask.name,
-                CommonTask.status,
-                CommonTask.error_message,
-                CommonTask.updated_at,
+                HttpTask.id,
+                HttpTask.name,
+                HttpTask.status,
+                HttpTask.error_message,
+                HttpTask.updated_at,
             )
-            .where(CommonTask.id == task_id)
-            .where(CommonTask.is_deleted == 0)
+            .where(HttpTask.id == task_id)
+            .where(HttpTask.is_deleted == 0)
         )
         result = await db.execute(query)
         task_data = result.first()
@@ -605,43 +599,43 @@ async def get_common_task_status_svc(request: Request, task_id: str) -> Dict[str
         raise
     except Exception as e:
         logger.error(
-            "Failed to retrieve common task status {}: {}", task_id, e, exc_info=True
+            "Failed to retrieve HTTP task status {}: {}", task_id, e, exc_info=True
         )
         raise ErrorResponse.internal_server_error(
             "An internal error occurred while retrieving the task status."
         )
 
 
-async def get_common_tasks_for_comparison_svc(
+async def get_http_tasks_for_comparison_svc(
     request: Request,
-) -> CommonComparisonTasksResponse:
+) -> HttpComparisonTasksResponse:
     """
-    Fetch completed common API tasks that have results for comparison.
+    Fetch completed HTTP API tasks that have results for comparison.
     """
     try:
         db = request.state.db
         query = (
             select(
-                CommonTask.id,
-                CommonTask.name,
-                CommonTask.method,
-                CommonTask.target_url,
-                CommonTask.concurrent_users,
-                CommonTask.created_at,
-                CommonTask.duration,
+                HttpTask.id,
+                HttpTask.name,
+                HttpTask.method,
+                HttpTask.target_url,
+                HttpTask.concurrent_users,
+                HttpTask.created_at,
+                HttpTask.duration,
             )
-            .where(CommonTask.status.in_(["completed", "failed_requests"]))
-            .where(CommonTask.is_deleted == 0)
-            .join(CommonTaskResult, CommonTask.id == CommonTaskResult.task_id)
+            .where(HttpTask.status.in_(["completed", "failed_requests"]))
+            .where(HttpTask.is_deleted == 0)
+            .join(HttpTaskResult, HttpTask.id == HttpTaskResult.task_id)
             .distinct()
-            .order_by(CommonTask.created_at.desc(), CommonTask.concurrent_users)
+            .order_by(HttpTask.created_at.desc(), HttpTask.concurrent_users)
         )
 
         result = await db.execute(query)
         tasks = result.all()
 
         task_infos = [
-            CommonComparisonTaskInfo(
+            HttpComparisonTaskInfo(
                 task_id=task.id,
                 task_name=task.name or f"Task {task.id[:8]}",
                 method=task.method,
@@ -653,30 +647,30 @@ async def get_common_tasks_for_comparison_svc(
             for task in tasks
         ]
 
-        return CommonComparisonTasksResponse(
+        return HttpComparisonTasksResponse(
             data=task_infos, status="success", error=None
         )
     except Exception as e:
-        logger.error("Failed to get common tasks for comparison: {}", e, exc_info=True)
+        logger.error("Failed to get HTTP tasks for comparison: {}", e, exc_info=True)
         raise ErrorResponse.internal_server_error(
-            "Failed to fetch common tasks for comparison"
+            "Failed to fetch HTTP tasks for comparison"
         )
 
 
-async def _extract_common_task_metrics(
-    db, task_id: str, task: Optional[CommonTask] = None
+async def _extract_http_task_metrics(
+    db, task_id: str, task: Optional[HttpTask] = None
 ) -> Optional[Dict[str, Any]]:
-    """Extract aggregated metrics for a common API task."""
+    """Extract aggregated metrics for a HTTP API task."""
     try:
         if not task:
-            task = await db.get(CommonTask, task_id)
+            task = await db.get(HttpTask, task_id)
         if not task or getattr(task, "is_deleted", 0) == 1:
             return None
 
         query = (
-            select(CommonTaskResult)
-            .where(CommonTaskResult.task_id == task_id)
-            .order_by(CommonTaskResult.created_at.desc())
+            select(HttpTaskResult)
+            .where(HttpTaskResult.task_id == task_id)
+            .order_by(HttpTaskResult.created_at.desc())
         )
         result = await db.execute(query)
         rows = result.scalars().all()
@@ -714,14 +708,14 @@ async def _extract_common_task_metrics(
             "avg_content_length": float(selected.avg_content_length or 0.0),
         }
     except Exception as e:
-        logger.error("Failed to extract common metrics for task {}: {}", task_id, e)
+        logger.error("Failed to extract HTTP metrics for task {}: {}", task_id, e)
         return None
 
 
-async def get_common_task_realtime_metrics_svc(
+async def get_http_task_realtime_metrics_svc(
     request: Request, task_id: str, since: float = 0.0
 ) -> Dict[str, Any]:
-    """Query real-time performance metrics for a common task from VictoriaMetrics."""
+    """Query real-time performance metrics for a HTTP task from VictoriaMetrics."""
     if not task_id:
         return {"status": "error", "error": "task_id is required", "data": []}
 
@@ -735,41 +729,41 @@ async def get_common_task_realtime_metrics_svc(
         return {"status": "ok", "data": []}
 
 
-async def compare_common_performance_svc(
-    request: Request, comparison_request: CommonComparisonRequest
-) -> CommonComparisonResponse:
+async def compare_http_performance_svc(
+    request: Request, comparison_request: HttpComparisonRequest
+) -> HttpComparisonResponse:
     """
-    Compare performance metrics for selected common API tasks.
+    Compare performance metrics for selected HTTP API tasks.
     """
     try:
         db = request.state.db
         task_ids = comparison_request.selected_tasks
 
         if len(task_ids) < 2:
-            return CommonComparisonResponse(
+            return HttpComparisonResponse(
                 data=[],
                 status="error",
                 error="At least 2 tasks are required for comparison",
             )
 
         if len(task_ids) > 10:
-            return CommonComparisonResponse(
+            return HttpComparisonResponse(
                 data=[],
                 status="error",
                 error="Maximum 10 tasks can be compared at once",
             )
 
         task_query = (
-            select(CommonTask)
-            .where(CommonTask.id.in_(task_ids))
-            .where(CommonTask.is_deleted == 0)
+            select(HttpTask)
+            .where(HttpTask.id.in_(task_ids))
+            .where(HttpTask.is_deleted == 0)
         )
         task_result = await db.execute(task_query)
         tasks = {task.id: task for task in task_result.scalars().all()}
 
         missing_tasks = set(task_ids) - set(tasks.keys())
         if missing_tasks:
-            return CommonComparisonResponse(
+            return HttpComparisonResponse(
                 data=[],
                 status="error",
                 error=f"Tasks not found: {', '.join(missing_tasks)}",
@@ -781,7 +775,7 @@ async def compare_common_performance_svc(
             if task.status not in ["completed", "failed_requests"]
         ]
         if incomplete_tasks:
-            return CommonComparisonResponse(
+            return HttpComparisonResponse(
                 data=[],
                 status="error",
                 error="Only completed tasks can be compared. "
@@ -791,42 +785,42 @@ async def compare_common_performance_svc(
         metrics_data_list = []
         for task_id in task_ids:
             task = tasks.get(task_id)
-            metrics = await _extract_common_task_metrics(db, task_id, task)
+            metrics = await _extract_http_task_metrics(db, task_id, task)
             if metrics:
                 metrics_data_list.append(metrics)
 
         if not metrics_data_list:
-            return CommonComparisonResponse(
+            return HttpComparisonResponse(
                 data=[],
                 status="error",
                 error="No valid metrics data found for the selected tasks.",
             )
 
-        comparison_metrics: List[CommonComparisonMetrics] = []
+        comparison_metrics: List[HttpComparisonMetrics] = []
         for metrics_data in metrics_data_list:
             try:
-                comparison_metrics.append(CommonComparisonMetrics(**metrics_data))
+                comparison_metrics.append(HttpComparisonMetrics(**metrics_data))
             except Exception as e:
                 logger.error(
-                    "Failed to build CommonComparisonMetrics for task {}: {}",
+                    "Failed to build HttpComparisonMetrics for task {}: {}",
                     metrics_data.get("task_id", "unknown"),
                     e,
                 )
 
         if not comparison_metrics:
-            return CommonComparisonResponse(
+            return HttpComparisonResponse(
                 data=[],
                 status="error",
                 error="Failed to process metrics data for the selected tasks",
             )
 
-        return CommonComparisonResponse(
+        return HttpComparisonResponse(
             data=comparison_metrics, status="success", error=None
         )
     except Exception as e:
-        logger.error("Failed to compare common task performance: {}", e, exc_info=True)
-        return CommonComparisonResponse(
+        logger.error("Failed to compare HTTP task performance: {}", e, exc_info=True)
+        return HttpComparisonResponse(
             data=[],
             status="error",
-            error="Failed to perform common performance comparison",
+            error="Failed to perform HTTP performance comparison",
         )

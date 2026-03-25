@@ -13,8 +13,8 @@ from db.mysql import Base
 
 
 # ---------- Pydantic schemas ----------
-class CommonTaskPagination(BaseModel):
-    """Pagination metadata for common API tasks."""
+class HttpTaskPagination(BaseModel):
+    """Pagination metadata for HTTP API tasks."""
 
     total: int = 0
     page: int = 0
@@ -22,38 +22,38 @@ class CommonTaskPagination(BaseModel):
     total_pages: int = 0
 
 
-class CommonTaskCreateRsp(BaseModel):
-    """Response payload when creating a common API task."""
+class HttpTaskCreateRsp(BaseModel):
+    """Response payload when creating an HTTP API task."""
 
     task_id: str
     status: str
     message: str
 
 
-class CommonTaskStatusRsp(BaseModel):
-    """Lightweight status list response for common API tasks."""
+class HttpTaskStatusRsp(BaseModel):
+    """Lightweight status list response for HTTP API tasks."""
 
     data: List[Dict]
     timestamp: int
     status: str
 
 
-class CommonHeaderItem(BaseModel):
+class HttpHeaderItem(BaseModel):
     """Represents a single HTTP header."""
 
     key: str = Field(..., min_length=1, max_length=100)
     value: str = Field(..., max_length=2000)
 
 
-class CommonTaskCreateReq(BaseModel):
-    """Request payload for creating a common API load test."""
+class HttpTaskCreateReq(BaseModel):
+    """Request payload for creating an HTTP API load test."""
 
     temp_task_id: str = Field(..., max_length=100, description="Temporary task ID")
     name: str = Field(..., min_length=1, max_length=100, description="Task name")
     method: str = Field(..., description="HTTP method, e.g. GET/POST/PUT/PATCH/DELETE")
     target_url: str = Field(..., max_length=2000, description="Full request URL")
-    headers: List[CommonHeaderItem] = Field(default_factory=list)
-    cookies: List[CommonHeaderItem] = Field(default_factory=list)
+    headers: List[HttpHeaderItem] = Field(default_factory=list)
+    cookies: List[HttpHeaderItem] = Field(default_factory=list)
     request_body: Optional[str] = Field(
         default=None, max_length=100000, description="Request body (raw text/JSON)"
     )
@@ -180,7 +180,7 @@ class CommonTaskCreateReq(BaseModel):
         return url
 
     @validator("headers", "cookies")
-    def validate_kv_items(cls, items: List[CommonHeaderItem]) -> List[CommonHeaderItem]:
+    def validate_kv_items(cls, items: List[HttpHeaderItem]) -> List[HttpHeaderItem]:
         if len(items) > 50:
             raise ValueError("Header/Cookie count cannot exceed 50")
         return items
@@ -248,17 +248,17 @@ class CommonTaskCreateReq(BaseModel):
         return path_clean or None
 
 
-class CommonTaskTestReq(BaseModel):
+class HttpTaskTestReq(BaseModel):
     """
-    Request model for testing a common API endpoint.
+    Request model for testing an HTTP API endpoint.
     Only includes fields actually needed for the test request,
     without requiring task metadata like name, duration, concurrent_users, etc.
     """
 
     method: str = Field(..., description="HTTP method, e.g. GET/POST/PUT/PATCH/DELETE")
     target_url: str = Field(..., max_length=2000, description="Full request URL")
-    headers: List[CommonHeaderItem] = Field(default_factory=list)
-    cookies: List[CommonHeaderItem] = Field(default_factory=list)
+    headers: List[HttpHeaderItem] = Field(default_factory=list)
+    cookies: List[HttpHeaderItem] = Field(default_factory=list)
     request_body: Optional[str] = Field(
         default=None, max_length=100000, description="Request body (raw text/JSON)"
     )
@@ -284,7 +284,7 @@ class CommonTaskTestReq(BaseModel):
         return url
 
     @validator("headers", "cookies")
-    def validate_kv_items(cls, items: List[CommonHeaderItem]) -> List[CommonHeaderItem]:
+    def validate_kv_items(cls, items: List[HttpHeaderItem]) -> List[HttpHeaderItem]:
         if len(items) > 50:
             raise ValueError("Header/Cookie count cannot exceed 50")
         return items
@@ -299,8 +299,8 @@ class CommonTaskTestReq(BaseModel):
         return body
 
 
-class CommonTaskResultItem(BaseModel):
-    """Represents a single metric row for common API task results."""
+class HttpTaskResultItem(BaseModel):
+    """Represents a single metric row for HTTP API task results."""
 
     avg_content_length: float
     avg_response_time: float
@@ -317,24 +317,24 @@ class CommonTaskResultItem(BaseModel):
     task_id: str
 
 
-class CommonTaskResultRsp(BaseModel):
-    """Response model for common API task performance results."""
+class HttpTaskResultRsp(BaseModel):
+    """Response model for HTTP API task performance results."""
 
-    results: List[CommonTaskResultItem]
+    results: List[HttpTaskResultItem]
     status: str
     error: Union[str, None]
 
 
-class CommonTaskResponse(BaseModel):
-    """Paginated common API task response."""
+class HttpTaskResponse(BaseModel):
+    """Paginated HTTP API task response."""
 
     data: List[Dict]
-    pagination: CommonTaskPagination
+    pagination: HttpTaskPagination
     status: str
 
 
-class CommonComparisonTaskInfo(BaseModel):
-    """Basic task info used for comparison selection."""
+class HttpComparisonTaskInfo(BaseModel):
+    """Basic HTTP task info used for comparison selection."""
 
     task_id: str
     task_name: str
@@ -345,16 +345,16 @@ class CommonComparisonTaskInfo(BaseModel):
     duration: int
 
 
-class CommonComparisonRequest(BaseModel):
-    """Request model for common API performance comparison."""
+class HttpComparisonRequest(BaseModel):
+    """Request model for HTTP API performance comparison."""
 
     selected_tasks: List[str] = Field(
         ..., min_length=2, max_length=10, description="Task IDs to compare"
     )
 
 
-class CommonComparisonMetrics(BaseModel):
-    """Aggregated metrics for comparing common API tasks."""
+class HttpComparisonMetrics(BaseModel):
+    """Aggregated metrics for comparing HTTP API tasks."""
 
     task_id: str
     task_name: str
@@ -373,27 +373,27 @@ class CommonComparisonMetrics(BaseModel):
     avg_content_length: float
 
 
-class CommonComparisonResponse(BaseModel):
-    """Response model for common API comparison."""
+class HttpComparisonResponse(BaseModel):
+    """Response model for HTTP API comparison."""
 
-    data: List[CommonComparisonMetrics]
+    data: List[HttpComparisonMetrics]
     status: str
     error: Union[str, None]
 
 
-class CommonComparisonTasksResponse(BaseModel):
-    """Response model for available common tasks for comparison."""
+class HttpComparisonTasksResponse(BaseModel):
+    """Response model for available HTTP tasks for comparison."""
 
-    data: List[CommonComparisonTaskInfo]
+    data: List[HttpComparisonTaskInfo]
     status: str
     error: Union[str, None]
 
 
 # ---------- SQLAlchemy models ----------
-class CommonTask(Base):
-    """SQLAlchemy model for common API load test tasks."""
+class HttpTask(Base):
+    """SQLAlchemy model for HTTP API load test tasks."""
 
-    __tablename__ = "common_tasks"
+    __tablename__ = "http_tasks"
 
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)
@@ -430,10 +430,10 @@ class CommonTask(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
-class CommonTaskResult(Base):
-    """SQLAlchemy model for common API task results."""
+class HttpTaskResult(Base):
+    """SQLAlchemy model for HTTP API task results."""
 
-    __tablename__ = "common_task_results"
+    __tablename__ = "http_task_results"
 
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(String(40), nullable=False)
@@ -450,9 +450,9 @@ class CommonTaskResult(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    def to_task_result_item(self) -> CommonTaskResultItem:
+    def to_task_result_item(self) -> HttpTaskResultItem:
         """Convert SQLAlchemy model to response item."""
-        return CommonTaskResultItem(
+        return HttpTaskResultItem(
             id=int(self.id) if self.id is not None else 0,
             task_id=str(self.task_id) if self.task_id is not None else "",
             metric_type=str(self.metric_type) if self.metric_type is not None else "",

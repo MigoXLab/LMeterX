@@ -80,7 +80,7 @@ class DiscoveredApiItem(BaseModel):
 class LoadtestConfigItem(BaseModel):
     """
     A ready-to-use loadtest configuration for one API.
-    Includes all fields required by POST /api/common-tasks.
+    Includes all fields required by POST /api/http-tasks.
     """
 
     temp_task_id: str = Field(..., description="Temporary task ID")

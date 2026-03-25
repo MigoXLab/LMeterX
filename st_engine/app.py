@@ -17,10 +17,10 @@ from service.heartbeat import (
     update_heartbeat,
 )
 from service.poller import (
-    common_task_create_poller,
-    common_task_stop_poller,
-    task_create_poller,
-    task_stop_poller,
+    http_task_create_poller,
+    http_task_stop_poller,
+    llm_task_create_poller,
+    llm_task_stop_poller,
 )
 from utils.logger import logger
 from utils.resource_collector import start_resource_collector, stop_resource_collector
@@ -29,31 +29,31 @@ from utils.resource_collector import start_resource_collector, stop_resource_col
 def start_polling():
     """Initializes and starts the background polling threads for task management."""
     logger.info("Starting polling threads...")
-    task_create_thread = threading.Thread(
-        target=task_create_poller, daemon=True, name="TaskCreatePollerThread"
+    llm_task_create_thread = threading.Thread(
+        target=llm_task_create_poller, daemon=True, name="LlmTaskCreatePollerThread"
     )
-    task_stop_thread = threading.Thread(
-        target=task_stop_poller, daemon=True, name="TaskStopPollerThread"
+    llm_task_stop_thread = threading.Thread(
+        target=llm_task_stop_poller, daemon=True, name="LlmTaskStopPollerThread"
     )
-    common_task_create_thread = threading.Thread(
-        target=common_task_create_poller,
+    http_task_create_thread = threading.Thread(
+        target=http_task_create_poller,
         daemon=True,
-        name="CommonTaskCreatePollerThread",
+        name="HttpTaskCreatePollerThread",
     )
-    common_task_stop_thread = threading.Thread(
-        target=common_task_stop_poller,
+    http_task_stop_thread = threading.Thread(
+        target=http_task_stop_poller,
         daemon=True,
-        name="CommonTaskStopPollerThread",
+        name="HttpTaskStopPollerThread",
     )
     heartbeat_thread = threading.Thread(
         target=heartbeat_and_reconcile_loop,
         daemon=True,
         name="HeartbeatReconcileThread",
     )
-    task_create_thread.start()
-    task_stop_thread.start()
-    common_task_create_thread.start()
-    common_task_stop_thread.start()
+    llm_task_create_thread.start()
+    llm_task_stop_thread.start()
+    http_task_create_thread.start()
+    http_task_stop_thread.start()
     heartbeat_thread.start()
     logger.info("Polling threads started successfully.")
 

@@ -8,7 +8,7 @@ import math
 import re
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Any, Optional, cast
+from typing import Any, Callable, Dict, Optional, Tuple, cast
 
 tiktoken: Optional[Any] = None
 
@@ -255,6 +255,319 @@ def _resolve_encoding_name(model_name: str) -> str:
         if model_name.startswith(prefix):
             return encoding
     return DEFAULT_ENCODING
+
+
+def extract_token_from_usage(usage: Any, keywords: list) -> int:
+    """Extract the first valid integer from a usage dict via fuzzy key matching.
+
+    Scans all keys in *usage* and returns the first non-negative ``int`` whose
+    key contains any of the given *keywords* (case-insensitive substring match).
+
+    Args:
+        usage: A dictionary (typically from an LLM API response ``usage`` field).
+               Returns 0 immediately if not a dict.
+        keywords: List of lowercase substrings to match against dict keys,
+                  e.g. ``["input", "prompt"]`` or ``["output", "completion"]``.
+
+    Returns:
+        The first matching non-negative integer value, or 0 if none found.
+    """
+    if not isinstance(usage, dict):
+        return 0
+    for key in usage:
+        if any(kw in str(key).lower() for kw in keywords):
+            val = usage[key]
+            if isinstance(val, int) and val >= 0:
+                return val
+    return 0
+
+
+def compute_token_counts(
+    user_prompt: str,
+    reasoning_content: str,
+    content: str,
+    model_name: str,
+    input_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int = 0,
+) -> Tuple[int, int, int]:
+    """Compute missing token counts using tiktoken, filling in gaps.
+
+    This is a **pure computation** function with no side effects.  It is
+    designed to run in an OS thread pool so that the gevent event loop is
+    never blocked by CPU-bound BPE encoding.
+
+    Strategy:
+    1. If *input_tokens* is 0 and *user_prompt* is non-empty, count via tiktoken.
+    2. If *completion_tokens* is 0:
+       a. Derive from ``total - input`` when both are available.
+       b. Otherwise count *reasoning_content* + *content* via tiktoken.
+    3. Ensure *total_tokens* = input + completion if still 0.
+
+    Args:
+        user_prompt: The user prompt text.
+        reasoning_content: Chain-of-thought / reasoning text from the response.
+        content: Main output text from the response.
+        model_name: Model name for tokenizer selection.
+        input_tokens: Pre-extracted input token count (0 = unknown).
+        completion_tokens: Pre-extracted completion token count (0 = unknown).
+        total_tokens: Pre-extracted total token count (0 = unknown).
+
+    Returns:
+        Tuple of (input_tokens, completion_tokens, total_tokens).
+    """
+    # Count input tokens if missing
+    if input_tokens == 0 and user_prompt:
+        input_tokens = count_tokens(str(user_prompt), model_name)
+
+    # Count completion tokens if missing
+    if completion_tokens == 0:
+        if total_tokens > 0 and input_tokens > 0:
+            # Derive completion from total - input
+            completion_tokens = max(total_tokens - input_tokens, 0)
+        elif content or reasoning_content:
+            # Fallback to manual tokenization from response text
+            if reasoning_content:
+                completion_tokens += count_tokens(str(reasoning_content), model_name)
+            if content:
+                completion_tokens += count_tokens(str(content), model_name)
+
+    # Ensure total_tokens consistency
+    if total_tokens == 0:
+        total_tokens = input_tokens + completion_tokens
+
+    return input_tokens, completion_tokens, total_tokens
+
+
+# ---------------------------------------------------------------------------
+# AsyncTokenCounter — non-blocking wrapper using gevent thread pool
+# ---------------------------------------------------------------------------
+
+# Lazy gevent imports: gevent may not be available in all contexts (e.g. unit
+# tests, standalone scripts).  The class gracefully falls back to synchronous
+# execution when gevent is absent.
+_gevent = None
+_ThreadPool = None
+_GreenletGroup = None
+
+
+def _ensure_gevent():
+    """Lazily import gevent modules.  Called once on first use."""
+    global _gevent, _ThreadPool, _GreenletGroup
+    if _gevent is not None:
+        return True
+    try:
+        import gevent as _g
+        from gevent.pool import Group as _GG
+        from gevent.threadpool import ThreadPool as _TP
+
+        _gevent = _g
+        _ThreadPool = _TP
+        _GreenletGroup = _GG
+        return True
+    except ImportError:
+        logger.debug("gevent not available; AsyncTokenCounter will run synchronously")
+        return False
+
+
+class AsyncTokenCounter:
+    """Non-blocking token counter backed by a gevent thread pool.
+
+    Offloads CPU-bound tiktoken BPE encoding to real OS threads so the
+    gevent event loop stays unblocked for request greenlets.
+
+    Typical usage::
+
+        counter = AsyncTokenCounter()
+
+        # In the request hot path — returns immediately
+        counter.count_async(
+            user_prompt, reasoning_content, content,
+            model_name, usage, on_complete=my_callback,
+        )
+
+        # Before final aggregation — wait for stragglers
+        counter.join_pending(timeout=5)
+
+    The *on_complete* callback receives ``(input_tokens, completion_tokens,
+    total_tokens)`` and is invoked in the gevent context (safe to fire
+    Locust events).
+
+    If gevent is not available (e.g. in unit tests), all computation is
+    performed synchronously and the callback is invoked immediately.
+    """
+
+    _DEFAULT_POOL_SIZE = 2
+
+    def __init__(self, pool_size: int = _DEFAULT_POOL_SIZE) -> None:
+        """Initialize the async token counter with the given pool size."""
+        self._pool_size = pool_size
+        self._pool = None  # lazily created
+        self._pending = None  # lazily created
+
+    def _get_pool(self):
+        """Get or lazily create the OS thread pool."""
+        if self._pool is None and _ensure_gevent():
+            self._pool = _ThreadPool(maxsize=self._pool_size)
+        return self._pool
+
+    def _get_pending(self):
+        """Get or lazily create the GreenletGroup for tracking."""
+        if self._pending is None and _ensure_gevent():
+            self._pending = _GreenletGroup()
+        return self._pending
+
+    @property
+    def pending_count(self) -> int:
+        """Number of async token counting greenlets still running."""
+        pending = self._get_pending()
+        return len(pending) if pending is not None else 0
+
+    def count_async(
+        self,
+        user_prompt: str,
+        reasoning_content: str,
+        content: str,
+        model_name: str,
+        usage: Optional[Dict[str, Optional[int]]],
+        on_complete: Callable[[int, int, int], None],
+        task_logger=None,
+    ) -> None:
+        """Compute token counts asynchronously and invoke *on_complete*.
+
+        If the API *usage* dict already provides all necessary counts, the
+        callback is invoked **synchronously** with zero CPU overhead (fast
+        path).  Otherwise a background greenlet + thread pool is used
+        (slow path).
+
+        Args:
+            user_prompt: The user prompt text.
+            reasoning_content: Reasoning / chain-of-thought text.
+            content: Main output text.
+            model_name: Model name for tokenizer selection.
+            usage: Token usage dict from the API response (may be None).
+            on_complete: Callback ``(input_tokens, completion_tokens, total_tokens)``.
+            task_logger: Optional logger for error reporting.
+        """
+        _log = task_logger or logger
+        try:
+            user_prompt = user_prompt or ""
+            reasoning_content = reasoning_content or ""
+            content = content or ""
+
+            input_tokens = completion_tokens = total_tokens = 0
+
+            # Step 1: Extract from API usage (O(1), no CPU work)
+            if usage:
+                input_tokens = extract_token_from_usage(usage, ["input", "prompt"])
+                completion_tokens = extract_token_from_usage(
+                    usage, ["output", "completion"]
+                )
+                total_tokens = extract_token_from_usage(usage, ["total", "all"])
+
+            # Step 2: Determine whether CPU-bound tiktoken is needed
+            needs_tiktoken = False
+            if input_tokens == 0 and user_prompt:
+                needs_tiktoken = True
+            if completion_tokens == 0:
+                if total_tokens > 0 and input_tokens > 0:
+                    pass  # derivable without tiktoken
+                elif content or reasoning_content:
+                    needs_tiktoken = True
+
+            if not needs_tiktoken:
+                # --- Fast path: all counts available or derivable ---
+                if completion_tokens == 0 and total_tokens > 0 and input_tokens > 0:
+                    completion_tokens = max(total_tokens - input_tokens, 0)
+                if total_tokens == 0:
+                    total_tokens = input_tokens + completion_tokens
+                on_complete(input_tokens, completion_tokens, total_tokens)
+            else:
+                # --- Slow path: offload to greenlet + thread pool ---
+                pool = self._get_pool()
+                pending = self._get_pending()
+
+                if pool is not None and pending is not None:
+                    g = _gevent.spawn(
+                        self._run_in_thread,
+                        pool,
+                        user_prompt,
+                        reasoning_content,
+                        content,
+                        model_name,
+                        input_tokens,
+                        completion_tokens,
+                        total_tokens,
+                        on_complete,
+                        _log,
+                    )
+                    pending.add(g)
+                else:
+                    # gevent unavailable — synchronous fallback
+                    result = compute_token_counts(
+                        user_prompt,
+                        reasoning_content,
+                        content,
+                        model_name,
+                        input_tokens,
+                        completion_tokens,
+                        total_tokens,
+                    )
+                    on_complete(*result)
+        except Exception as e:
+            _log.error(f"Token count_async failed: {e}", exc_info=True)
+
+    @staticmethod
+    def _run_in_thread(
+        pool,
+        user_prompt,
+        reasoning_content,
+        content,
+        model_name,
+        input_tokens,
+        completion_tokens,
+        total_tokens,
+        on_complete,
+        task_logger,
+    ) -> None:
+        """Background greenlet body: dispatch to thread pool, then callback.
+
+        ``pool.apply()`` suspends this greenlet (without blocking the event
+        loop) while tiktoken runs in a real OS thread.  When the thread
+        completes, this greenlet resumes in gevent context and invokes
+        *on_complete* — which is safe for firing Locust metric events.
+        """
+        try:
+            result = pool.apply(
+                compute_token_counts,
+                (
+                    user_prompt,
+                    reasoning_content,
+                    content,
+                    model_name,
+                    input_tokens,
+                    completion_tokens,
+                    total_tokens,
+                ),
+            )
+            on_complete(*result)
+        except Exception as e:
+            task_logger.error(f"Async token counting failed: {e}", exc_info=True)
+
+    def join_pending(self, timeout: float = 5) -> int:
+        """Wait for all pending async token counting greenlets to finish.
+
+        Args:
+            timeout: Maximum seconds to wait.
+
+        Returns:
+            Number of greenlets that did NOT complete within *timeout*.
+        """
+        pending = self._get_pending()
+        if pending is None or len(pending) == 0:
+            return 0
+        pending.join(timeout=timeout)
+        return len(pending)
 
 
 def estimate_tokens_via_bytes(text: str) -> int:

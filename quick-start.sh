@@ -73,13 +73,52 @@ docker pull charmy1220/lmeterx-fe:latest
 echo "🧹 Cleaning up old containers..."
 $COMPOSE_CMD -f docker-compose.yml down --remove-orphans 2>/dev/null || true
 
-# Start services
-echo "🚀 Starting LMeterX services..."
+# Start infrastructure services first (MySQL + VictoriaMetrics)
+echo "🚀 Starting infrastructure services (MySQL, VictoriaMetrics)..."
+$COMPOSE_CMD -f docker-compose.yml up -d mysql victoria-metrics
+
+# Wait for MySQL to be healthy
+echo "⏳ Waiting for MySQL to be ready..."
+MAX_WAIT=120
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if docker inspect --format='{{.State.Health.Status}}' lmeterx-mysql 2>/dev/null | grep -q "healthy"; then
+        echo "✅ MySQL is ready!"
+        break
+    fi
+    sleep 5
+    WAITED=$((WAITED + 5))
+    echo "   Waiting... (${WAITED}s/${MAX_WAIT}s)"
+done
+
+if [ $WAITED -ge $MAX_WAIT ]; then
+    echo "⚠️  MySQL did not become healthy within ${MAX_WAIT}s, checking logs..."
+    docker logs lmeterx-mysql --tail 20
+    echo ""
+    echo "Continuing anyway, services may still start..."
+fi
+
+# Wait for VictoriaMetrics to be healthy
+echo "⏳ Waiting for VictoriaMetrics to be ready..."
+MAX_WAIT=60
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if docker inspect --format='{{.State.Health.Status}}' lmeterx-victoria-metrics 2>/dev/null | grep -q "healthy"; then
+        echo "✅ VictoriaMetrics is ready!"
+        break
+    fi
+    sleep 5
+    WAITED=$((WAITED + 5))
+    echo "   Waiting... (${WAITED}s/${MAX_WAIT}s)"
+done
+
+# Start remaining services
+echo "🚀 Starting application services (backend, engine, frontend)..."
 $COMPOSE_CMD -f docker-compose.yml up -d
 
-# Wait for services to start
-echo "⏳ Waiting for services to start..."
-sleep 10
+# Wait for application services to start
+echo "⏳ Waiting for application services to start..."
+sleep 15
 
 # Check service status
 echo "🔍 Checking service status..."

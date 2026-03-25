@@ -92,6 +92,11 @@
       "selectedCount": "{{count}} selected",
       "selectMinForCompare": "Please select 2-5 tasks to compare",
       "selectMaxForCompare": "Maximum 5 tasks can be selected for comparison",
+      "batchRerun": "Rerun",
+      "batchRerunConfirmTitle": "Batch rerun selected tasks?",
+      "batchRerunConfirmContent": "New tasks will be created based on the configurations of {{count}} selected tasks.",
+      "batchRerunProgress": "Batch rerun complete: {{success}} succeeded, {{fail}} failed",
+      "batchRerunAllSuccess": "Successfully reran {{count}} tasks",
       "clearSelection": "Clear Selection",
       "webOneClick": "Smart Load Test",
       "webOneClickTooltip": "Auto-capture Web APIs, intelligently parse and generate load configurations, then create a stress test task in one click"

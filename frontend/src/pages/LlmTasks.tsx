@@ -7,6 +7,7 @@
 import {
   BarChartOutlined,
   ClockCircleOutlined,
+  CloseOutlined,
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -25,6 +26,7 @@ import {
   App,
   Badge,
   Button,
+  Divider,
   Dropdown,
   Empty,
   Input,
@@ -32,6 +34,7 @@ import {
   Space,
   Table,
   Tabs,
+  Tag,
   Tooltip,
   Typography,
 } from 'antd';
@@ -1325,6 +1328,163 @@ const LlmTasks: React.FC = () => {
   );
 
   /**
+   * Handle batch rerun of selected tasks
+   */
+  const [batchRerunning, setBatchRerunning] = useState(false);
+
+  const handleBatchRerun = useCallback(() => {
+    if (selectedRowKeys.length === 0) return;
+
+    const useHttp = activeMode === 'http';
+    const currentData = (useHttp ? httpFilteredJobs : filteredJobs) as Array<
+      LlmTask | HttpTask
+    >;
+    const selectedTasks = currentData.filter(job =>
+      selectedRowKeys.includes(job.id)
+    );
+
+    // Filter tasks that the current user can manage
+    const manageableTasks = selectedTasks.filter(job =>
+      canManage(job.created_by)
+    );
+
+    if (manageableTasks.length === 0) {
+      messageApi.warning(t('pages.jobs.ownerOnly'));
+      return;
+    }
+
+    modal.confirm({
+      title: t('pages.jobs.batchRerunConfirmTitle'),
+      icon: <PlayCircleOutlined style={{ color: '#52c41a' }} />,
+      content: (
+        <div>
+          <p>
+            {t('pages.jobs.batchRerunConfirmContent', {
+              count: manageableTasks.length,
+            })}
+          </p>
+          <p style={{ color: '#faad14', marginTop: 8, marginBottom: 0 }}>
+            {t('pages.jobs.rerunDatasetTip')}
+          </p>
+        </div>
+      ),
+      okText: t('pages.jobs.confirmRerun'),
+      okButtonProps: {
+        style: {
+          backgroundColor: '#52c41a',
+          borderColor: '#52c41a',
+        },
+      },
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setBatchRerunning(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const task of manageableTasks) {
+          try {
+            if (useHttp) {
+              const fullJobResponse = await httpTaskApi.getJob(task.id);
+              const fullJob = (fullJobResponse.data as HttpTask) || task;
+              const rerunData: any = {
+                ...fullJob,
+                name: getRerunName(fullJob.name),
+                id: undefined,
+                status: undefined,
+                created_at: undefined,
+                updated_at: undefined,
+                temp_task_id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                request_body:
+                  typeof fullJob.request_body === 'string'
+                    ? fullJob.request_body
+                    : (fullJob.request_body ?? ''),
+              };
+              // Call API directly to avoid per-task toast from hook
+              const resp = await httpTaskApi.createJob(rerunData);
+              if (resp.status === 200 || resp.status === 201) successCount++;
+              else failCount++;
+            } else {
+              const fullJobResp = await llmTaskApi.getJob(task.id);
+              const fullJob = (fullJobResp as any)?.data || task;
+              const rerunData: any = {
+                ...fullJob,
+                name: getRerunName(fullJob.name),
+                id: undefined,
+                status: undefined,
+                created_at: undefined,
+                updated_at: undefined,
+                result_id: undefined,
+                temp_task_id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              };
+              if (rerunData.headers) {
+                const headerObject =
+                  typeof rerunData.headers === 'string'
+                    ? safeJsonParse(rerunData.headers, [])
+                    : rerunData.headers;
+                rerunData.headers = deepClone(headerObject) || [];
+              }
+              if (rerunData.request_payload) {
+                rerunData.request_payload =
+                  typeof rerunData.request_payload === 'string'
+                    ? rerunData.request_payload
+                    : safeJsonStringify(rerunData.request_payload);
+              }
+              if (rerunData.field_mapping) {
+                const fieldMappingObject =
+                  typeof rerunData.field_mapping === 'string'
+                    ? safeJsonParse(rerunData.field_mapping, {})
+                    : rerunData.field_mapping;
+                rerunData.field_mapping = deepClone(fieldMappingObject) || {};
+              }
+              // Call API directly to avoid per-task toast from hook
+              const resp = await llmTaskApi.createJob(rerunData);
+              if ((resp as any)?.data?.task_id) successCount++;
+              else failCount++;
+            }
+          } catch {
+            failCount++;
+          }
+        }
+
+        // Refresh task list once after all tasks are created
+        if (useHttp) {
+          httpManualRefresh();
+        } else {
+          manualRefresh();
+        }
+
+        setBatchRerunning(false);
+        setSelectedRowKeys([]);
+
+        if (failCount === 0) {
+          messageApi.success(
+            t('pages.jobs.batchRerunAllSuccess', { count: successCount })
+          );
+        } else {
+          messageApi.warning(
+            t('pages.jobs.batchRerunProgress', {
+              success: successCount,
+              fail: failCount,
+            })
+          );
+        }
+      },
+    });
+  }, [
+    selectedRowKeys,
+    activeMode,
+    httpFilteredJobs,
+    filteredJobs,
+    canManage,
+    messageApi,
+    modal,
+    t,
+    getRerunName,
+    httpManualRefresh,
+    manualRefresh,
+  ]);
+
+  /**
    * Navigate to result comparison page with selected tasks
    */
   const handleGoToCompare = useCallback(() => {
@@ -1443,21 +1603,47 @@ const LlmTasks: React.FC = () => {
             )}
             {selectedRowKeys.length > 0 && (
               <>
+                <Divider
+                  type='vertical'
+                  style={{ height: 24, margin: '0 4px' }}
+                />
+                <Tag
+                  color='blue'
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    lineHeight: '28px',
+                    padding: '0 10px',
+                  }}
+                >
+                  {t('pages.jobs.selectedCount', {
+                    count: selectedRowKeys.length,
+                  })}
+                </Tag>
+                <Button
+                  icon={<PlayCircleOutlined />}
+                  onClick={handleBatchRerun}
+                  loading={batchRerunning}
+                  className='modern-button-teal-light'
+                >
+                  {t('pages.jobs.batchRerun')}
+                </Button>
                 {selectedRowKeys.length >= 2 && selectedRowKeys.length <= 5 && (
                   <Button
-                    type='primary'
                     icon={<BarChartOutlined />}
                     onClick={handleGoToCompare}
+                    className='modern-button-teal'
                   >
-                    {`${t('pages.jobs.goToCompare')} (${t(
-                      'pages.jobs.selectedCount',
-                      {
-                        count: selectedRowKeys.length,
-                      }
-                    )})`}
+                    {t('pages.jobs.goToCompare')}
                   </Button>
                 )}
-                <Button onClick={() => setSelectedRowKeys([])}>
+                <Button
+                  type='text'
+                  size='small'
+                  icon={<CloseOutlined />}
+                  onClick={() => setSelectedRowKeys([])}
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
                   {t('pages.jobs.clearSelection')}
                 </Button>
               </>

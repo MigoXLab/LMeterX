@@ -527,15 +527,15 @@ body {
   cursor: not-allowed;
 }
 
-/* Green variant for web quick load testing button */
+/* Light purple variant for web quick load testing button */
 .modern-button-web-quick-test.ant-btn,
 .modern-button-web-quick-test.ant-btn-default,
 .modern-button-web-quick-test {
   border-radius: var(--radius-md) !important;
-  background: #22c55e !important;
-  border: 1px solid #22c55e !important;
+  background: linear-gradient(135deg, #b8a9e8 0%, #c4a0d0 100%) !important;
+  border: none !important;
   color: #ffffff !important;
-  box-shadow: 0 3px 12px rgba(34, 197, 94, 0.35) !important;
+  box-shadow: 0 3px 12px rgba(118, 75, 162, 0.25) !important;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
   font-weight: 500 !important;
 }
@@ -543,9 +543,8 @@ body {
 .modern-button-web-quick-test.ant-btn:hover:not(:disabled),
 .modern-button-web-quick-test.ant-btn-default:hover:not(:disabled),
 .modern-button-web-quick-test:hover {
-  background: #16a34a !important;
-  border-color: #16a34a !important;
-  box-shadow: 0 5px 16px rgba(22, 163, 74, 0.42) !important;
+  background: linear-gradient(135deg, #a696de 0%, #b68ec6 100%) !important;
+  box-shadow: 0 5px 16px rgba(118, 75, 162, 0.35) !important;
   transform: translateY(-1px);
   color: #ffffff !important;
 }
@@ -553,8 +552,7 @@ body {
 .modern-button-web-quick-test.ant-btn:active:not(:disabled),
 .modern-button-web-quick-test.ant-btn-default:active:not(:disabled),
 .modern-button-web-quick-test:active {
-  background: #15803d !important;
-  border-color: #15803d !important;
+  background: linear-gradient(135deg, #9584d4 0%, #a87ebc 100%) !important;
   color: #ffffff !important;
 }
 
@@ -562,8 +560,88 @@ body {
 .modern-button-web-quick-test[disabled],
 .modern-button-web-quick-test.ant-btn:disabled,
 .modern-button-web-quick-test.ant-btn-default:disabled {
-  background: rgba(34, 197, 94, 0.45) !important;
-  border: 1px solid rgba(34, 197, 94, 0.45) !important;
+  background: linear-gradient(135deg, rgba(184, 169, 232, 0.5) 0%, rgba(196, 160, 208, 0.5) 100%) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Macaron blue – deeper variant (for "Rerun" button) */
+.modern-button-teal-light.ant-btn,
+.modern-button-teal-light.ant-btn-default,
+.modern-button-teal-light {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #5b9bd5 0%, #6babdb 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(91, 155, 213, 0.35) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+
+.modern-button-teal-light.ant-btn:hover:not(:disabled),
+.modern-button-teal-light.ant-btn-default:hover:not(:disabled),
+.modern-button-teal-light:hover {
+  background: linear-gradient(135deg, #4a8cc8 0%, #5a9dd0 100%) !important;
+  box-shadow: 0 5px 16px rgba(91, 155, 213, 0.45) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+
+.modern-button-teal-light.ant-btn:active:not(:disabled),
+.modern-button-teal-light.ant-btn-default:active:not(:disabled),
+.modern-button-teal-light:active {
+  background: linear-gradient(135deg, #3e7dba 0%, #4c90c6 100%) !important;
+  color: #ffffff !important;
+}
+
+.modern-button-teal-light:disabled,
+.modern-button-teal-light[disabled],
+.modern-button-teal-light.ant-btn:disabled,
+.modern-button-teal-light.ant-btn-default:disabled {
+  background: linear-gradient(135deg, rgba(91, 155, 213, 0.45) 0%, rgba(107, 171, 219, 0.45) 100%) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Macaron blue – lighter variant (for "Compare" button) */
+.modern-button-teal.ant-btn,
+.modern-button-teal.ant-btn-default,
+.modern-button-teal {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #89c4f4 0%, #a0d2f7 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(137, 196, 244, 0.35) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+
+.modern-button-teal.ant-btn:hover:not(:disabled),
+.modern-button-teal.ant-btn-default:hover:not(:disabled),
+.modern-button-teal:hover {
+  background: linear-gradient(135deg, #74b8f0 0%, #8ec8f5 100%) !important;
+  box-shadow: 0 5px 16px rgba(137, 196, 244, 0.45) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+
+.modern-button-teal.ant-btn:active:not(:disabled),
+.modern-button-teal.ant-btn-default:active:not(:disabled),
+.modern-button-teal:active {
+  background: linear-gradient(135deg, #60aced 0%, #7dbef3 100%) !important;
+  color: #ffffff !important;
+}
+
+.modern-button-teal:disabled,
+.modern-button-teal[disabled],
+.modern-button-teal.ant-btn:disabled,
+.modern-button-teal.ant-btn-default:disabled {
+  background: linear-gradient(135deg, rgba(137, 196, 244, 0.45) 0%, rgba(160, 210, 247, 0.45) 100%) !important;
+  border: none !important;
   color: rgba(255, 255, 255, 0.7) !important;
   box-shadow: none !important;
   cursor: not-allowed;

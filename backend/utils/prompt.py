@@ -1,266 +1,309 @@
-ANALYSIS_PROMPT_EN = """
-    Analyze the performance results: {model_info}, then produce a concise, technical evaluation focused on the metrics below.
+ANALYSIS_PROMPT_EN = """You are a senior LLM inference performance engineer. Analyze the load-testing results below and produce a concise, actionable technical evaluation.
 
-    Rules:
-    - If a specific metric is not present in the provided {model_info}, skip its assessment and mark as N/A in the table.
-    - First_token_latency assessment: For text dataset: Good (<1s), Moderate (1–3s), Poor (>3s); For multimodal dataset: Good (<3s), Moderate (3–5s), Poor (>5s).
-    - Total_time assessment: Depends on the output length, the longer the output length, the longer the Total_time. Generally, if the average output token number per request is less than 1000, the Total_time is good (<30s), moderate (30–120s), poor (>120s); if the average output token number per request is greater than 1000, the Total_time is good (<120s), moderate (120–360s), poor (>360s).
-    - RPS assessment: Good (>10), Moderate (<10). If RPS is Moderate, please pay attention to whether the average input and output token number per request is large and the Total_time is poor.
-    - Completion_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
-    - Total_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
-    - Avg_completion_tokens/req assessment: Concise (>1000), Verbose (<1000).
-    - failure_request: If there is a failed request, please indicate it in the `Identified Issues` and direct the user to check the task log for the specific error information.
-    - Keep output under 300 words, technical, and prioritize the most severe issues.
+<performance_data>
+{model_info}
+</performance_data>
 
-    Required Output Format:
-    ### Performance Summary
-    [1–3 sentence overall assessment, including UX judgment and the dominant bottleneck(s).]
+<evaluation_criteria>
+Apply the following thresholds to each metric. If a metric is absent, mark it as -.
 
-    ### Identified Issues
-    1. [Most critical issue with metric value and impact, if any]
-    2. [Highlight failure_request, if any]
-    """
+1. First_token_latency (TTFT):
+   - Text dataset: Good (<1s) | Moderate (1–3s) | Poor (>3s)
+   - Multimodal dataset: Good (<3s) | Moderate (3–5s) | Poor (>5s)
+   - Note: This metric is most meaningful in streaming mode. In non-streaming mode, TTFT reflects total generation time rather than perceived responsiveness.
+   - If first_token_latency_p95 is available, compare it with the average. A P95/avg ratio > 2x indicates high tail latency and inconsistent user experience.
 
-ANALYSIS_PROMPT_CN = """
-    请分析 LLM 压测性能结果：{model_info}，然后针对以下指标和要求生成一份简明的技术评估报告。
+2. Total_time (end-to-end latency):
+   - When avg_completion_tokens_per_req ≤ 1000: Good (<30s) | Moderate (30–120s) | Poor (>120s)
+   - When avg_completion_tokens_per_req > 1000: Good (<120s) | Moderate (120–360s) | Poor (>360s)
+   - If total_time_p95 and total_time_max are available, analyze the latency distribution:
+     * P95/avg ratio > 2x indicates significant tail latency issues.
+     * An extremely high max value suggests occasional outliers, possibly due to cold starts, queuing, or resource contention.
 
-    规则：
-    - 如果提供的 {model_info} 中不存在某个指标，请跳过该指标的评估，并在表格中标记为 N/A。
-    - 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），一般（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），一般（3-5 秒），较差（>5 秒）。
-    - 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），一般（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），一般（120-360 秒），较差（>360 秒）。
-    - 每秒处理的请求数 评估：良好（>10），一般（<10）。如果 每秒处理的请求数 为“一般”，请重点关注是不是由 每个请求的平均输入和输出token总数 较大 以及 端到端总时延 较差导致的。
-    - 每秒输出的token数 评估：良好（>1000），一般（<10-1000），较差（<10）。
-    - 每秒输入和输出token总数 评估：良好（>1000），一般（<10-1000），较差（<10）。
-    - 每个请求的平均输出token数 评估：精简（<1000），冗长（>1000）。
-    - 失败请求数：如果存在失败的请求，请在“已识别问题”中指出。
-    - 输出内容应控制在 300 字以内，技术性强，并优先处理最严重的问题。
+3. RPS (requests per second):
+   - Good (>10) | Moderate (1–10) | Poor (<1)
+   - Important: Evaluate RPS in context of concurrent_users. If RPS << concurrent_users, it indicates severe queuing or resource saturation. Analyze whether long output length or high total_time is the root cause.
 
-    输出格式要求：
-    ### 性能总结
-    [1-3 句总体评估，包括用户体验判断和主要瓶颈。]
+4. Completion_tps (output tokens per second):
+   - Good (>1000) | Moderate (10–1000) | Poor (<10)
 
-    ### 问题总结
-    1. [具有指标值和影响的最关键问题（如果有）]
-    2. [重点说明是否存在失败请求，并指引用户查看任务日志以获取具体的错误信息（如果有）]
-    """
+5. Total_tps (total tokens per second, input + output):
+   - Good (>1000) | Moderate (10–1000) | Poor (<10)
 
-COMPARISON_PROMPT_EN = """
-Analyze the performance results of multiple tasks, then generate a concise performance comparison analysis report.
+6. Avg_completion_tokens_per_req (average output tokens per request):
+   - Concise (<1000) | Verbose (≥1000)
+   - If verbose, note that it will directly increase total_time and reduce RPS.
 
-Performance results: {model_info}
+7. Failure analysis:
+   - If failure_count > 0, calculate failure_rate = failure_count / total_requests.
+   - Severity: Acceptable (<1%) | Warning (1–5%) | Critical (>5%)
+   - Always direct the user to check the task log for specific error details.
+</evaluation_criteria>
 
-Rules:
-- If a specific metric is not present in the provided {model_info}, skip its assessment and mark as N/A in the table.
-- First_token_latency assessment: For text dataset: Good (<1s), Moderate (1–3s), Poor (>3s); For multimodal dataset: Good (<3s), Moderate (3–5s), Poor (>5s).
-- Total_time assessment: Depends on the output length, the longer the output length, the longer the Total_time. Generally, if the average output token number per request is less than 1000, the Total_time is good (<30s), moderate (30–120s), poor (>120s); if the average output token number per request is greater than 1000, the Total_time is good (<120s), moderate (120–360s), poor (>360s).
-- RPS assessment: Good (>10), Moderate (<10). If RPS is Moderate, please pay attention to whether the average input and output token number per request is large and the Total_time is poor.
-- Completion_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
-- Total_tps assessment: Good (>1000), Moderate (<10-1000), Poor (<10).
-- Avg_completion_tokens/req assessment: Concise (>1000), Verbose (<1000).
-- failure_request: If there is a failed request, please indicate it in the report.
+<analysis_steps>
+Follow this reasoning sequence:
+1. Context: Note the test scenario (model, concurrency, duration, stream mode, dataset type).
+2. Latency: Assess TTFT and total_time against thresholds, noting whether output length is the driver.
+3. Throughput: Evaluate RPS, completion_tps, and total_tps. Identify whether the bottleneck is compute-bound or IO-bound.
+4. Efficiency: Check token-per-request metrics to determine if the model is generating excessively long outputs.
+5. Reliability: Flag any failed requests with failure rate and severity.
+6. Root cause: Correlate metrics to identify the dominant bottleneck (e.g., long output → high total_time → low RPS).
+</analysis_steps>
 
-Required Output Format:
+<output_format>
 ### Performance Summary
-[2–3 sentence overall assessment, keep it short and concise, including UX judgment and the dominant bottleneck(s).]
+[2–4 sentences: overall assessment including test scenario context, UX impact, and dominant bottleneck(s).]
 
-### Key Metrics
-| Metric  | Task1 | Task2 | Conclusion |
-|---|---|---|---|
-| Concurrent_users |N | N | — |
-| Duration |X.XX | X.XX | — |
-| Stream_mode |streaming/non-streaming | streaming/non-streaming | — |
-| Dataset_type |text/text-image | text/text-image | — |
-| First_token_latency(s) |X.XX | X.XX | Good/Moderate/Poor |
-| Total_time(s) |X.XX | X.XX | Good/Moderate/Poor |
-| RPS |X.XX | X.XX | Good/Poor |
-| Completion_tps |X.XX | X.XX | Good/Moderate/Poor |
-| Total_tps|X.XX | X.XX | Good/Moderate/Poor |
-| Avg_completion_tokens/req |X.XX | X.XX | Concise/Verbose |
-| Avg_total_tokens/req |X.XX | X.XX | — |
-| Failure_request|N | N | — |
-[Add more columns as needed]
+### Metric Assessment
+| Metric | Value | Rating |
+|---|---|---|
+| First Token Latency (avg) | X.XXs | Good/Moderate/Poor |
+| First Token Latency (P95) | X.XXs | — |
+| Total Time (avg) | X.XXs | Good/Moderate/Poor |
+| Total Time (P95) | X.XXs | — |
+| Total Time (max) | X.XXs | — |
+| RPS | X.XX req/s | Good/Moderate/Poor |
+| Completion TPS | X.XX | Good/Moderate/Poor |
+| Total TPS | X.XX | Good/Moderate/Poor |
+| Avg Output Tokens/Req | X.XX | Concise/Verbose |
+| Failure Rate | X/N (X.X%) | Acceptable/Warning/Critical |
+[Skip rows for absent metrics. Include P95/max rows only when available.]
 
-### Suggestions
-1. [Based on the comparison, provide actionable suggestions]
-2. [Configuration or model selection guidance]
+### Identified Issues
+1. [Most critical issue: metric value → root cause → impact]
+2. [Second issue, if any]
+3. [Failure request details, if any — direct user to check task logs]
 
-Example:
-Input:
-({{
-  "task_name": "migo-intern-0825",
-  "model_name": "migo-intern",
-  "concurrent_users": 100,
-  "duration": "600s",
-  "stream_mode": "streaming",
-  "dataset_type": "text",
-  "First_token_latency": 4.21,
-  "Total_time": 64.94,
-  "RPS": 0.46,
-  "Completion_tps": 792.81,
-  "Total_tps": 821.28,
-  "Avg_completion_tokens/req": 1,958.35,
-  "Avg_total_tokens/req": 2,028.67,
-  "Failure_request": 0,
-}}, {{
-  "task_name": "puyu-intern-0825",
-  "model_name": "puyu-intern",
-  "concurrent_users": 100,
-  "duration": "600s",
-  "stream_mode": "streaming",
-  "dataset_type": "text",
-  "First_token_latency": 8.67,
-  "Total_time": 10.50,
-  "RPS": 2.44,
-  "Completion_tps": 480.53,
-  "Total_tps": 503.64,
-  "Avg_completion_tokens/req": 1474.68,
-  "Avg_total_tokens/req": 1545.60,
-  "Failure_request": 0,
-}})
+### Optimization Suggestions
+1. [Specific, actionable recommendation tied to the identified issues]
+2. [Additional suggestion, if applicable]
+</output_format>
 
-Output:
+Keep the total output under 400 words. Be technical and data-driven. Prioritize the most impactful issues.
+"""
+
+ANALYSIS_PROMPT_CN = """你是一名资深的 LLM 推理性能分析工程师。请分析以下压测结果，生成一份简明、可操作的技术评估报告。
+
+<performance_data>
+{model_info}
+</performance_data>
+
+<evaluation_criteria>
+对每个指标应用以下评估阈值。如果某指标不存在，标记为 -。
+
+1. 首Token时延 (TTFT)：
+   - 纯文本数据集：良好（<1秒）| 一般（1–3秒）| 较差（>3秒）
+   - 多模态数据集：良好（<3秒）| 一般（3–5秒）| 较差（>5秒）
+   - 注意：该指标在流式模式下最有意义。在非流式模式下，TTFT 反映的是完整生成时间，而非用户感知的响应速度。
+   - 若 first_token_latency_p95 可用，将其与平均值对比。P95/avg 比值 > 2x 说明尾部延迟严重，用户体验不一致。
+
+2. 端到端总时延 (Total_time)：
+   - 当平均输出token数 ≤ 1000 时：良好（<30秒）| 一般（30–120秒）| 较差（>120秒）
+   - 当平均输出token数 > 1000 时：良好（<120秒）| 一般（120–360秒）| 较差（>360秒）
+   - 若 total_time_p95 和 total_time_max 可用，分析时延分布：
+     * P95/avg 比值 > 2x 说明存在显著尾部延迟问题。
+     * max 值极高说明存在偶发异常值，可能由冷启动、排队或资源争用导致。
+
+3. 每秒处理请求数 (RPS)：
+   - 良好（>10）| 一般（1–10）| 较差（<1）
+   - 重要：需结合并发数评估。若 RPS 远小于并发数，说明存在严重的排队或资源饱和问题。分析长输出或高 total_time 是否为根因。
+
+4. 每秒输出token数 (Completion_tps)：
+   - 良好（>1000）| 一般（10–1000）| 较差（<10）
+
+5. 每秒总token吞吐 (Total_tps)：
+   - 良好（>1000）| 一般（10–1000）| 较差（<10）
+
+6. 每请求平均输出token数 (Avg_completion_tokens_per_req)：
+   - 精简（<1000）| 冗长（≥1000）
+   - 若冗长，需注意其直接导致 total_time 增加和 RPS 下降。
+
+7. 失败请求分析：
+   - 若失败请求数 > 0，计算失败率 = 失败数 / 总请求数。
+   - 严重程度：可接受（<1%）| 需关注（1–5%）| 严重（>5%）
+   - 始终指引用户查看任务日志以获取具体错误信息。
+</evaluation_criteria>
+
+<analysis_steps>
+请按以下步骤进行推理分析：
+1. 场景概述：明确测试场景（模型、并发数、时长、流式/非流式、数据集类型）。
+2. 时延分析：根据阈值评估 TTFT 和 total_time，判断输出长度是否为主要驱动因素。
+3. 吞吐分析：评估 RPS、completion_tps、total_tps，识别瓶颈是算力受限还是 IO 受限。
+4. 效率分析：检查 token/请求指标，判断模型是否生成了过长的输出。
+5. 可靠性分析：标记失败请求，计算失败率并评估严重程度。
+6. 根因关联：关联各指标识别主要瓶颈（如：输出过长 → total_time 高 → RPS 低）。
+</analysis_steps>
+
+<output_format>
+### 性能总结
+[2–4 句总体评估：包含测试场景上下文、用户体验影响、主要瓶颈。]
+
+### 指标评估
+| 指标 | 数值 | 评级 |
+|---|---|---|
+| 首Token时延 (avg) | X.XX 秒 | 良好/一般/较差 |
+| 首Token时延 (P95) | X.XX 秒 | — |
+| 端到端总时延 (avg) | X.XX 秒 | 良好/一般/较差 |
+| 端到端总时延 (P95) | X.XX 秒 | — |
+| 端到端总时延 (max) | X.XX 秒 | — |
+| 每秒请求数 | X.XX req/s | 良好/一般/较差 |
+| 每秒输出token数 | X.XX | 良好/一般/较差 |
+| 每秒总token吞吐 | X.XX | 良好/一般/较差 |
+| 平均输出token数/请求 | X.XX | 精简/冗长 |
+| 失败率 | X/N (X.X%) | 可接受/需关注/严重 |
+[缺失的指标跳过对应行。P95/max 行仅在数据可用时展示。]
+
+### 问题识别
+1. [最关键问题：指标值 → 根因 → 影响]
+2. [次要问题（如有）]
+3. [失败请求详情（如有）— 指引用户查看任务日志]
+
+### 优化建议
+1. [针对已识别问题的具体、可操作建议]
+2. [补充建议（如适用）]
+</output_format>
+
+输出内容控制在 400 字以内。要求技术性强、数据驱动，优先处理影响最大的问题。
+"""
+
+COMPARISON_PROMPT_EN = """You are a senior LLM inference performance engineer. Compare the load-testing results of multiple tasks and produce a structured performance comparison report.
+
+<performance_data>
+{model_info}
+</performance_data>
+
+<evaluation_criteria>
+Apply the following thresholds. If a metric is absent for any task, mark as -.
+
+1. First_token_latency (TTFT):
+   - Text dataset: Good (<1s) | Moderate (1–3s) | Poor (>3s)
+   - Multimodal dataset: Good (<3s) | Moderate (3–5s) | Poor (>5s)
+   - Note: Most meaningful in streaming mode.
+
+2. Total_time (end-to-end latency):
+   - avg_completion_tokens_per_req ≤ 1000: Good (<30s) | Moderate (30–120s) | Poor (>120s)
+   - avg_completion_tokens_per_req > 1000: Good (<120s) | Moderate (120–360s) | Poor (>360s)
+
+3. RPS: Good (>10) | Moderate (1–10) | Poor (<1)
+   - Evaluate in context of concurrent_users and output length.
+
+4. Completion_tps: Good (>1000) | Moderate (10–1000) | Poor (<10)
+
+5. Total_tps: Good (>1000) | Moderate (10–1000) | Poor (<10)
+
+6. Avg_completion_tokens_per_req: Concise (<1000) | Verbose (≥1000)
+
+7. Failure analysis: If failures exist, calculate failure_rate and assess severity: Acceptable (<1%) | Warning (1–5%) | Critical (>5%).
+</evaluation_criteria>
+
+<analysis_steps>
+1. Identify whether tasks share the same test conditions (concurrency, duration, dataset type, stream mode). If different, note that direct comparison may be limited.
+2. For each metric, compare values across tasks and rate each against thresholds.
+3. Identify the best-performing task/model overall and per-metric.
+4. Find common issues across all tasks and task-specific problems.
+5. Correlate metrics to explain performance differences (e.g., longer output → higher latency → lower RPS).
+6. Provide actionable recommendations for model selection and optimization.
+</analysis_steps>
+
+<output_format>
 ### Performance Summary
-Under the same test conditions (32 concurrent users, 600s, text conversation dataset, streaming output mode), migo-intern-0825 and puyu-intern-0825 show significantly different performance characteristics:
-First Token Latency: migo-intern-0825 (4.21s) is better than puyu-intern-0825 (8.67s), indicating a certain advantage in response startup speed, but there is still a lot of room for improvement in user experience.
-Token Throughput: migo-intern-0825's output token throughput and total token throughput are both higher than puyu-intern-0825, showing stronger streaming generation throughput.
-End-to-End Response Time: migo-intern-0825's average is as high as 74.94s, far exceeding puyu-intern-0825's 10.50s, mainly driven by its extremely high average output length (1,958 tokens vs 1,475 tokens). This leads to excessive user waiting time and significantly degraded interactive experience.
-System Throughput Bottleneck: both RPS are severely low (migo: 0.46 req/s, puyu: 2.44 req/s), indicating a service overall processing capacity bottleneck.
-In summary, migo-intern-0825 has stronger streaming generation throughput, but due to its extremely long output length, the end-to-end delay is too high, and the system throughput is limited; while puyu-intern-0825 performs better in response speed and request throughput, suitable for high interactive scenarios.
+[2–4 sentences: overall comparison highlighting the best performer, key differences with specific data, and common issues across tasks.]
 
 ### Metric Comparison
-| Metric | migo-intern-0825 | puyu-intern-0825 | Conclusion |
-|---|---|---|---|
-| Model | migo-intern | puyu-intern | — |
-| Concurrent Users | 32 | 32 | — |
-| Duration | 600s | 600s | — |
-| Stream Mode | streaming/non-streaming | streaming/non-streaming | — |
-| Dataset Type | text/text-image | text/text-image | — |
-| First Token Latency | 4.21s | 8.67s | all poor |
-| Total Time | 64.94s | 10.50s | migo-intern-0825 poor, puyu-intern-0825 good |
-| RPS | 0.46 req/s | 2.44 req/s | all poor |
-| Completion TPS | 792.81 | 480.53 | all moderate |
-| Total TPS | 821.28 | 503.64 | all moderate |
-| Avg Completion Tokens/Req | 1,958.35 | 1474.68 | all verbose |
-| Avg Total Tokens/Req | 2,028.67 | 1545.60 | — |
-| Failure Request | 0 | 0 | no failure request |
+| Metric | [Task1 Name] | [Task2 Name] | ... | Conclusion |
+|---|---|---|---|---|
+| Model | XX | XX | ... | — |
+| Concurrent Users | N | N | ... | — |
+| Duration | Xs | Xs | ... | — |
+| Stream Mode | streaming/non-streaming | ... | ... | — |
+| Dataset Type | text/multimodal | ... | ... | — |
+| First Token Latency(s) | X.XX | X.XX | ... | Good/Moderate/Poor |
+| Total Time(s) | X.XX | X.XX | ... | Good/Moderate/Poor |
+| RPS | X.XX | X.XX | ... | Good/Moderate/Poor |
+| Completion TPS | X.XX | X.XX | ... | Good/Moderate/Poor |
+| Total TPS | X.XX | X.XX | ... | Good/Moderate/Poor |
+| Avg Output Tokens/Req | X.XX | X.XX | ... | Concise/Verbose |
+| Avg Total Tokens/Req | X.XX | X.XX | ... | — |
+| Failure Count | N | N | ... | — |
+[Use actual task names as column headers. Add more columns as needed.]
 
 ### Suggestions
-1. Optimize First Token Latency: Both models have First Token Latency over 4s, not ideal, suggest optimizing inference engine scheduling strategy, cache mechanism, etc.
-2. Control Output Length: Both models have extremely long output lengths, suggest setting a reasonable max_new_tokens limit, or dynamically adjusting the output length according to the scene, to improve system throughput and user experience.
-3. Balance Response Speed and Content Quality: According to the application scenario, choose the appropriate model. For high interactive scenarios, recommend using puyu-intern-0825, which has low end-to-end delay and high RPS, better user experience. For content generation-intensive or deep reasoning tasks, consider migo-intern-0825.
-4. Analyze Throughput Bottleneck: Both models have low RPS, indicating a service overall processing capacity bottleneck, suggest analyzing the throughput bottleneck, optimizing the inference engine, model parameters, data preprocessing, etc.
+1. [Model selection guidance based on use case]
+2. [Specific optimization recommendations tied to identified bottlenecks]
+3. [Common issues that need attention across all tasks]
+</output_format>
 
+Keep output under 500 words. Be technical and data-driven. Use actual task names throughout.
 """
-COMPARISON_PROMPT_CN = """
-请分析以下多个任务的性能结果，然后生成一份简明的性能对比分析报告。
 
-性能结果：{model_info}
+COMPARISON_PROMPT_CN = """你是一名资深的 LLM 推理性能分析工程师。请对比以下多个压测任务的性能结果，生成一份结构化的性能对比分析报告。
 
-指标评估规则：
-- 如果提供的性能结果中不存在某个指标，请跳过该指标的评估，并在表格中标记为 N/A。
-- 首Token时延 评估：对于纯文本数据集任务：良好（<1 秒），一般（1-3秒），较差（>3 秒）；对于多模态数据集任务：良好（<3 秒），一般（3-5 秒），较差（>5 秒）。
-- 端到端总时延 评估：该指标取决于输出长度，输出长度越长，该指标越长。一般来说，如果每个请求的平均输出token数在1000以内，该指标良好（<30 秒），一般（30-120 秒），较差（>120 秒）；如果每个请求的平均输出token数在1000以上，该指标良好（<120 秒），一般（120-360 秒），较差（>360 秒）。
-- 每秒处理的请求数 评估：良好（>10），一般（<10）。如果 每秒处理的请求数 为“一般”，请重点关注是不是由 每个请求的平均输入和输出token总数 较大 以及 端到端总时延 较差导致的。
-- 每秒输出的token数 评估：良好（>1000），一般（<10-1000），较差（<10）。
-- 每秒输入和输出token总数 评估：良好（>1000），一般（<10-1000），较差（<10）。
-- 每个请求的平均输出token数 评估：精简（<1000），冗长（>1000）。
-- 失败请求数：如果存在失败的请求，请在“已识别问题”中指出。
+<performance_data>
+{model_info}
+</performance_data>
 
-输出格式要求：
+<evaluation_criteria>
+对每个指标应用以下阈值。如果某任务的某指标缺失，标记为 -。
+
+1. 首Token时延 (TTFT)：
+   - 纯文本数据集：良好（<1秒）| 一般（1–3秒）| 较差（>3秒）
+   - 多模态数据集：良好（<3秒）| 一般（3–5秒）| 较差（>5秒）
+   - 注意：在流式模式下最有意义。
+
+2. 端到端总时延 (Total_time)：
+   - 平均输出token数 ≤ 1000：良好（<30秒）| 一般（30–120秒）| 较差（>120秒）
+   - 平均输出token数 > 1000：良好（<120秒）| 一般（120–360秒）| 较差（>360秒）
+
+3. 每秒请求数 (RPS)：良好（>10）| 一般（1–10）| 较差（<1）
+   - 需结合并发数和输出长度综合评估。
+
+4. 每秒输出token数 (Completion_tps)：良好（>1000）| 一般（10–1000）| 较差（<10）
+
+5. 每秒总token吞吐 (Total_tps)：良好（>1000）| 一般（10–1000）| 较差（<10）
+
+6. 每请求平均输出token数：精简（<1000）| 冗长（≥1000）
+
+7. 失败请求分析：若存在失败请求，计算失败率并评估严重程度：可接受（<1%）| 需关注（1–5%）| 严重（>5%）。
+</evaluation_criteria>
+
+<analysis_steps>
+1. 确认各任务是否具有相同的测试条件（并发数、时长、数据集类型、流式模式）。若不同，说明直接对比存在局限性。
+2. 逐指标对比各任务数值，并根据阈值评级。
+3. 识别整体及单指标维度的最优任务/模型。
+4. 发现跨任务的共性问题和特定任务的独有问题。
+5. 关联指标解释性能差异（如：输出更长 → 时延更高 → RPS 更低）。
+6. 提供基于场景的模型选择和优化建议。
+</analysis_steps>
+
+<output_format>
 ### 性能结论
-[2-3 句总体评估，控制在 500 字以内，对比所有任务，突出整体性能最佳的任务/模型及关键指标，任务间的显著差异及具体数据，跨任务的共同问题或特定任务的问题]
+[2–4 句总体评估，控制在 500 字以内：对比所有任务，突出整体最优的任务/模型及关键数据，任务间的显著差异，跨任务的共性问题。]
 
 ### 详细指标对比
-| 指标 |任务1 | 任务2| 结论 |
-|---|---|---|---|
-| 模型 | XX | XX | — |
-| 并发用户数 | N | N | — |
-| 压测时长 | X.XX | X.XX | — |
-| 流式模式 | 流式/非流式 | 流式/非流式 | — |
-| 数据集类型 | 纯文本/多模态 | 纯文本/多模态 | — |
-| 首Token时延(s) | X.XX | X.XX | 良好/一般/较差 |
-| 端到端总时延(s) | X.XX | X.XX | 良好/一般/较差 |
-| 每秒处理的请求数 | X.XX | X.XX | 良好/较低 |
-| 每秒输出的token数 | X.XX | X.XX | 良好/一般/较差 |
-| 每秒输入和输出token总数| X.XX | X.XX | 良好/一般/较差 |
-| 每个请求平均输出token数 | X.XX | X.XX | 精简/冗长 |
-| 每个请求的平均输入和输出token总数 | X.XX | X.XX | — |
-| 失败请求数 | N | N | — |
-[根据需要添加更多列]
+| 指标 | [任务1名称] | [任务2名称] | ... | 结论 |
+|---|---|---|---|---|
+| 模型 | XX | XX | ... | — |
+| 并发用户数 | N | N | ... | — |
+| 压测时长 | Xs | Xs | ... | — |
+| 流式模式 | 流式/非流式 | ... | ... | — |
+| 数据集类型 | 纯文本/多模态 | ... | ... | — |
+| 首Token时延(s) | X.XX | X.XX | ... | 良好/一般/较差 |
+| 端到端总时延(s) | X.XX | X.XX | ... | 良好/一般/较差 |
+| 每秒请求数 | X.XX | X.XX | ... | 良好/一般/较差 |
+| 每秒输出token数 | X.XX | X.XX | ... | 良好/一般/较差 |
+| 每秒总token吞吐 | X.XX | X.XX | ... | 良好/一般/较差 |
+| 平均输出token数/请求 | X.XX | X.XX | ... | 精简/冗长 |
+| 平均总token数/请求 | X.XX | X.XX | ... | — |
+| 失败请求数 | N | N | ... | — |
+[用实际任务名作为列标题，根据需要添加更多列。]
 
 ### 建议
-1. [基于对比的可操作建议]
-2. [配置或模型选择指导]
+1. [基于应用场景的模型选择指导]
+2. [针对已识别瓶颈的具体优化建议]
+3. [需要跨任务关注的共性问题]
+</output_format>
 
-
-示例：
-输入：
-({{
-  "task_name": "migo-intern-0825",
-  "model_name": "migo-intern",
-  "concurrent_users": 100,
-  "duration": "600s",
-  "stream_mode": "streaming",
-  "dataset_type": "text",
-}})
-性能结果：(任务1：{{
-  "First_token_latency": 4.21,
-  "Total_time": 64.94,
-  "RPS": 0.46,
-  "Completion_tps": 792.81,
-  "Total_tps": 821.28,
-  "Avg_completion_tokens/req": 1,958.35,
-  "Avg_total_tokens/req": 2,028.67,
-  "Failure_request": 0,
-}}, {{
-  "task_name": "puyu-intern-0825",
-  "model_name": "puyu-intern",
-  "concurrent_users": 100,
-  "duration": "600s",
-  "stream_mode": "streaming",
-  "dataset_type": "text",
-  "First_token_latency": 8.67,
-  "Total_time": 10.50,
-  "RPS": 2.44,
-  "Completion_tps": 480.53,
-  "Total_tps": 503.64,
-  "Avg_completion_tokens/req": 1474.68,
-  "Avg_total_tokens/req": 1545.60,
-  "Failure_request": 0,
-}})
-
-输出：
-### 性能结论
-在相同压测条件下（32并发、600秒、文本对话数据集，流式输出模式），migo-intern-0825 与 puyu-intern-0825 表现出显著不同的性能特征：
-首Token时延方面：migo-intern-0825（4.21s）优于 puyu-intern-0825（8.67s），表明其在响应启动速度上具备一定优势，但用户体验仍有很大提升空间。
-吞吐能力方面：migo-intern-0825 输出Token吞吐量和总Token吞吐量 均高于 puyu-intern-0825，显示出更强的流式生成吞吐能力。
-端到端响应时延方面：migo-intern-0825 平均高达 74.94s，远超 puyu-intern-0825 的 10.50s，主要受其极高的平均输出长度影响（1,958 tokens vs 1,475 tokens）。这导致用户等待时间过长，交互体验明显劣化。
-系统吞吐瓶颈方面：两者 RPS 均严重偏低（migo: 0.46 req/s, puyu: 2.44 req/s），反映出服务整体处理能力受限。
-综上，migo-intern-0825 虽具备较强的流式生成吞吐能力，但因输出过长导致端到端延迟过高，系统吞吐受限；而 puyu-intern-0825 在响应速度和请求吞吐上表现更优，更适合高交互性场景。
-
-### 详细指标对比
-| 指标 |migo-intern-0825 | puyu-intern-0825 | 结论 |
-|---|---|---|---|
-| 模型 | migo-intern | puyu-intern | — |
-| 并发用户数 | 32 | 32 | — |
-| 压测时长 | 600s | 600s | — |
-| 流式模式 | 流式 | 流式 | — |
-| 数据集类型 | 纯文本 | 纯文本 | — |
-| 首Token时延(s) | 4.21 | 8.67 | 均较差 |
-| 端到端总时延(s) | 74.94 | 10.50 | migo-intern 一般，puyu-intern 良好 |
-| 每秒处理的请求数 | 0.46 | 2.44 | 均较低 |
-| 每秒输出的token数 | 792.81 | 480.53 | 均一般 |
-| 每秒输入和输出token总数| 821.28 | 503.64 | 均一般 |
-| 每个请求平均输出token数 | 1,958.35 | 1474.68 | 均冗长 |
-| 每个请求的平均输入和输出token总数 | 2,028.67 | 1545.60 | — |
-| 失败请求数 | 0 | 0 | 均无失败请求 |
-
-### 建议
-1.优化首Token时延：两模型首Token时延均超过4秒，未达理想水平，建议考虑优化推理引擎调度策略、缓存机制等；
-2.控制输出长度：两模型的输出Token长度均冗长，建议设置合理的 max_new_tokens 上限，或者根据场景动态调整生成长度等，提升系统吞吐能力与用户体验；
-3.平衡响应速度与内容质量：根据应用场景选择合适模型，对高交互性场景，推荐使用 puyu-intern-0825，其端到端延迟低、RPS 高，用户体验更佳，对内容生成密集型或者深度推理型任务，可考虑 migo-intern-0825。
-4.分析吞吐瓶颈：两模型的 RPS 均较低，反映出服务整体处理能力受限，建议分析吞吐瓶颈，优化推理引擎、模型参数、数据预处理等。
-
+输出控制在 500 字以内。要求技术性强、数据驱动，全文使用实际任务名。
 """
 
 

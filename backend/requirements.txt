@@ -10,6 +10,7 @@ greenlet
 werkzeug
 python-multipart
 httpx
+playwright
 python-magic
 requests
 aiofiles

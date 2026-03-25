@@ -5,9 +5,9 @@
  * @copyright 2025
  * */
 
-import { Dataset, JobResultLegacy } from '../types';
+import { Dataset } from '../types';
 import { LoginResponse, UserInfo } from '../types/auth';
-import { CommonJob, Job } from '../types/job';
+import { HttpTask, LlmTask } from '../types/job';
 import api, { uploadFiles } from './apiClient';
 
 type BasicFileLike =
@@ -110,22 +110,22 @@ export const datasetApi = {
   deleteDataset: (id: string) => api.delete<void>(`/datasets/${id}`),
 };
 
-// Job API methods
-export const jobApi = {
-  // Get all  jobs
+// LLM Task API methods
+export const llmTaskApi = {
+  // Get all LLM tasks
   getAllJobs: (status?: string, limit?: number, skip?: number) => {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (limit) params.append('limit', limit.toString());
     if (skip) params.append('skip', skip.toString());
 
-    return api.get<Job[]>(`/tasks?${params.toString()}`);
+    return api.get<LlmTask[]>(`/llm-tasks?${params.toString()}`);
   },
 
-  // Get a specific job by ID
-  getJob: (id: string) => api.get<Job>(`/tasks/${id}`),
+  // Get a specific task by ID
+  getJob: (id: string) => api.get<LlmTask>(`/llm-tasks/${id}`),
 
-  // Get only the status of a specific job by ID (lightweight)
+  // Get only the status of a specific task by ID (lightweight)
   getJobStatus: (id: string) =>
     api.get<{
       id: string;
@@ -133,87 +133,108 @@ export const jobApi = {
       status: string;
       error_message?: string;
       updated_at?: string;
-    }>(`/tasks/${id}/status`),
+    }>(`/llm-tasks/${id}/status`),
 
-  // Create a new job
+  // Create a new task
   createJob: (
-    data: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'status' | 'result_id'>
-  ) => api.post<Job>('/tasks', data),
+    data: Omit<
+      LlmTask,
+      'id' | 'created_at' | 'updated_at' | 'status' | 'result_id'
+    >
+  ) => api.post<LlmTask>('/llm-tasks', data),
 
-  // Update a job
-  updateJob: (id: string, data: Partial<Job>) =>
-    api.put<Job>(`/tasks/${id}`, data),
+  // Update a task
+  updateJob: (id: string, data: Partial<LlmTask>) =>
+    api.put<LlmTask>(`/llm-tasks/${id}`, data),
 
-  // Delete a job
-  deleteJob: (id: string) => api.delete<void>(`/tasks/${id}`),
+  // Delete a task
+  deleteJob: (id: string) => api.delete<void>(`/llm-tasks/${id}`),
 
-  // Stop a running job
-  stopJob: (id: string) => api.post<Job>(`/tasks/stop/${id}`),
+  // Stop a running task
+  stopJob: (id: string) => api.post<LlmTask>(`/llm-tasks/stop/${id}`),
 
   // Test API endpoint
-  testApiEndpoint: (data: any) => api.post<any>('/tasks/test', data),
+  testApiEndpoint: (data: any) => api.post<any>('/llm-tasks/test', data),
 
   // Get real-time performance metrics for a running task (incremental fetch)
   getRealtimeMetrics: (jobId: string, since: number = 0) =>
     api.get<{ status: string; data: any[]; error?: string }>(
-      `/tasks/${jobId}/realtime-metrics`,
+      `/llm-tasks/${jobId}/realtime-metrics`,
       { params: { since } }
     ),
 };
 
-// Common API job methods
-export const commonJobApi = {
+/** @deprecated Use llmTaskApi instead */
+export const jobApi = llmTaskApi;
+
+// HTTP Task API methods
+export const httpTaskApi = {
   getAllJobs: (status?: string, limit?: number, skip?: number) => {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (limit) params.append('limit', limit.toString());
     if (skip) params.append('skip', skip.toString());
 
-    return api.get<CommonJob[]>(`/common-tasks?${params.toString()}`);
+    return api.get<HttpTask[]>(`/http-tasks?${params.toString()}`);
   },
 
-  getJob: (id: string) => api.get(`/common-tasks/${id}`),
+  getJob: (id: string) => api.get(`/http-tasks/${id}`),
 
-  getJobStatus: (id: string) => api.get(`/common-tasks/${id}/status`),
+  getJobStatus: (id: string) => api.get(`/http-tasks/${id}/status`),
 
-  createJob: (data: any) => api.post<CommonJob>('/common-tasks', data),
+  createJob: (data: any) => api.post<HttpTask>('/http-tasks', data),
 
-  updateJob: (id: string, data: Partial<CommonJob>) =>
-    api.put<CommonJob>(`/common-tasks/${id}`, data),
+  updateJob: (id: string, data: Partial<HttpTask>) =>
+    api.put<HttpTask>(`/http-tasks/${id}`, data),
 
-  deleteJob: (id: string) => api.delete<void>(`/common-tasks/${id}`),
+  deleteJob: (id: string) => api.delete<void>(`/http-tasks/${id}`),
 
-  testJob: (data: any) => api.post('/common-tasks/test', data),
+  testJob: (data: any) => api.post('/http-tasks/test', data),
 
-  stopJob: (id: string) => api.post<CommonJob>(`/common-tasks/stop/${id}`),
+  stopJob: (id: string) => api.post<HttpTask>(`/http-tasks/stop/${id}`),
 
-  getJobResult: (jobId: string) => api.get(`/common-tasks/${jobId}/results`),
+  getJobResult: (jobId: string) => api.get(`/http-tasks/${jobId}/results`),
 
   // Get real-time performance metrics for a running task (incremental fetch)
   getRealtimeMetrics: (jobId: string, since: number = 0) =>
     api.get<{ status: string; data: any[]; error?: string }>(
-      `/common-tasks/${jobId}/realtime-metrics`,
+      `/http-tasks/${jobId}/realtime-metrics`,
       { params: { since } }
     ),
 };
 
+/** @deprecated Use httpTaskApi instead */
+/** @deprecated Use httpTaskApi instead */
+/** @deprecated Use httpTaskApi instead */
+export const commonJobApi = httpTaskApi;
+
 // Results API methods
 export const resultApi = {
-  // Get all results
-  getAllResults: (JobId?: string, limit?: number, skip?: number) => {
+  // Legacy wrapper: backend no longer provides a generic /results list route.
+  // Use task_id when available and resolve to the canonical LLM task result API.
+  getAllResults: (JobId?: string, _limit?: number, _skip?: number) => {
+    if (!JobId) {
+      return Promise.reject(
+        new Error(
+          'getAllResults requires job_id. Use resultApi.getJobResult(taskId) or llmTaskApi.getAllJobs().'
+        )
+      );
+    }
     const params = new URLSearchParams();
-    if (JobId) params.append('job_id', JobId);
-    if (limit) params.append('limit', limit.toString());
-    if (skip) params.append('skip', skip.toString());
-
-    return api.get<JobResultLegacy[]>(`/results?${params.toString()}`);
+    if (typeof _limit === 'number') params.append('limit', _limit.toString());
+    if (typeof _skip === 'number') params.append('skip', _skip.toString());
+    const query = params.toString();
+    const path = query
+      ? `/llm-tasks/${JobId}/results?${query}`
+      : `/llm-tasks/${JobId}/results`;
+    return api.get<any>(path);
   },
 
-  // Get a specific result by ID
-  getResult: (id: string) => api.get<JobResultLegacy>(`/results/${id}`),
+  // Legacy wrapper: kept for compatibility, id is treated as task_id.
+  getResult: (id: string) => api.get<any>(`/llm-tasks/${id}/results`),
 
   // Get the result for a specific job
-  getJobResult: (jobId: string) => api.get<any>(`/tasks/${jobId}/results`),
+  getJobResult: (jobId: string) => api.get<any>(`/llm-tasks/${jobId}/results`),
 };
 
 // Performance Comparison API methods
@@ -230,7 +251,7 @@ export const comparisonApi = {
       }>;
       status: string;
       error?: string;
-    }>('/tasks/comparison/available'),
+    }>('/llm-tasks/comparison/available'),
 
   // Compare performance metrics for selected tasks
   comparePerformance: (selectedTasks: string[]) =>
@@ -250,10 +271,10 @@ export const comparisonApi = {
       }>;
       status: string;
       error?: string;
-    }>('/tasks/comparison', { selected_tasks: selectedTasks }),
+    }>('/llm-tasks/comparison', { selected_tasks: selectedTasks }),
 
-  // Get available common API tasks for comparison
-  getAvailableCommonTasks: () =>
+  // Get available HTTP API tasks for comparison
+  getAvailableHttpTasks: () =>
     api.get<{
       data: Array<{
         task_id: string;
@@ -266,10 +287,10 @@ export const comparisonApi = {
       }>;
       status: string;
       error?: string;
-    }>('/common-tasks/comparison/available'),
+    }>('/http-tasks/comparison/available'),
 
-  // Compare performance metrics for common API tasks
-  compareCommonPerformance: (selectedTasks: string[]) =>
+  // Compare performance metrics for HTTP API tasks
+  compareHttpPerformance: (selectedTasks: string[]) =>
     api.post<{
       data: Array<{
         task_id: string;
@@ -290,7 +311,54 @@ export const comparisonApi = {
       }>;
       status: string;
       error?: string;
-    }>('/common-tasks/comparison', { selected_tasks: selectedTasks }),
+    }>('/http-tasks/comparison', { selected_tasks: selectedTasks }),
+};
+
+// Skills API (Web URL analysis)
+export const skillApi = {
+  /** Analyze a webpage URL to discover business APIs and generate loadtest configs. */
+  analyzeUrl: (data: {
+    target_url: string;
+    cookies?: Array<{ name: string; value: string }>;
+    headers?: Array<{ name: string; value: string }>;
+    wait_seconds?: number;
+    scroll?: boolean;
+    concurrent_users?: number;
+    duration?: number;
+    spawn_rate?: number;
+  }) =>
+    api.post<{
+      status: string;
+      message: string;
+      target_url: string;
+      analysis_summary: string;
+      discovered_apis: Array<{
+        name: string;
+        target_url: string;
+        method: string;
+        headers: Array<{ key: string; value: string }>;
+        request_body: string | null;
+        http_status: number | null;
+        source: string;
+        confidence: string;
+      }>;
+      loadtest_configs: Array<{
+        temp_task_id: string;
+        name: string;
+        method: string;
+        target_url: string;
+        headers: Array<{ key: string; value: string }>;
+        cookies: Array<{ key: string; value: string }>;
+        request_body: string;
+        concurrent_users: number;
+        duration: number;
+        spawn_rate: number;
+        load_mode: string;
+      }>;
+      llm_used: boolean;
+    }>('/skills/analyze-url', data, {
+      timeout: 120000, // 2 minutes timeout for page analysis
+    }),
 };
 
 // Get log content (supports incremental fetching)

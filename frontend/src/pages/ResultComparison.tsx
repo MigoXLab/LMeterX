@@ -100,11 +100,11 @@ interface SelectedTask {
   duration?: number;
 }
 
-type ComparisonMode = 'model' | 'common';
+type ComparisonMode = 'model' | 'http';
 
 const MODE_STORAGE_KEY = 'resultComparisonMode';
 
-interface CommonTaskInfo {
+interface HttpTaskInfo {
   task_id: string;
   task_name: string;
   method: string;
@@ -114,7 +114,7 @@ interface CommonTaskInfo {
   duration?: number;
 }
 
-interface CommonComparisonMetrics {
+interface HttpComparisonMetrics {
   task_id: string;
   task_name: string;
   method: string;
@@ -132,7 +132,7 @@ interface CommonComparisonMetrics {
   avg_content_length: number;
 }
 
-interface SelectedCommonTask {
+interface SelectedHttpTask {
   task_id: string;
   task_name: string;
   method: string;
@@ -160,7 +160,7 @@ interface MetricCardConfig {
   decimals?: number;
 }
 
-type CommonNumericMetricKey =
+type HttpNumericMetricKey =
   | 'avg_response_time'
   | 'p95_response_time'
   | 'min_response_time'
@@ -168,8 +168,8 @@ type CommonNumericMetricKey =
   | 'rps'
   | 'success_rate';
 
-interface CommonMetricCardConfig {
-  metricKey: CommonNumericMetricKey;
+interface HttpMetricCardConfig {
+  metricKey: HttpNumericMetricKey;
   title: string;
   description: string;
   chartTitle: string;
@@ -185,26 +185,26 @@ const ResultComparison: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>(() => {
     const urlMode = searchParams.get('mode');
-    if (urlMode === 'model' || urlMode === 'common') return urlMode;
+    if (urlMode === 'model' || urlMode === 'http') return urlMode;
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
-    return stored === 'common' ? 'common' : 'model';
+    return stored === 'http' ? 'http' : 'model';
   });
   const [loading, setLoading] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [availableTasks, setAvailableTasks] = useState<ModelTaskInfo[]>([]);
-  const [availableCommonTasks, setAvailableCommonTasks] = useState<
-    CommonTaskInfo[]
-  >([]);
+  const [availableHttpTasks, setAvailableHttpTasks] = useState<HttpTaskInfo[]>(
+    []
+  );
   const [selectedTasks, setSelectedTasks] = useState<SelectedTask[]>([]);
-  const [selectedCommonTasks, setSelectedCommonTasks] = useState<
-    SelectedCommonTask[]
+  const [selectedHttpTasks, setSelectedHttpTasks] = useState<
+    SelectedHttpTask[]
   >([]);
   const [comparisonResults, setComparisonResults] = useState<
     ComparisonMetrics[]
   >([]);
-  const [commonComparisonResults, setCommonComparisonResults] = useState<
-    CommonComparisonMetrics[]
+  const [httpComparisonResults, setHttpComparisonResults] = useState<
+    HttpComparisonMetrics[]
   >([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -241,7 +241,7 @@ const ResultComparison: React.FC = () => {
             data: ModelTaskInfo[];
             status: string;
             error?: string;
-          }>('/tasks/comparison/available');
+          }>('/llm-tasks/comparison/available');
 
           if (response.data.status === 'success') {
             setAvailableTasks(response.data.data);
@@ -253,13 +253,13 @@ const ResultComparison: React.FC = () => {
           }
         } else {
           const response = await api.get<{
-            data: CommonTaskInfo[];
+            data: HttpTaskInfo[];
             status: string;
             error?: string;
-          }>('/common-tasks/comparison/available');
+          }>('/http-tasks/comparison/available');
 
           if (response.data.status === 'success') {
-            setAvailableCommonTasks(response.data.data);
+            setAvailableHttpTasks(response.data.data);
           } else {
             messageApi.error(
               response.data.error ||
@@ -295,7 +295,7 @@ const ResultComparison: React.FC = () => {
           data: ComparisonMetrics[];
           status: string;
           error?: string;
-        }>('/tasks/comparison', {
+        }>('/llm-tasks/comparison', {
           selected_tasks: tempSelectedTasks,
         });
 
@@ -325,17 +325,17 @@ const ResultComparison: React.FC = () => {
         }
       } else {
         const response = await api.post<{
-          data: CommonComparisonMetrics[];
+          data: HttpComparisonMetrics[];
           status: string;
           error?: string;
-        }>('/common-tasks/comparison', {
+        }>('/http-tasks/comparison', {
           selected_tasks: tempSelectedTasks,
         });
 
         if (response.data.status === 'success') {
-          setCommonComparisonResults(response.data.data);
+          setHttpComparisonResults(response.data.data);
 
-          const selectedTasksData = availableCommonTasks
+          const selectedTasksData = availableHttpTasks
             .filter(task => tempSelectedTasks.includes(task.task_id))
             .map(task => ({
               task_id: task.task_id,
@@ -347,7 +347,7 @@ const ResultComparison: React.FC = () => {
               duration: task.duration,
             }));
 
-          setSelectedCommonTasks(selectedTasksData);
+          setSelectedHttpTasks(selectedTasksData);
           setIsModalVisible(false);
           setTempSelectedTasks([]);
           messageApi.success(t('pages.resultComparison.comparisonCompleted'));
@@ -366,7 +366,7 @@ const ResultComparison: React.FC = () => {
   }, [
     tempSelectedTasks,
     availableTasks,
-    availableCommonTasks,
+    availableHttpTasks,
     comparisonMode,
     messageApi,
     t,
@@ -386,7 +386,7 @@ const ResultComparison: React.FC = () => {
             data: ComparisonMetrics[];
             status: string;
             error?: string;
-          }>('/tasks/comparison', {
+          }>('/llm-tasks/comparison', {
             selected_tasks: taskIds,
           });
 
@@ -414,17 +414,17 @@ const ResultComparison: React.FC = () => {
           }
         } else {
           const response = await api.post<{
-            data: CommonComparisonMetrics[];
+            data: HttpComparisonMetrics[];
             status: string;
             error?: string;
-          }>('/common-tasks/comparison', {
+          }>('/http-tasks/comparison', {
             selected_tasks: taskIds,
           });
 
           if (response.data.status === 'success') {
-            setCommonComparisonResults(response.data.data);
+            setHttpComparisonResults(response.data.data);
 
-            const selectedTasksData = availableCommonTasks
+            const selectedTasksData = availableHttpTasks
               .filter(task => taskIds.includes(task.task_id))
               .map(task => ({
                 task_id: task.task_id,
@@ -436,7 +436,7 @@ const ResultComparison: React.FC = () => {
                 duration: task.duration,
               }));
 
-            setSelectedCommonTasks(selectedTasksData);
+            setSelectedHttpTasks(selectedTasksData);
             messageApi.success(t('pages.resultComparison.comparisonCompleted'));
           } else {
             messageApi.error(
@@ -451,7 +451,7 @@ const ResultComparison: React.FC = () => {
         setComparing(false);
       }
     },
-    [availableTasks, availableCommonTasks, messageApi, t]
+    [availableTasks, availableHttpTasks, messageApi, t]
   );
 
   // Read URL params on mount and set pending compare
@@ -462,7 +462,7 @@ const ResultComparison: React.FC = () => {
       const taskIds = tasksParam.split(',').filter(Boolean);
       if (taskIds.length >= 2 && taskIds.length <= 5) {
         const mode: ComparisonMode =
-          modeParam === 'model' || modeParam === 'common' ? modeParam : 'model';
+          modeParam === 'model' || modeParam === 'http' ? modeParam : 'model';
         pendingCompareRef.current = { taskIds, mode };
         setComparisonMode(mode);
       }
@@ -479,11 +479,11 @@ const ResultComparison: React.FC = () => {
     if (pending.mode === 'model' && availableTasks.length > 0) {
       pendingCompareRef.current = null;
       compareDirectly(pending.taskIds, pending.mode);
-    } else if (pending.mode === 'common' && availableCommonTasks.length > 0) {
+    } else if (pending.mode === 'http' && availableHttpTasks.length > 0) {
       pendingCompareRef.current = null;
       compareDirectly(pending.taskIds, pending.mode);
     }
-  }, [availableTasks, availableCommonTasks, compareDirectly]);
+  }, [availableTasks, availableHttpTasks, compareDirectly]);
 
   // Handle task selection in modal
   const handleTaskSelection = (taskId: string, checked: boolean) => {
@@ -532,8 +532,8 @@ const ResultComparison: React.FC = () => {
           setSelectedTasks([]);
           setComparisonResults([]);
         } else {
-          setSelectedCommonTasks([]);
-          setCommonComparisonResults([]);
+          setSelectedHttpTasks([]);
+          setHttpComparisonResults([]);
         }
         messageApi.success(t('pages.resultComparison.allTasksCleared'));
       },
@@ -545,7 +545,7 @@ const ResultComparison: React.FC = () => {
     const activeIds =
       comparisonMode === 'model'
         ? selectedTasks.map(task => task.task_id)
-        : selectedCommonTasks.map(task => task.task_id);
+        : selectedHttpTasks.map(task => task.task_id);
     setTempSelectedTasks(activeIds);
     setIsModalVisible(true);
   };
@@ -566,7 +566,7 @@ const ResultComparison: React.FC = () => {
       });
     }
 
-    return availableCommonTasks.filter(task => {
+    return availableHttpTasks.filter(task => {
       const matchesSearch =
         searchText === '' ||
         task.task_name.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -576,7 +576,7 @@ const ResultComparison: React.FC = () => {
       return matchesSearch;
     });
   }, [
-    availableCommonTasks,
+    availableHttpTasks,
     availableTasks,
     comparisonMode,
     searchText,
@@ -601,9 +601,9 @@ const ResultComparison: React.FC = () => {
   }, [availableTasks, comparisonMode]);
 
   const activeSelectedTasks =
-    comparisonMode === 'model' ? selectedTasks : selectedCommonTasks;
+    comparisonMode === 'model' ? selectedTasks : selectedHttpTasks;
   const activeComparisonResults =
-    comparisonMode === 'model' ? comparisonResults : commonComparisonResults;
+    comparisonMode === 'model' ? comparisonResults : httpComparisonResults;
 
   const taskColorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -619,7 +619,7 @@ const ResultComparison: React.FC = () => {
   };
 
   // Table columns for available tasks in modal
-  const availableTasksColumns: ColumnsType<ModelTaskInfo | CommonTaskInfo> =
+  const availableTasksColumns: ColumnsType<ModelTaskInfo | HttpTaskInfo> =
     useMemo(() => {
       if (comparisonMode === 'model') {
         return [
@@ -695,7 +695,7 @@ const ResultComparison: React.FC = () => {
           key: 'select',
           width: 56,
           align: 'center',
-          render: (_, record: CommonTaskInfo) => (
+          render: (_, record: HttpTaskInfo) => (
             <Checkbox
               checked={tempSelectedTasks.includes(record.task_id)}
               onChange={e =>
@@ -735,7 +735,7 @@ const ResultComparison: React.FC = () => {
     }, [comparisonMode, t, tempSelectedTasks]);
 
   // Table columns for selected tasks
-  const selectedTasksColumns: ColumnsType<SelectedTask | SelectedCommonTask> =
+  const selectedTasksColumns: ColumnsType<SelectedTask | SelectedHttpTask> =
     useMemo(() => {
       if (comparisonMode === 'model') {
         return [
@@ -896,7 +896,7 @@ const ResultComparison: React.FC = () => {
     chartTitle,
     decimals = 2,
     unit,
-  }: MetricCardConfig | CommonMetricCardConfig) => {
+  }: MetricCardConfig | HttpMetricCardConfig) => {
     const data = activeComparisonResults.map((result, index) => {
       const rawName =
         result.task_name?.trim() ||
@@ -1244,7 +1244,7 @@ const ResultComparison: React.FC = () => {
     [t]
   );
 
-  const commonMetricCardConfigs = useMemo<CommonMetricCardConfig[]>(
+  const httpMetricCardConfigs = useMemo<HttpMetricCardConfig[]>(
     () => [
       {
         metricKey: 'avg_response_time',
@@ -1317,7 +1317,7 @@ const ResultComparison: React.FC = () => {
   );
 
   const metricHasData = useCallback(
-    (metricKey: NumericMetricKey | CommonNumericMetricKey) =>
+    (metricKey: NumericMetricKey | HttpNumericMetricKey) =>
       activeComparisonResults.some(result => {
         const value = (result as any)[metricKey];
         if (value === null || value === undefined) {
@@ -1331,14 +1331,9 @@ const ResultComparison: React.FC = () => {
 
   const visibleMetricCardConfigs = useMemo(() => {
     const configs =
-      comparisonMode === 'model' ? metricCardConfigs : commonMetricCardConfigs;
+      comparisonMode === 'model' ? metricCardConfigs : httpMetricCardConfigs;
     return configs.filter(config => metricHasData(config.metricKey));
-  }, [
-    commonMetricCardConfigs,
-    comparisonMode,
-    metricCardConfigs,
-    metricHasData,
-  ]);
+  }, [httpMetricCardConfigs, comparisonMode, metricCardConfigs, metricHasData]);
 
   // Helper function to create card title with tooltip
   const createCardTitle = (title: string, description: string) => (
@@ -1596,7 +1591,7 @@ const ResultComparison: React.FC = () => {
 
   useEffect(() => {
     fetchAvailableTasks('model');
-    fetchAvailableTasks('common');
+    fetchAvailableTasks('http');
   }, [fetchAvailableTasks]);
 
   return (
@@ -1631,12 +1626,12 @@ const ResultComparison: React.FC = () => {
             ),
           },
           {
-            key: 'common',
+            key: 'http',
             label: (
               <span className='tab-label'>
-                {t('pages.resultComparison.commonTasks') ||
-                  t('pages.jobs.commonApiTab') ||
-                  'Common Tasks Comparison'}
+                {t('pages.resultComparison.httpTasks') ||
+                  t('pages.jobs.httpApiTab') ||
+                  'HTTP Tasks Comparison'}
               </span>
             ),
           },
@@ -1766,7 +1761,7 @@ const ResultComparison: React.FC = () => {
         </div>
       )}
 
-      {/* Select Model/Common Modal */}
+      {/* Select Model/HTTP Modal */}
       <Modal
         title={t('pages.resultComparison.selectTasks', 'Select Tasks')}
         open={isModalVisible}

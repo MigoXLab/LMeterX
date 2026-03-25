@@ -1,4 +1,7 @@
-.PHONY: help install install-dev format lint type-check security test clean all ci frontend-install frontend-lint frontend-format backend-install backend-dev backend-format backend-lint backend-type-check backend-security backend-test backend-clean backend-all backend-ci st-engine-install st-engine-dev st-engine-format st-engine-lint st-engine-type-check st-engine-security st-engine-test st-engine-clean st-engine-all st-engine-ci
+.PHONY: help install install-dev format lint type-check security test clean all ci frontend-install frontend-lint frontend-format backend-install backend-dev backend-format backend-lint backend-type-check backend-security backend-test backend-clean backend-all backend-ci st-engine-install st-engine-dev st-engine-format st-engine-lint st-engine-type-check st-engine-security st-engine-test st-engine-clean st-engine-all st-engine-ci docker-base-backend docker-base-engine docker-base-all docker-push-base-backend docker-push-base-engine docker-push-base-all docker-build-backend docker-build-engine docker-build-all
+
+# Docker Hub username (can be overridden via environment variable)
+DOCKER_USER ?= charmy1220
 
 # 默认目标
 help:
@@ -14,6 +17,17 @@ help:
 	@echo "  clean       - 清理所有项目的缓存文件"
 	@echo "  all         - 运行所有项目的完整检查"
 	@echo "  ci          - 运行所有项目的 CI/CD 检查"
+	@echo ""
+	@echo "Docker 镜像构建命令:"
+	@echo "  docker-base-backend      - 构建后端基础镜像 (含所有依赖+Playwright)"
+	@echo "  docker-base-engine       - 构建引擎基础镜像 (含所有依赖)"
+	@echo "  docker-base-all          - 构建所有基础镜像"
+	@echo "  docker-push-base-backend - 推送后端基础镜像到 Docker Hub"
+	@echo "  docker-push-base-engine  - 推送引擎基础镜像到 Docker Hub"
+	@echo "  docker-push-base-all     - 推送所有基础镜像到 Docker Hub"
+	@echo "  docker-build-backend     - 构建后端应用镜像 (基于基础镜像，极快)"
+	@echo "  docker-build-engine      - 构建引擎应用镜像 (基于基础镜像，极快)"
+	@echo "  docker-build-all         - 构建所有应用镜像"
 	@echo ""
 	@echo "Frontend 命令:"
 	@echo "  frontend-install - 安装前端依赖"
@@ -191,3 +205,49 @@ st-engine-ci:
 	mypy . && \
 	bandit -r . -c pyproject.toml && \
 	python -m pytest
+
+# ============================================================
+# Docker 镜像构建命令
+# ============================================================
+
+# --- 基础镜像构建 (首次 / 依赖变更时执行，较慢但只需偶尔执行) ---
+docker-base-backend:
+	@echo "正在构建后端基础镜像 (含 Python 依赖 + Playwright)..."
+	docker build -t $(DOCKER_USER)/lmeterx-be-base:latest -f backend/Dockerfile.base backend/
+	@echo "后端基础镜像构建完成: $(DOCKER_USER)/lmeterx-be-base:latest"
+
+docker-base-engine:
+	@echo "正在构建引擎基础镜像 (含 Python 依赖)..."
+	docker build -t $(DOCKER_USER)/lmeterx-eng-base:latest -f st_engine/Dockerfile.base st_engine/
+	@echo "引擎基础镜像构建完成: $(DOCKER_USER)/lmeterx-eng-base:latest"
+
+docker-base-all: docker-base-backend docker-base-engine
+	@echo "所有基础镜像构建完成!"
+
+# --- 推送基础镜像到 Docker Hub ---
+docker-push-base-backend:
+	@echo "正在推送后端基础镜像到 Docker Hub..."
+	docker push $(DOCKER_USER)/lmeterx-be-base:latest
+	@echo "后端基础镜像推送完成!"
+
+docker-push-base-engine:
+	@echo "正在推送引擎基础镜像到 Docker Hub..."
+	docker push $(DOCKER_USER)/lmeterx-eng-base:latest
+	@echo "引擎基础镜像推送完成!"
+
+docker-push-base-all: docker-push-base-backend docker-push-base-engine
+	@echo "所有基础镜像推送完成!"
+
+# --- 应用镜像构建 (日常开发，基于基础镜像，极快) ---
+docker-build-backend:
+	@echo "正在构建后端应用镜像 (基于基础镜像)..."
+	docker build -t $(DOCKER_USER)/lmeterx-be:latest backend/
+	@echo "后端应用镜像构建完成: $(DOCKER_USER)/lmeterx-be:latest"
+
+docker-build-engine:
+	@echo "正在构建引擎应用镜像 (基于基础镜像)..."
+	docker build -t $(DOCKER_USER)/lmeterx-eng:latest st_engine/
+	@echo "引擎应用镜像构建完成: $(DOCKER_USER)/lmeterx-eng:latest"
+
+docker-build-all: docker-build-backend docker-build-engine
+	@echo "所有应用镜像构建完成!"

@@ -1,14 +1,23 @@
-FROM python:3.12-slim
+# ============================================================
+# ST Engine Application Image (based on base image)
+#
+# Usage:
+#   1. First time / dependency changes: build and push base image
+#      make docker-base-engine
+#      make docker-push-base-engine
+#   2. Daily development build (only COPY code, very fast):
+#      docker build -t charmy1220/lmeterx-eng:latest st_engine/
+# ============================================================
+ARG BASE_IMAGE=charmy1220/lmeterx-eng-base:latest
+FROM ${BASE_IMAGE}
+
 WORKDIR /app
-ENV TZ=Asia/Shanghai
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt-get update && apt-get install -y curl procps && apt-get clean
-
+# Only reinstall dependencies when requirements.txt changes (usually base image already contains)
 COPY requirements.txt .
-RUN pip config set global.index-url https://pypi.org/simple && \
-    pip install --no-cache-dir --default-timeout=300 -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=300 -r requirements.txt 2>/dev/null || true
 
+# Copy application code (this is the only layer that changes frequently)
 COPY . .
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5002"]

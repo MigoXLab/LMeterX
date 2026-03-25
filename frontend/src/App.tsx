@@ -6,16 +6,22 @@
  */
 import { App as AntApp, ConfigProvider, Layout } from 'antd';
 import React from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import Header from './components/Header';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { NavigationProvider } from './contexts/NavigationContext';
-import CommonResults from './pages/CommonResults';
-import JobsPage from './pages/Jobs';
+import HttpResults from './pages/HttpResults';
+import LlmResults from './pages/LlmResults';
+import TasksPage from './pages/LlmTasks';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import ResultComparison from './pages/ResultComparison';
-import TaskResults from './pages/Results';
 import SystemConfiguration from './pages/SystemConfiguration';
 import SystemMonitor from './pages/SystemMonitor';
 import TaskLog from './pages/TaskLog';
@@ -37,6 +43,20 @@ const RequireAuth: React.FC<{ children: React.ReactElement }> = ({
     return <Navigate to='/login' state={{ from: location }} replace />;
   }
   return children;
+};
+
+const LegacyResultsRedirect: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  if (!id) {
+    return <Navigate to='/jobs' replace />;
+  }
+  return (
+    <Navigate
+      to={`/llm-results/${id}${location.search}${location.hash}`}
+      replace
+    />
+  );
 };
 
 const App: React.FC = () => {
@@ -126,7 +146,15 @@ const App: React.FC = () => {
                     path='/jobs'
                     element={
                       <RequireAuth>
-                        <JobsPage />
+                        <TasksPage />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path='/llm-results/:id'
+                    element={
+                      <RequireAuth>
+                        <LlmResults />
                       </RequireAuth>
                     }
                   />
@@ -134,15 +162,15 @@ const App: React.FC = () => {
                     path='/results/:id'
                     element={
                       <RequireAuth>
-                        <TaskResults />
+                        <LegacyResultsRedirect />
                       </RequireAuth>
                     }
                   />
                   <Route
-                    path='/common-results/:id'
+                    path='/http-results/:id'
                     element={
                       <RequireAuth>
-                        <CommonResults />
+                        <HttpResults />
                       </RequireAuth>
                     }
                   />

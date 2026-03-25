@@ -19,7 +19,7 @@ from model.analysis import (
     GetAnalysisResponse,
     TaskAnalysis,
 )
-from model.task import Task, TaskResult
+from model.llm_task import Task, TaskResult
 from service.system_service import get_ai_service_config_internal_svc
 from utils.converters import truthy
 from utils.error_handler import ErrorMessages, ErrorResponse
@@ -266,6 +266,41 @@ async def extract_task_metrics(  # noqa: C901
         ):
             metrics_data["total_time"] = float(total_time_data.avg_latency) / 1000.0
 
+            # Extract P95 and max latency (in ms, convert to seconds)
+            if (
+                getattr(total_time_data, "p95_latency", None) is not None
+                and float(total_time_data.p95_latency) > 0
+            ):
+                metrics_data["total_time_p95"] = (
+                    float(total_time_data.p95_latency) / 1000.0
+                )
+            if (
+                getattr(total_time_data, "max_latency", None) is not None
+                and float(total_time_data.max_latency) > 0
+            ):
+                metrics_data["total_time_max"] = (
+                    float(total_time_data.max_latency) / 1000.0
+                )
+
+            # Extract request counts and failure info
+            if getattr(total_time_data, "num_requests", None) is not None:
+                metrics_data["total_requests"] = int(total_time_data.num_requests)
+            if getattr(total_time_data, "num_failures", None) is not None:
+                metrics_data["failure_count"] = int(total_time_data.num_failures)
+
+        # Handle TTFT P95 latency
+        ttft_source = metrics_map.get(
+            "Time_to_first_reasoning_token"
+        ) or metrics_map.get("Time_to_first_output_token")
+        if ttft_source:
+            if (
+                getattr(ttft_source, "p95_latency", None) is not None
+                and float(ttft_source.p95_latency) > 0
+            ):
+                metrics_data["first_token_latency_p95"] = (
+                    float(ttft_source.p95_latency) / 1000.0
+                )
+
         # Handle RPS
         rps_val = None
         # Check Total_time first
@@ -359,6 +394,7 @@ async def _call_ai_service(
     type: int = 0,
     language: str = "en",
     model_info=None,
+    ssl_verify: bool = True,
 ) -> str:
     """
     Call AI service for analysis using async HTTP client.
@@ -370,6 +406,7 @@ async def _call_ai_service(
         type: Analysis type (0=single task, 1=multiple tasks).
         language: The language for analysis prompt (en/zh).
         model_info: Dict (single task) or List[Dict] (multiple tasks) containing model info.
+        ssl_verify: Whether to verify SSL certificates. Defaults to True.
 
     Returns:
         str: The analysis content.
@@ -403,8 +440,7 @@ async def _call_ai_service(
 
     try:
         timeout = httpx.Timeout(AI_SERVICE_TIMEOUT_SECONDS)
-        # Use verify=False to skip SSL certificate verification for self-signed certificates
-        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=ssl_verify) as client:
             response = await client.post(
                 url,
                 headers=headers,
@@ -531,6 +567,7 @@ async def analyze_tasks_svc(
                 type=analysis_type,
                 language=language,
                 model_info=model_info,
+                ssl_verify=ai_config.ssl_verify,
             )
 
             created_at = ""

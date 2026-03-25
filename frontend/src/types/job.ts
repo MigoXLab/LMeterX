@@ -1,9 +1,9 @@
 /**
  * @file job.ts
- * @description Job type definitions (LLM + common API)
+ * @description Task type definitions (LLM + HTTP API)
  */
 
-export interface Job {
+export interface LlmTask {
   id: string;
   name: string;
   model?: string;
@@ -70,7 +70,7 @@ export interface Job {
   error_message?: string;
 }
 
-export interface CommonJob {
+export interface HttpTask {
   id: string;
   name: string;
   method: string;
@@ -153,3 +153,8 @@ export interface ApiResponse<T> {
   statusText: string;
   pagination?: Pagination;
 }
+
+/** @deprecated Use LlmTask instead */
+export type Job = LlmTask;
+/** @deprecated Use HttpTask instead */
+export type CommonJob = HttpTask;

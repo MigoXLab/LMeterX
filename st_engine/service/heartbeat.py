@@ -117,11 +117,11 @@ def heartbeat_and_reconcile_loop():
     """
     # Lazy imports to break circular dependency
     # (task_service -> heartbeat -> task_service)
-    from service.common_task_service import CommonTaskService
-    from service.task_service import TaskService
+    from service.http_task_service import HttpTaskService
+    from service.llm_task_service import LlmTaskService
 
-    task_svc = TaskService()
-    common_task_svc = CommonTaskService()
+    task_svc = LlmTaskService()
+    http_task_svc = HttpTaskService()
     last_reconcile: float = 0
 
     logger.info(
@@ -142,13 +142,13 @@ def heartbeat_and_reconcile_loop():
         # --- periodic dead-engine reconciliation ---
         now = time.time()
         if now - last_reconcile > RECONCILE_INTERVAL:
-            _run_dead_engine_reconciliation(task_svc, common_task_svc)
+            _run_dead_engine_reconciliation(task_svc, http_task_svc)
             last_reconcile = now
 
         time.sleep(HEARTBEAT_INTERVAL)
 
 
-def _run_dead_engine_reconciliation(task_svc, common_task_svc):
+def _run_dead_engine_reconciliation(task_svc, http_task_svc):
     """Execute one round of dead-engine task reconciliation."""
     try:
         with get_db_session() as session:
@@ -158,6 +158,6 @@ def _run_dead_engine_reconciliation(task_svc, common_task_svc):
 
     try:
         with get_db_session() as session:
-            common_task_svc.reconcile_dead_engine_tasks(session)
+            http_task_svc.reconcile_dead_engine_tasks(session)
     except Exception as e:
-        logger.debug(f"Dead engine reconciliation (common tasks) failed: {e}")
+        logger.debug(f"Dead engine reconciliation (HTTP tasks) failed: {e}")

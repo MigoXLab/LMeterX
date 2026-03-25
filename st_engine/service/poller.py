@@ -7,12 +7,12 @@ import time
 
 from config.business import TASK_STATUS_FAILED, TASK_STATUS_LOCKED, TASK_STATUS_STOPPED
 from db.database import get_db_session
-from service.common_task_service import CommonTaskService
-from service.task_service import TaskService
+from service.http_task_service import HttpTaskService
+from service.llm_task_service import LlmTaskService
 from utils.logger import logger
 
 
-def task_create_poller():
+def llm_task_create_poller():
     """
     Periodically polls the database for new tasks to execute.
 
@@ -20,7 +20,7 @@ def task_create_poller():
     status. When a new task is found, it locks the task and initiates the
     processing pipeline.
     """
-    task_service = TaskService()
+    task_service = LlmTaskService()
 
     # Perform startup reconciliation to clean up stale tasks from a previous run.
     try:
@@ -61,7 +61,7 @@ def task_create_poller():
                 time.sleep(10)
 
 
-def task_stop_poller():
+def llm_task_stop_poller():
     """
     Periodically polls the database for tasks that need to be stopped.
 
@@ -69,7 +69,7 @@ def task_stop_poller():
     terminate the corresponding Locust process.
     """
     logger.info("[LLM] Task stopping poller started. Listening for tasks to stop...")
-    task_service = TaskService()
+    task_service = LlmTaskService()
 
     while True:
         try:
@@ -136,9 +136,9 @@ def task_stop_poller():
                 time.sleep(10)
 
 
-def common_task_create_poller():
-    """Poller for common API tasks."""
-    task_service = CommonTaskService()
+def http_task_create_poller():
+    """Poller for HTTP API tasks."""
+    task_service = HttpTaskService()
 
     try:
         with get_db_session() as session:
@@ -146,7 +146,7 @@ def common_task_create_poller():
                 task_service.reconcile_tasks_on_startup(session)
             except Exception:
                 logger.debug(
-                    "Failed to run startup reconciliation for common tasks.",
+                    "Failed to run startup reconciliation for HTTP tasks.",
                     exc_info=True,
                 )
     except Exception as e:
@@ -163,17 +163,17 @@ def common_task_create_poller():
                     task_service.process_task_pipeline(task, session)
             time.sleep(3)
         except Exception as e:
-            logger.exception(f" Error in common task creation poller: {e}")
+            logger.exception(f" Error in HTTP task creation poller: {e}")
             if "Lost connection" in str(e) or "Connection refused" in str(e):
                 time.sleep(30)
             else:
                 time.sleep(10)
 
 
-def common_task_stop_poller():
-    """Poller to stop common API tasks."""
+def http_task_stop_poller():
+    """Poller to stop HTTP API tasks."""
     logger.info(" Task stopping poller started.")
-    task_service = CommonTaskService()
+    task_service = HttpTaskService()
 
     while True:
         try:
@@ -207,7 +207,7 @@ def common_task_stop_poller():
                             )
             time.sleep(5)
         except Exception as e:
-            logger.exception(f" Error in common task stopping poller: {e}")
+            logger.exception(f" Error in HTTP task stopping poller: {e}")
             if "Lost connection" in str(e) or "Connection refused" in str(e):
                 time.sleep(30)
             else:

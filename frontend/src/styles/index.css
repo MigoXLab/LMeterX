@@ -527,6 +527,126 @@ body {
   cursor: not-allowed;
 }
 
+/* Light purple variant for web quick load testing button */
+.modern-button-web-quick-test.ant-btn,
+.modern-button-web-quick-test.ant-btn-default,
+.modern-button-web-quick-test {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #b8a9e8 0%, #c4a0d0 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(118, 75, 162, 0.25) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+
+.modern-button-web-quick-test.ant-btn:hover:not(:disabled),
+.modern-button-web-quick-test.ant-btn-default:hover:not(:disabled),
+.modern-button-web-quick-test:hover {
+  background: linear-gradient(135deg, #a696de 0%, #b68ec6 100%) !important;
+  box-shadow: 0 5px 16px rgba(118, 75, 162, 0.35) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+
+.modern-button-web-quick-test.ant-btn:active:not(:disabled),
+.modern-button-web-quick-test.ant-btn-default:active:not(:disabled),
+.modern-button-web-quick-test:active {
+  background: linear-gradient(135deg, #9584d4 0%, #a87ebc 100%) !important;
+  color: #ffffff !important;
+}
+
+.modern-button-web-quick-test:disabled,
+.modern-button-web-quick-test[disabled],
+.modern-button-web-quick-test.ant-btn:disabled,
+.modern-button-web-quick-test.ant-btn-default:disabled {
+  background: linear-gradient(135deg, rgba(184, 169, 232, 0.5) 0%, rgba(196, 160, 208, 0.5) 100%) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Macaron blue – deeper variant (for "Rerun" button) */
+.modern-button-teal-light.ant-btn,
+.modern-button-teal-light.ant-btn-default,
+.modern-button-teal-light {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #5b9bd5 0%, #6babdb 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(91, 155, 213, 0.35) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+
+.modern-button-teal-light.ant-btn:hover:not(:disabled),
+.modern-button-teal-light.ant-btn-default:hover:not(:disabled),
+.modern-button-teal-light:hover {
+  background: linear-gradient(135deg, #4a8cc8 0%, #5a9dd0 100%) !important;
+  box-shadow: 0 5px 16px rgba(91, 155, 213, 0.45) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+
+.modern-button-teal-light.ant-btn:active:not(:disabled),
+.modern-button-teal-light.ant-btn-default:active:not(:disabled),
+.modern-button-teal-light:active {
+  background: linear-gradient(135deg, #3e7dba 0%, #4c90c6 100%) !important;
+  color: #ffffff !important;
+}
+
+.modern-button-teal-light:disabled,
+.modern-button-teal-light[disabled],
+.modern-button-teal-light.ant-btn:disabled,
+.modern-button-teal-light.ant-btn-default:disabled {
+  background: linear-gradient(135deg, rgba(91, 155, 213, 0.45) 0%, rgba(107, 171, 219, 0.45) 100%) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Macaron blue – lighter variant (for "Compare" button) */
+.modern-button-teal.ant-btn,
+.modern-button-teal.ant-btn-default,
+.modern-button-teal {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #89c4f4 0%, #a0d2f7 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(137, 196, 244, 0.35) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+
+.modern-button-teal.ant-btn:hover:not(:disabled),
+.modern-button-teal.ant-btn-default:hover:not(:disabled),
+.modern-button-teal:hover {
+  background: linear-gradient(135deg, #74b8f0 0%, #8ec8f5 100%) !important;
+  box-shadow: 0 5px 16px rgba(137, 196, 244, 0.45) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+
+.modern-button-teal.ant-btn:active:not(:disabled),
+.modern-button-teal.ant-btn-default:active:not(:disabled),
+.modern-button-teal:active {
+  background: linear-gradient(135deg, #60aced 0%, #7dbef3 100%) !important;
+  color: #ffffff !important;
+}
+
+.modern-button-teal:disabled,
+.modern-button-teal[disabled],
+.modern-button-teal.ant-btn:disabled,
+.modern-button-teal.ant-btn-default:disabled {
+  background: linear-gradient(135deg, rgba(137, 196, 244, 0.45) 0%, rgba(160, 210, 247, 0.45) 100%) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
 .modern-button {
   border-radius: var(--radius-md) !important;
   border: 1px solid var(--color-border) !important;
@@ -1675,15 +1795,6 @@ body {
   box-shadow: var(--shadow-lg) !important;
 }
 
-.api-test-modal-open {
-  overflow: auto !important;
-}
-
-body.api-test-modal-open {
-  overflow: auto !important;
-  padding-right: 0 !important;
-}
-
 .ant-modal-root {
   position: relative !important;
 }
@@ -2007,92 +2118,27 @@ body.api-test-modal-open {
 }
 
 /* ========================================
-   Right-side API Test Modal Utilities
+   API Test Drawer (shared by all test result panels)
    ======================================== */
 
-.api-test-modal-right-side {
-  z-index: 1002 !important;
+.api-test-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--color-border);
 }
 
-.api-test-modal-right-side .ant-modal-wrap {
-  overflow: visible !important;
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  pointer-events: none !important;
-}
-
-.api-test-modal-right-side .ant-modal {
-  position: fixed !important;
-  right: 20px !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  margin: 0 !important;
-  padding-bottom: 0 !important;
-  pointer-events: auto !important;
-  max-height: calc(100vh - 40px) !important;
-}
-
-.api-test-modal-right-side .ant-modal-content {
-  height: 100%;
-  max-height: calc(100vh - 40px);
-  overflow: hidden;
-  margin: 0 !important;
-  pointer-events: auto !important;
-  border-radius: var(--radius-lg) !important;
-  box-shadow: var(--shadow-lg) !important;
-}
-
-.api-test-modal-right-side .ant-modal-body {
+.api-test-drawer .ant-drawer-body {
   padding: 20px;
-  max-height: calc(100vh - 160px);
   overflow-y: auto;
-  pointer-events: auto !important;
 }
 
-.api-test-modal-right-side .ant-modal-header {
-  padding: 16px 24px;
-  border-bottom: none;
-  background: transparent;
-  margin-bottom: 0;
-  flex-shrink: 0;
-  pointer-events: auto !important;
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+.api-test-drawer .ant-descriptions-bordered .ant-descriptions-item-label {
+  min-width: 100px;
+  white-space: nowrap;
 }
 
-.api-test-modal-right-side .ant-modal-footer {
-  padding: 12px 24px;
-  border-top: 1px solid var(--color-border);
-  margin-top: 0;
-  flex-shrink: 0;
-  pointer-events: auto !important;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
-}
-
-@media (max-width: 1400px) {
-  .api-test-modal-right-side .ant-modal {
-    width: 600px !important;
-    right: 10px !important;
-  }
-}
-
-@media (max-width: 1200px) {
-  .api-test-modal-right-side .ant-modal {
-    width: 500px !important;
-    right: 10px !important;
-  }
-}
-
-@media (max-width: 900px) {
-  .api-test-modal-right-side .ant-modal {
-    position: fixed !important;
-    right: 50% !important;
-    top: 50% !important;
-    transform: translate(50%, -50%) !important;
-    width: 90vw !important;
-    max-width: 90vw !important;
+@media (max-width: 768px) {
+  .api-test-drawer {
+    width: 100vw !important;
+    max-width: 100vw !important;
   }
 }
 

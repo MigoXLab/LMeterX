@@ -1990,6 +1990,8 @@ const LlmResults: React.FC = () => {
                                   item.metric_type !==
                                     'completion_tokens_per_second' &&
                                   item.metric_type !== 'token_metrics' &&
+                                  item.metric_type !== 'Input_tokens' &&
+                                  item.metric_type !== 'Completion_tokens' &&
                                   (results.length <= 1 ||
                                     !requestMetricTypeSet.has(item.metric_type))
                               )}

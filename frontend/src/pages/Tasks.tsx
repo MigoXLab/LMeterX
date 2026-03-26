@@ -1526,6 +1526,18 @@ const Tasks: React.FC = () => {
 
   const isHttpMode = activeMode === 'http';
   const currentJobs = isHttpMode ? httpFilteredJobs : filteredJobs;
+
+  // Check if all selected tasks can be managed by the current user
+  const allSelectedManageable = useMemo(() => {
+    if (selectedRowKeys.length === 0) return true;
+    const currentData = (isHttpMode ? httpFilteredJobs : filteredJobs) as Array<
+      LlmTask | HttpTask
+    >;
+    const selectedTasks = currentData.filter(job =>
+      selectedRowKeys.includes(job.id)
+    );
+    return selectedTasks.every(job => canManage(job.created_by));
+  }, [selectedRowKeys, isHttpMode, httpFilteredJobs, filteredJobs, canManage]);
   const currentPagination = isHttpMode ? httpPagination : pagination;
   const currentLoading = isHttpMode ? httpLoading : loading;
   const currentRefreshing = isHttpMode ? httpRefreshing : refreshing;
@@ -1627,14 +1639,23 @@ const Tasks: React.FC = () => {
                     count: selectedRowKeys.length,
                   })}
                 </Tag>
-                <Button
-                  icon={<PlayCircleOutlined />}
-                  onClick={handleBatchRerun}
-                  loading={batchRerunning}
-                  className='modern-button-teal-light'
+                <Tooltip
+                  title={
+                    !allSelectedManageable
+                      ? t('pages.jobs.batchRerunOwnerOnly')
+                      : undefined
+                  }
                 >
-                  {t('pages.jobs.batchRerun')}
-                </Button>
+                  <Button
+                    icon={<PlayCircleOutlined />}
+                    onClick={handleBatchRerun}
+                    loading={batchRerunning}
+                    disabled={!allSelectedManageable}
+                    className='modern-button-teal-light'
+                  >
+                    {t('pages.jobs.batchRerun')}
+                  </Button>
+                </Tooltip>
                 {selectedRowKeys.length >= 2 && selectedRowKeys.length <= 5 && (
                   <Button
                     icon={<BarChartOutlined />}

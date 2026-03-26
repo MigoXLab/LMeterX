@@ -1,0 +1,302 @@
+variables:
+  PROJECT: qa
+  SERVICE_NAME: lmeterx-be
+  SERVICE_NAME_FE: lmeterx-fe
+  SERVICE_NAME_ENGINE: lmeterx-engine
+  PROJECT_CLONE_DIR: /tmp/project-code # 代码克隆目录
+  REPORT_FILE: report.md # 报告文件名
+
+stages:
+  - build
+  - deploy-be-qa
+  - deploy-fe-qa
+  - deploy-engine-qa
+  - deploy-be-dev
+  - deploy-fe-dev
+  - deploy-engine-dev
+  - deploy-be-s
+  - deploy-fe-s
+  - deploy-engine-s
+  - pr_agent
+  - code_quality_check
+
+build-be:
+  stage: build
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/docker-git:latest
+  retry: 2
+  tags:
+    - ecs
+  before_script:
+    - docker login -u $harbor_user -p $harbor_password $harbor_url_prod_vpc
+  script:
+    - echo "Build backend."
+    - docker build  -t $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME:${CI_COMMIT_SHA:0:8} -f backend/Dockerfile.k8s .
+    - docker push $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME:${CI_COMMIT_SHA:0:8}
+    - docker rmi $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME:${CI_COMMIT_SHA:0:8}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: on_success
+      allow_failure: false
+
+build-engine:
+  stage: build
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/docker-git:latest
+  retry: 2
+  tags:
+    - ecs
+  before_script:
+    - docker login -u $harbor_user -p $harbor_password $harbor_url_prod_vpc
+  script:
+    - echo "Build engine."
+    - docker build  -t $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME_ENGINE:${CI_COMMIT_SHA:0:8} -f st_engine/Dockerfile.k8s .
+    - docker push $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME_ENGINE:${CI_COMMIT_SHA:0:8}
+    - docker rmi $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME_ENGINE:${CI_COMMIT_SHA:0:8}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: on_success
+      allow_failure: false
+
+build-fe:
+  stage: build
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/docker-git:latest
+  retry: 2
+  tags:
+    - ecs
+  before_script:
+    - docker login -u $harbor_user -p $harbor_password $harbor_url_prod_vpc
+  script:
+    - echo "Build lmeterx-fe"
+    - cd frontend
+    - docker build  -t $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME_FE:${CI_COMMIT_SHA:0:8} -f Dockerfile.k8s .
+    - docker push $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME_FE:${CI_COMMIT_SHA:0:8}
+    - docker rmi $harbor_url_prod_vpc/$PROJECT/$SERVICE_NAME_FE:${CI_COMMIT_SHA:0:8}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: on_success
+      allow_failure: false
+
+########################################################
+#                        部署 【测试环境】-aliyun-qa集群
+########################################################
+deploy-be-qa:
+  stage: deploy-be-qa
+  retry: 2
+  tags:
+    - ecs
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-be"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" backend-deployment.yaml
+    - kubectl --kubeconfig $ALIKUBE_CONFIG apply -f backend-deployment.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+deploy-engine-qa:
+  stage: deploy-engine-qa
+  retry: 2
+  tags:
+    - ecs
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-engine"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" engine-deployment.yaml
+    - kubectl --kubeconfig $ALIKUBE_CONFIG apply -f engine-deployment.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+deploy-fe-qa:
+  stage: deploy-fe-qa
+  retry: 2
+  tags:
+    - ecs
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-fe"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" frontend-deployment.yaml
+    - kubectl --kubeconfig $ALIKUBE_CONFIG apply -f frontend-deployment.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+########################################################
+#                        部署 【dev环境】-aliyun-dev集群
+########################################################
+deploy-be-dev:
+  stage: deploy-be-dev
+  retry: 2
+  tags:
+    - ecs
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-be"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" backend-deployment.yaml
+    - kubectl --kubeconfig $kubeconfig_dev_puyu apply -f backend-deployment.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+deploy-engine-dev:
+  stage: deploy-engine-dev
+  retry: 2
+  tags:
+    - ecs
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-engine"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" engine-deployment.yaml
+    - kubectl --kubeconfig $kubeconfig_dev_puyu apply -f engine-deployment.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+deploy-fe-dev:
+  stage: deploy-fe-dev
+  retry: 2
+  tags:
+    - ecs
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-fe"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" frontend-deployment.yaml
+    - kubectl --kubeconfig $kubeconfig_dev_puyu apply -f frontend-deployment.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+########################################################
+#                        部署 【内部】-实验室52.25集群
+########################################################
+deploy-be-s:
+  stage: deploy-be-s
+  retry: 2
+  tags:
+    - s
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-be"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" backend-deployment-pjlab.yaml
+    - kubectl --kubeconfig $kubeconfig_52_25 apply -f backend-deployment-pjlab.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+deploy-engine-s:
+  stage: deploy-engine-s
+  retry: 2
+  tags:
+    - s
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-engine"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" engine-deployment-pjlab.yaml
+    - kubectl --kubeconfig $kubeconfig_52_25 apply -f engine-deployment-pjlab.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+deploy-fe-s:
+  stage: deploy-fe-s
+  retry: 2
+  tags:
+    - s
+  image: eng-center-registry.cn-shanghai.cr.aliyuncs.com/public/dtzar/helm-kubectl
+  script:
+    - echo "Deploying lmeterx-fe"
+    - cd k8s/workloads
+    - sed -i "s/_tag/${CI_COMMIT_SHA:0:8}/g" frontend-deployment-pjlab.yaml
+    - kubectl --kubeconfig $kubeconfig_52_25 apply -f frontend-deployment-pjlab.yaml
+    - echo "Application successfully deployed."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"'
+      when: manual
+      allow_failure: false
+
+pr_agent_job:
+  stage: pr_agent
+  retry: 2
+  tags:
+    - ecs
+  image:
+    name: eng-center-registry.cn-shanghai.cr.aliyuncs.com/qa/codiumai/pr-agent:0.1.3.2-intern
+    entrypoint: [""]
+  script:
+    - cd /app
+    - echo "Running PR Agent action step"
+    - export MR_URL="$CI_MERGE_REQUEST_PROJECT_URL/merge_requests/$CI_MERGE_REQUEST_IID"
+    - echo "MR_URL=$MR_URL"
+    - export gitlab__url=https://gitlab.pjlab.org.cn
+    - export gitlab__PERSONAL_ACCESS_TOKEN=$GITLAB_PERSONAL_ACCESS_TOKEN
+    - export config__git_provider="gitlab"
+    # - export config__model="intern-latest"
+    - export config__model="gpt-5.1-codex"
+    - export config__max_model_tokens="200000"
+    - export config__response_language="zh-CN"
+    - export config__ai_timeout="600"
+    # 使用gpt外部模型，取消如下两行注释，并设置正确的环境变量值
+    - export openai__key=$OPENAI_KEY
+    - export openai__api_base=$OPENAI_API_BASE
+    # 使用s1等内部模型，取消如下三行注释，并设置正确的环境变量值
+    # - export openai__key="sk-J7ZI6MfY2vicYmjutqnuPKZ7kODas9x1vq2qD7EPpWcXHwIT"
+    # - export openai__api_base="https://chat.intern-ai.org.cn/api/v1"
+    # - export litellm__custom_llm_provider="openai"
+    - export AUDIT_DB_HOST=$AUDIT_DB_HOST
+    - export AUDIT_DB_PORT=3306
+    - export AUDIT_DB_USER="pr_agent"
+    - export AUDIT_DB_PASSWORD=$AUDIT_DB_PASSWORD
+    - export AUDIT_DB_NAME="pr_agent"
+    - export PR_AGENT_COMMANDS="${PR_AGENT_COMMANDS:-describe review improve}"
+    - python -m pr_agent.servers.gitlab_ci_audit_runner
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# code_quality_analysis:
+#   stage: code_quality_check
+#   retry: 2
+#   tags:
+#     - ecs
+#   image:
+#     name: eng-center-registry.cn-shanghai.cr.aliyuncs.com/qa/fuck-u-code:latest
+#     entrypoint: [""] # 清空默认入口点，避免影响 CI 命令执行
+#   artifacts:
+#     paths:
+#       - $REPORT_FILE
+#     expire_in: 7 days # 保留 7 天
+
+#   before_script:
+#     # 创建代码克隆目录
+#     - mkdir -p $PROJECT_CLONE_DIR
+#     - git clone "https://oauth2:$GITLAB_TOKEN@gitlab.pjlab.org.cn/$CI_PROJECT_PATH.git" $PROJECT_CLONE_DIR --depth 1
+#     - ls
+#   script:
+#     - /bin/fuck-u-code --help
+#     - echo "开始执行代码质量检测..."
+#     - fuck-u-code analyze $PROJECT_CLONE_DIR --lang zh-CN --markdown > $REPORT_FILE
+#     - echo "=== 代码质量检测报告 ==="
+#     - cat $REPORT_FILE
+#   rules:
+#     - if: '$CI_PIPELINE_SOURCE == "push"'

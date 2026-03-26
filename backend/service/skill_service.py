@@ -847,13 +847,14 @@ async def analyze_url_svc(
 
     # ── Step 3: Build discovered APIs ──
     discovered_runtime = _build_discovered_apis(filtered)
-    discovered_js = await _discover_apis_via_js_static_scan(target_url, raw_requests)
-    discovered = _merge_discovered_apis(discovered_runtime, discovered_js)
+    # JS static scan disabled: extracted request params are incomplete,
+    # only runtime-captured APIs carry full headers / body / status.
+    # discovered_js = await _discover_apis_via_js_static_scan(target_url, raw_requests)
+    # discovered = _merge_discovered_apis(discovered_runtime, discovered_js)
+    discovered = discovered_runtime
     logger.info(
-        "Discovered APIs (runtime={}, js_static_scan={}, merged={})",
+        "Discovered APIs (runtime={})",
         len(discovered_runtime),
-        len(discovered_js),
-        len(discovered),
     )
 
     if not discovered:

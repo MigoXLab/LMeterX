@@ -535,7 +535,7 @@ body {
   background: linear-gradient(135deg, #a78bfa 0%, #bf9cf6 100%) !important;
   border: none !important;
   color: #ffffff !important;
-  box-shadow: 0 3px 12px rgba(167, 139, 250, 0.30) !important;
+  box-shadow: 0 3px 12px rgba(167, 139, 250, 0.3) !important;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
   font-weight: 500 !important;
 }
@@ -544,7 +544,7 @@ body {
 .modern-button-web-quick-test.ant-btn-default:hover:not(:disabled),
 .modern-button-web-quick-test:hover {
   background: linear-gradient(135deg, #967ae8 0%, #b08bec 100%) !important;
-  box-shadow: 0 5px 16px rgba(150, 122, 232, 0.40) !important;
+  box-shadow: 0 5px 16px rgba(150, 122, 232, 0.4) !important;
   transform: translateY(-1px);
   color: #ffffff !important;
 }
@@ -623,7 +623,7 @@ body {
   background: linear-gradient(135deg, #6daff0 0%, #8ec6f6 100%) !important;
   border: none !important;
   color: #ffffff !important;
-  box-shadow: 0 3px 12px rgba(109, 175, 240, 0.30) !important;
+  box-shadow: 0 3px 12px rgba(109, 175, 240, 0.3) !important;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
   font-weight: 500 !important;
 }
@@ -632,7 +632,7 @@ body {
 .modern-button-teal.ant-btn-default:hover:not(:disabled),
 .modern-button-teal:hover {
   background: linear-gradient(135deg, #5ca0e6 0%, #7db9f2 100%) !important;
-  box-shadow: 0 5px 16px rgba(92, 160, 230, 0.40) !important;
+  box-shadow: 0 5px 16px rgba(92, 160, 230, 0.4) !important;
   transform: translateY(-1px);
   color: #ffffff !important;
 }

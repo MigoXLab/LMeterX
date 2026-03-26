@@ -1,5 +1,5 @@
 /**
- * @file LlmTasks.tsx
+ * @file Tasks.tsx
  * @description Tasks page component
  * @author Charm
  * @copyright 2025
@@ -65,7 +65,7 @@ const { Text } = Typography;
 const MODE_STORAGE_KEY = 'jobsActiveMode';
 const LDAP_ENABLED = getLdapEnabled();
 
-const LlmTasks: React.FC = () => {
+const Tasks: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   // State managed by the component
@@ -361,16 +361,20 @@ const LlmTasks: React.FC = () => {
           rerunData.field_mapping = deepClone(fieldMappingObject) || {};
         }
 
-        const success = await createJob(rerunData);
+        const resp = await llmTaskApi.createJob(rerunData);
+        const success = !!(resp as any)?.data?.task_id;
         if (success) {
+          manualRefresh();
           messageApi.success(t('pages.jobs.rerunSuccess'));
+        } else {
+          messageApi.error(t('pages.jobs.rerunFailed'));
         }
       } catch (error) {
         console.error('Failed to rerun job:', error);
         messageApi.error(t('pages.jobs.rerunFailed'));
       }
     },
-    [canManage, createJob, getRerunName, messageApi, t]
+    [canManage, getRerunName, manualRefresh, messageApi, t]
   );
 
   /**
@@ -400,16 +404,20 @@ const LlmTasks: React.FC = () => {
               : (fullJob.request_body ?? ''),
         };
 
-        const success = await createHttpTask(rerunData);
+        const resp = await httpTaskApi.createJob(rerunData);
+        const success = resp.status === 200 || resp.status === 201;
         if (success) {
+          httpManualRefresh();
           messageApi.success(t('pages.jobs.rerunSuccess'));
+        } else {
+          messageApi.error(t('pages.jobs.rerunFailed'));
         }
       } catch (error) {
         console.error('Failed to rerun HTTP task:', error);
         messageApi.error(t('pages.jobs.rerunFailed'));
       }
     },
-    [canManage, createHttpTask, getRerunName, messageApi, t]
+    [canManage, getRerunName, httpManualRefresh, messageApi, t]
   );
 
   /**
@@ -1518,6 +1526,18 @@ const LlmTasks: React.FC = () => {
 
   const isHttpMode = activeMode === 'http';
   const currentJobs = isHttpMode ? httpFilteredJobs : filteredJobs;
+
+  // Check if all selected tasks can be managed by the current user
+  const allSelectedManageable = useMemo(() => {
+    if (selectedRowKeys.length === 0) return true;
+    const currentData = (isHttpMode ? httpFilteredJobs : filteredJobs) as Array<
+      LlmTask | HttpTask
+    >;
+    const selectedTasks = currentData.filter(job =>
+      selectedRowKeys.includes(job.id)
+    );
+    return selectedTasks.every(job => canManage(job.created_by));
+  }, [selectedRowKeys, isHttpMode, httpFilteredJobs, filteredJobs, canManage]);
   const currentPagination = isHttpMode ? httpPagination : pagination;
   const currentLoading = isHttpMode ? httpLoading : loading;
   const currentRefreshing = isHttpMode ? httpRefreshing : refreshing;
@@ -1619,14 +1639,23 @@ const LlmTasks: React.FC = () => {
                     count: selectedRowKeys.length,
                   })}
                 </Tag>
-                <Button
-                  icon={<PlayCircleOutlined />}
-                  onClick={handleBatchRerun}
-                  loading={batchRerunning}
-                  className='modern-button-teal-light'
+                <Tooltip
+                  title={
+                    !allSelectedManageable
+                      ? t('pages.jobs.batchRerunOwnerOnly')
+                      : undefined
+                  }
                 >
-                  {t('pages.jobs.batchRerun')}
-                </Button>
+                  <Button
+                    icon={<PlayCircleOutlined />}
+                    onClick={handleBatchRerun}
+                    loading={batchRerunning}
+                    disabled={!allSelectedManageable}
+                    className='modern-button-teal-light'
+                  >
+                    {t('pages.jobs.batchRerun')}
+                  </Button>
+                </Tooltip>
                 {selectedRowKeys.length >= 2 && selectedRowKeys.length <= 5 && (
                   <Button
                     icon={<BarChartOutlined />}
@@ -1770,4 +1799,4 @@ const LlmTasks: React.FC = () => {
   );
 };
 
-export default LlmTasks;
+export default Tasks;

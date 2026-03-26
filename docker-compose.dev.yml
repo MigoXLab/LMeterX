@@ -105,8 +105,6 @@ services:
     build:
       context: ./st_engine
       dockerfile: Dockerfile
-      args:
-        BASE_IMAGE: ${ENGINE_BASE_IMAGE:-charmy1220/lmeterx-eng-base:latest}
     restart: unless-stopped
     depends_on:
       mysql:

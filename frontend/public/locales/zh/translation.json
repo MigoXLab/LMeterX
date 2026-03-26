@@ -97,6 +97,7 @@
       "batchRerunConfirmContent": "将基于所选 {{count}} 个任务的配置分别创建新任务。",
       "batchRerunProgress": "批量重新运行完成：{{success}} 个成功，{{fail}} 个失败",
       "batchRerunAllSuccess": "已成功重新运行 {{count}} 个任务",
+      "batchRerunOwnerOnly": "选中的任务中包含非本人创建的任务，无法批量重新运行",
       "clearSelection": "清除勾选",
       "webOneClick": "智能建压",
       "webOneClickTooltip": "自动抓取 Web 接口，智能解析并生成压测负载配置，一键创建压测任务"

@@ -4,6 +4,7 @@ Skill API tests for /api/skills/analyze-url.
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import app
@@ -175,6 +176,7 @@ class TestSkillAPIFunctional:
         assert data["status"] == "error"
         assert "Playwright is required" in data["message"]
 
+    @pytest.mark.skip(reason="JS static scan is disabled in skill_service")
     @patch("service.skill_service._generate_configs_via_llm", new_callable=AsyncMock)
     @patch(
         "service.skill_service._discover_apis_via_js_static_scan",

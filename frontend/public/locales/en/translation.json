@@ -97,6 +97,7 @@
       "batchRerunConfirmContent": "New tasks will be created based on the configurations of {{count}} selected tasks.",
       "batchRerunProgress": "Batch rerun complete: {{success}} succeeded, {{fail}} failed",
       "batchRerunAllSuccess": "Successfully reran {{count}} tasks",
+      "batchRerunOwnerOnly": "Cannot batch rerun: selection includes tasks not created by you",
       "clearSelection": "Clear Selection",
       "webOneClick": "Smart Load Test",
       "webOneClickTooltip": "Auto-capture Web APIs, intelligently parse and generate load configurations, then create a stress test task in one click"

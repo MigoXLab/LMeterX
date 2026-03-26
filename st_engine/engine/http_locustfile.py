@@ -4,6 +4,7 @@ Supports both fixed concurrency and stepped load patterns.
 """
 
 import json
+import logging
 import os
 import queue
 import tempfile
@@ -152,6 +153,17 @@ def init_parser(parser):
         default="",
         help="Path to dataset file (JSONL, one request body per line)",
     )
+
+
+@events.init.add_listener
+def on_locust_init(environment, **kwargs):
+    """Override Locust's default log format to remove hostname and module name."""
+    _clean_fmt = logging.Formatter(
+        "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    for _handler in logging.root.handlers:
+        _handler.setFormatter(_clean_fmt)
 
 
 @events.test_start.add_listener

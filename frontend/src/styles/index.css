@@ -2043,17 +2043,143 @@ body {
   margin-right: 10px;
 }
 
-.log-line {
-  min-height: 1.8em;
-  line-height: 1.8;
-  padding: 2px 0;
-  white-space: pre-wrap;
-  word-break: break-all;
+/* ========================================
+   Log Viewer - Terminal Style
+   ======================================== */
+
+.log-viewer {
+  background-color: #1a1b2e;
+  border-radius: 8px;
+  border: 1px solid rgba(102, 126, 234, 0.15);
+  overflow: hidden;
+  color: #cdd6f4;
 }
 
-.log-level-text {
-  color: var(--level-color);
-  font-weight: bold;
+.log-viewer-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(205, 214, 244, 0.15) rgba(255, 255, 255, 0.03);
+}
+
+.log-viewer-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.log-viewer-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.log-viewer-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(205, 214, 244, 0.15);
+  border-radius: 4px;
+}
+
+.log-viewer-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(205, 214, 244, 0.25);
+}
+
+.log-viewer .log-line {
+  display: flex;
+  align-items: flex-start;
+  min-height: 1.6em;
+  line-height: 1.6;
+  padding: 1px 16px 1px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-left: 3px solid transparent;
+  transition: background-color 0.15s;
+}
+
+.log-viewer .log-line:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.log-viewer .log-line-error {
+  border-left-color: #f38ba8;
+  background-color: rgba(243, 139, 168, 0.06);
+}
+
+.log-viewer .log-line-error:hover {
+  background-color: rgba(243, 139, 168, 0.1);
+}
+
+.log-viewer .log-line-warning {
+  border-left-color: #fab387;
+  background-color: rgba(250, 179, 135, 0.04);
+}
+
+.log-viewer .log-line-warning:hover {
+  background-color: rgba(250, 179, 135, 0.08);
+}
+
+.log-viewer .log-line-number {
+  display: inline-block;
+  min-width: 48px;
+  padding: 0 12px 0 8px;
+  text-align: right;
+  color: #585b70;
+  user-select: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  margin-right: 12px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.log-viewer .log-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.log-viewer .log-timestamp {
+  color: #7f849c;
+}
+
+.log-viewer .log-separator {
+  color: #45475a;
+}
+
+.log-viewer .log-message {
+  color: #cdd6f4;
+}
+
+.log-viewer .log-plain-text {
+  color: #6c7086;
+}
+
+.log-viewer .log-level-badge {
+  display: inline-block;
+  min-width: 60px;
+  text-align: center;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.log-viewer .log-level-error {
+  color: #f38ba8;
+  background-color: rgba(243, 139, 168, 0.15);
+}
+
+.log-viewer .log-level-warning {
+  color: #fab387;
+  background-color: rgba(250, 179, 135, 0.12);
+}
+
+.log-viewer .log-level-info {
+  color: #89b4fa;
+  background-color: rgba(137, 180, 250, 0.12);
+}
+
+.log-viewer .log-level-debug {
+  color: #a6e3a1;
+  background-color: rgba(166, 227, 161, 0.12);
+}
+
+.log-viewer .log-level-default {
+  color: #bac2de;
+  background-color: rgba(186, 194, 222, 0.1);
 }
 
 /* ========================================

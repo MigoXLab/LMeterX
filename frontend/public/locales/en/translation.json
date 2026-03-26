@@ -68,9 +68,7 @@
       "refreshedAgo": "Refreshed a few seconds ago",
       "lastRefresh": "Last refresh",
       "llmTab": "LLM API",
-      "commonApiTab": "Business API",
       "httpApiTab": "HTTP API",
-      "searchPlaceholderCommon": "Search task name or ID",
       "createSuccess": "Task created successfully",
       "createFailed": "Failed to create task",
       "stopSuccess": "Task stopped successfully",
@@ -290,7 +288,6 @@
     "resultComparison": {
       "title": "Perf Insight",
       "modelTasks": "LLM API",
-      "commonTasks": "Business API",
       "httpTasks": "HTTP API",
       "selectModels": "Select Models",
       "compare": "Compare",

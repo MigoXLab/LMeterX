@@ -40,7 +40,7 @@ logger.add(
     encoding="utf-8",  # Sets the file encoding.
     level=LOG_LEVEL,  # Minimum log level to be written to the file.
     backtrace=False,  # Do not show the full stack trace.
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {file}:{line} | {message}",
+    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
     filter=is_system_log,  # Only log records without 'task_id'
     # enqueue=True,  # Asynchronous writing.
 )
@@ -78,7 +78,7 @@ def add_task_log_sink(task_id: str) -> int:
             encoding="utf-8",
             level="INFO",
             backtrace=True,  # Enable backtrace for task logs to help with debugging
-            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
             filter=is_current_task_log,
             enqueue=False,
         )

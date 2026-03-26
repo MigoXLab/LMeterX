@@ -1681,11 +1681,7 @@ const Tasks: React.FC = () => {
             {currentRefreshing && <Badge status='processing' />}
             {renderLastRefreshTime(currentLastRefresh)}
             <Search
-              placeholder={
-                isHttpMode
-                  ? t('pages.jobs.searchPlaceholderHttp')
-                  : t('pages.jobs.searchPlaceholder')
-              }
+              placeholder={t('pages.jobs.searchPlaceholder')}
               value={currentSearchInput}
               onSearch={currentPerformSearch}
               onChange={e => currentUpdateSearchInput(e.target.value)}

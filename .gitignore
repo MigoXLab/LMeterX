@@ -42,3 +42,6 @@ htmlcov
 # env
 backend/.env
 st_engine/.env
+
+# skills
+skills/

@@ -527,15 +527,15 @@ body {
   cursor: not-allowed;
 }
 
-/* Light purple variant for web quick load testing button */
+/* Macaron purple variant for web quick load testing button */
 .modern-button-web-quick-test.ant-btn,
 .modern-button-web-quick-test.ant-btn-default,
 .modern-button-web-quick-test {
   border-radius: var(--radius-md) !important;
-  background: linear-gradient(135deg, #b8a9e8 0%, #c4a0d0 100%) !important;
+  background: linear-gradient(135deg, #a78bfa 0%, #bf9cf6 100%) !important;
   border: none !important;
   color: #ffffff !important;
-  box-shadow: 0 3px 12px rgba(118, 75, 162, 0.25) !important;
+  box-shadow: 0 3px 12px rgba(167, 139, 250, 0.30) !important;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
   font-weight: 500 !important;
 }
@@ -543,8 +543,8 @@ body {
 .modern-button-web-quick-test.ant-btn:hover:not(:disabled),
 .modern-button-web-quick-test.ant-btn-default:hover:not(:disabled),
 .modern-button-web-quick-test:hover {
-  background: linear-gradient(135deg, #a696de 0%, #b68ec6 100%) !important;
-  box-shadow: 0 5px 16px rgba(118, 75, 162, 0.35) !important;
+  background: linear-gradient(135deg, #967ae8 0%, #b08bec 100%) !important;
+  box-shadow: 0 5px 16px rgba(150, 122, 232, 0.40) !important;
   transform: translateY(-1px);
   color: #ffffff !important;
 }
@@ -552,7 +552,7 @@ body {
 .modern-button-web-quick-test.ant-btn:active:not(:disabled),
 .modern-button-web-quick-test.ant-btn-default:active:not(:disabled),
 .modern-button-web-quick-test:active {
-  background: linear-gradient(135deg, #9584d4 0%, #a87ebc 100%) !important;
+  background: linear-gradient(135deg, #8768d8 0%, #a17ce2 100%) !important;
   color: #ffffff !important;
 }
 
@@ -562,11 +562,11 @@ body {
 .modern-button-web-quick-test.ant-btn-default:disabled {
   background: linear-gradient(
     135deg,
-    rgba(184, 169, 232, 0.5) 0%,
-    rgba(196, 160, 208, 0.5) 100%
+    rgba(167, 139, 250, 0.4) 0%,
+    rgba(191, 156, 246, 0.4) 100%
   ) !important;
   border: none !important;
-  color: rgba(255, 255, 255, 0.7) !important;
+  color: rgba(255, 255, 255, 0.65) !important;
   box-shadow: none !important;
   cursor: not-allowed;
 }
@@ -615,15 +615,15 @@ body {
   cursor: not-allowed;
 }
 
-/* Macaron blue – lighter variant (for "Compare" button) */
+/* Macaron blue variant (for "Compare" button) */
 .modern-button-teal.ant-btn,
 .modern-button-teal.ant-btn-default,
 .modern-button-teal {
   border-radius: var(--radius-md) !important;
-  background: linear-gradient(135deg, #89c4f4 0%, #a0d2f7 100%) !important;
+  background: linear-gradient(135deg, #6daff0 0%, #8ec6f6 100%) !important;
   border: none !important;
   color: #ffffff !important;
-  box-shadow: 0 3px 12px rgba(137, 196, 244, 0.35) !important;
+  box-shadow: 0 3px 12px rgba(109, 175, 240, 0.30) !important;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
   font-weight: 500 !important;
 }
@@ -631,8 +631,8 @@ body {
 .modern-button-teal.ant-btn:hover:not(:disabled),
 .modern-button-teal.ant-btn-default:hover:not(:disabled),
 .modern-button-teal:hover {
-  background: linear-gradient(135deg, #74b8f0 0%, #8ec8f5 100%) !important;
-  box-shadow: 0 5px 16px rgba(137, 196, 244, 0.45) !important;
+  background: linear-gradient(135deg, #5ca0e6 0%, #7db9f2 100%) !important;
+  box-shadow: 0 5px 16px rgba(92, 160, 230, 0.40) !important;
   transform: translateY(-1px);
   color: #ffffff !important;
 }
@@ -640,7 +640,7 @@ body {
 .modern-button-teal.ant-btn:active:not(:disabled),
 .modern-button-teal.ant-btn-default:active:not(:disabled),
 .modern-button-teal:active {
-  background: linear-gradient(135deg, #60aced 0%, #7dbef3 100%) !important;
+  background: linear-gradient(135deg, #4d93dc 0%, #6eacec 100%) !important;
   color: #ffffff !important;
 }
 
@@ -650,11 +650,11 @@ body {
 .modern-button-teal.ant-btn-default:disabled {
   background: linear-gradient(
     135deg,
-    rgba(137, 196, 244, 0.45) 0%,
-    rgba(160, 210, 247, 0.45) 100%
+    rgba(109, 175, 240, 0.4) 0%,
+    rgba(142, 198, 246, 0.4) 100%
   ) !important;
   border: none !important;
-  color: rgba(255, 255, 255, 0.7) !important;
+  color: rgba(255, 255, 255, 0.65) !important;
   box-shadow: none !important;
   cursor: not-allowed;
 }

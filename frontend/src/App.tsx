@@ -18,13 +18,13 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { NavigationProvider } from './contexts/NavigationContext';
 import HttpResults from './pages/HttpResults';
 import LlmResults from './pages/LlmResults';
-import TasksPage from './pages/LlmTasks';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import ResultComparison from './pages/ResultComparison';
 import SystemConfiguration from './pages/SystemConfiguration';
 import SystemMonitor from './pages/SystemMonitor';
 import TaskLog from './pages/TaskLog';
+import TasksPage from './pages/Tasks';
 import { isAuthenticated } from './utils/auth';
 import { getLdapEnabled } from './utils/runtimeConfig';
 

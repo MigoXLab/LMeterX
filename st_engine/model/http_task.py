@@ -26,6 +26,7 @@ class HttpTask(Base):
     request_body = Column(Text, nullable=True)
     dataset_file = Column(Text, nullable=True)
     curl_command = Column(Text, nullable=True)
+    success_assert = Column(Text, nullable=True)
     concurrent_users = Column(Integer, nullable=False)
     spawn_rate = Column(Integer, nullable=False)
     duration = Column(Integer, nullable=False)

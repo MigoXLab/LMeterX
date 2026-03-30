@@ -32,7 +32,7 @@ if not os.environ.get("TESTING"):
         encoding="utf-8",
         level=LOG_LEVEL,
         backtrace=False,
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {file}:{line} | {message}",  # noqa: E501
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
     )
 
 # Configure console logging.

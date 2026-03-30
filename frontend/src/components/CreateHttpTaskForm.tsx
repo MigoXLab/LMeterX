@@ -22,6 +22,7 @@ import {
   Row,
   Select,
   Space,
+  Switch,
   Tag,
   Tooltip,
   Typography,
@@ -50,12 +51,15 @@ interface Props {
 const HTTP_METHOD_OPTIONS = [
   'GET',
   'POST',
-  // 'PUT',
-  // 'PATCH',
-  // 'DELETE',
-  // 'HEAD',
-  // 'OPTIONS',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
 ];
+
+/** Methods that typically carry a request body. */
+const METHODS_WITH_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 const CreateHttpTaskForm: React.FC<Props> = ({
   onSubmit,
@@ -77,6 +81,13 @@ const CreateHttpTaskForm: React.FC<Props> = ({
   const urlValue = Form.useWatch('target_url', form);
   const datasetSource = Form.useWatch('dataset_source', form);
   const loadMode = Form.useWatch('load_mode', form) || 'fixed';
+  const [assertEnabled, setAssertEnabled] = useState(false);
+
+  /** Whether the currently selected method supports a request body. */
+  const methodSupportsBody = useMemo(
+    () => METHODS_WITH_BODY.has(methodValue),
+    [methodValue]
+  );
 
   const isFormReady = useMemo(() => {
     const hasUrl = urlValue && /^https?:\/\//i.test(urlValue);
@@ -105,6 +116,10 @@ const CreateHttpTaskForm: React.FC<Props> = ({
     curl_command: '',
     dataset_source: 'none',
     dataset_file: '',
+    // Success assertion defaults
+    success_assert_field: 'code',
+    success_assert_operator: 'eq',
+    success_assert_value: '0',
     temp_task_id: taskId,
   });
 
@@ -177,6 +192,26 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       } else {
         setDatasetFileName('');
       }
+      // Restore success assertion state from template
+      if (initialData.success_assert) {
+        try {
+          const parsed = JSON.parse(initialData.success_assert);
+          setAssertEnabled(true);
+          form.setFieldsValue({
+            success_assert_field: parsed.field || 'code',
+            success_assert_operator: parsed.operator || 'eq',
+            success_assert_value: String(
+              Array.isArray(parsed.value)
+                ? parsed.value.join(',')
+                : (parsed.value ?? '0')
+            ),
+          });
+        } catch {
+          setAssertEnabled(false);
+        }
+      } else {
+        setAssertEnabled(false);
+      }
     } else {
       // When creating new task (initialData is null), generate new tempTaskId and reset form completely
       const newTempTaskId = `temp-${Date.now()}`;
@@ -187,11 +222,24 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       form.resetFields();
       form.setFieldsValue(freshDefaults);
       setDatasetFileName('');
+      setAssertEnabled(false);
       // Clear test modal state
       setTestModalVisible(false);
       setTestResult(null);
     }
   }, [initialData]);
+
+  // When switching to a method that does NOT carry a body, clear body-related fields
+  useEffect(() => {
+    if (methodValue && !METHODS_WITH_BODY.has(methodValue)) {
+      form.setFieldsValue({
+        request_body: '',
+        dataset_source: 'none',
+        dataset_file: '',
+      });
+      setDatasetFileName('');
+    }
+  }, [methodValue]);
 
   const buildPayload = (values: any, includeTempId: boolean = false) => {
     const curlCommand = (values.curl_command || '').trim();
@@ -201,17 +249,54 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       ? curlCommand.slice(0, maxCurlLength)
       : curlCommand;
 
+    const hasBody = METHODS_WITH_BODY.has((values.method || '').toUpperCase());
     const datasetFile =
-      values.dataset_source === 'upload' ? values.dataset_file || '' : '';
+      hasBody && values.dataset_source === 'upload'
+        ? values.dataset_file || ''
+        : '';
 
     const mode = values.load_mode || 'fixed';
+
+    // Build success_assert JSON if enabled
+    let successAssert: string | undefined;
+    if (assertEnabled) {
+      const field = (values.success_assert_field || '').trim();
+      const operator = values.success_assert_operator || 'eq';
+      const rawValue = (values.success_assert_value || '').trim();
+
+      if (field && rawValue) {
+        let parsedValue: any = rawValue;
+        // For 'in' / 'not_in' operators, split comma-separated values
+        if (operator === 'in' || operator === 'not_in') {
+          parsedValue = rawValue.split(',').map((v: string) => {
+            const trimmed = v.trim();
+            const num = Number(trimmed);
+            return Number.isNaN(num) ? trimmed : num;
+          });
+        } else {
+          // Try to parse as number for numeric comparisons
+          const num = Number(rawValue);
+          if (!Number.isNaN(num)) {
+            parsedValue = num;
+          }
+        }
+        successAssert = JSON.stringify({
+          field,
+          operator,
+          value: parsedValue,
+        });
+      }
+    }
 
     const payload: any = {
       ...values,
       load_mode: mode,
       response_mode: values.response_mode,
+      request_body: hasBody ? values.request_body || '' : '',
       dataset_file: datasetFile,
+      dataset_source: hasBody ? values.dataset_source || 'none' : 'none',
       curl_command: safeCurlCommand,
+      success_assert: successAssert || null,
       headers: (values.headers || '').trim()
         ? values.headers
             .split('\n')
@@ -225,6 +310,11 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         ? { temp_task_id: values.temp_task_id || tempTaskId }
         : {}),
     };
+
+    // Clean up internal assert fields that should not be sent to backend
+    delete payload.success_assert_field;
+    delete payload.success_assert_operator;
+    delete payload.success_assert_value;
 
     if (mode === 'fixed') {
       // Clear stepped fields for fixed mode
@@ -313,12 +403,15 @@ const CreateHttpTaskForm: React.FC<Props> = ({
             })
         : [];
 
+      const testHasBody = METHODS_WITH_BODY.has(
+        (allValues.method || '').toUpperCase()
+      );
       const payload: any = {
         method: allValues.method,
         target_url: allValues.target_url,
         headers: parsedHeaders,
         cookies: allValues.cookies || [],
-        request_body: allValues.request_body || null,
+        request_body: testHasBody ? allValues.request_body || null : null,
       };
 
       setTesting(true);
@@ -558,64 +651,158 @@ const CreateHttpTaskForm: React.FC<Props> = ({
           />
         </Form.Item>
 
-        <Form.Item
-          label={t('components.createHttpTaskForm.body')}
-          name='request_body'
-        >
-          <TextArea
-            rows={4}
-            placeholder={t('components.createHttpTaskForm.bodyPlaceholder')}
-            maxLength={100000}
-            showCount
-          />
-        </Form.Item>
-
-        <Form.Item
-          label={t('components.createHttpTaskForm.datasetSource')}
-          name='dataset_source'
-          tooltip={t(
-            'components.createHttpTaskForm.datasetInfoTip',
-            'If not using dataset, original body will be used; if upload, provide full request body JSONL.'
-          )}
-        >
-          <Select
-            options={[
-              {
-                label: t('components.createHttpTaskForm.datasetNone'),
-                value: 'none',
-              },
-              {
-                label: t('components.createHttpTaskForm.datasetUpload'),
-                value: 'upload',
-              },
-            ]}
-          />
-        </Form.Item>
-
-        {datasetSource === 'upload' && (
-          <Form.Item
-            label={t('components.createHttpTaskForm.datasetFile')}
-            name='dataset_file'
-            rules={[
-              {
-                required: true,
-                message: t('components.createHttpTaskForm.datasetFileRequired'),
-              },
-            ]}
-          >
-            <Dragger
-              name='file'
-              multiple={false}
-              customRequest={handleDatasetUpload}
-              onRemove={handleDatasetRemove}
-              disabled={datasetUploading}
-              showUploadList={false}
-              accept='.jsonl,.json'
+        {/* Request body & dataset – only shown for methods that carry a body */}
+        {methodSupportsBody && (
+          <>
+            <Form.Item
+              label={t('components.createHttpTaskForm.body')}
+              name='request_body'
             >
-              <p>{t('components.createHttpTaskForm.datasetUploadTip')}</p>
-              {datasetFileName && <p>{datasetFileName}</p>}
-            </Dragger>
-          </Form.Item>
+              <TextArea
+                rows={4}
+                placeholder={t('components.createHttpTaskForm.bodyPlaceholder')}
+                maxLength={100000}
+                showCount
+              />
+            </Form.Item>
+
+            <Form.Item
+              label={t('components.createHttpTaskForm.datasetSource')}
+              name='dataset_source'
+              tooltip={t(
+                'components.createHttpTaskForm.datasetInfoTip',
+                'If not using dataset, original body will be used; if upload, provide full request body JSONL.'
+              )}
+            >
+              <Select
+                options={[
+                  {
+                    label: t('components.createHttpTaskForm.datasetNone'),
+                    value: 'none',
+                  },
+                  {
+                    label: t('components.createHttpTaskForm.datasetUpload'),
+                    value: 'upload',
+                  },
+                ]}
+              />
+            </Form.Item>
+
+            {datasetSource === 'upload' && (
+              <Form.Item
+                label={t('components.createHttpTaskForm.datasetFile')}
+                name='dataset_file'
+                rules={[
+                  {
+                    required: true,
+                    message: t(
+                      'components.createHttpTaskForm.datasetFileRequired'
+                    ),
+                  },
+                ]}
+              >
+                <Dragger
+                  name='file'
+                  multiple={false}
+                  customRequest={handleDatasetUpload}
+                  onRemove={handleDatasetRemove}
+                  disabled={datasetUploading}
+                  showUploadList={false}
+                  accept='.jsonl,.json'
+                >
+                  <p>{t('components.createHttpTaskForm.datasetUploadTip')}</p>
+                  {datasetFileName && <p>{datasetFileName}</p>}
+                </Dragger>
+              </Form.Item>
+            )}
+          </>
+        )}
+
+        {/* Success Response Assertion — optional business-level check */}
+        <Form.Item
+          label={
+            <Space>
+              {t('components.createHttpTaskForm.successAssert')}
+              <Tooltip
+                title={t('components.createHttpTaskForm.successAssertTip')}
+              >
+                <InfoCircleOutlined />
+              </Tooltip>
+            </Space>
+          }
+        >
+          <Switch
+            checked={assertEnabled}
+            onChange={setAssertEnabled}
+            checkedChildren={t('components.createHttpTaskForm.successAssertOn')}
+            unCheckedChildren={t(
+              'components.createHttpTaskForm.successAssertOff'
+            )}
+          />
+        </Form.Item>
+
+        {assertEnabled && (
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createHttpTaskForm.successAssertField')}
+                name='success_assert_field'
+                rules={[
+                  {
+                    required: assertEnabled,
+                    message: t(
+                      'components.createHttpTaskForm.successAssertFieldRequired'
+                    ),
+                  },
+                ]}
+              >
+                <Input
+                  placeholder={t(
+                    'components.createHttpTaskForm.successAssertFieldPlaceholder'
+                  )}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createHttpTaskForm.successAssertOperator')}
+                name='success_assert_operator'
+              >
+                <Select
+                  options={[
+                    { label: '= (eq)', value: 'eq' },
+                    { label: '≠ (neq)', value: 'neq' },
+                    { label: '> (gt)', value: 'gt' },
+                    { label: '≥ (gte)', value: 'gte' },
+                    { label: '< (lt)', value: 'lt' },
+                    { label: '≤ (lte)', value: 'lte' },
+                    { label: '∈ (in)', value: 'in' },
+                    { label: '∉ (not_in)', value: 'not_in' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label={t('components.createHttpTaskForm.successAssertValue')}
+                name='success_assert_value'
+                rules={[
+                  {
+                    required: assertEnabled,
+                    message: t(
+                      'components.createHttpTaskForm.successAssertValueRequired'
+                    ),
+                  },
+                ]}
+              >
+                <Input
+                  placeholder={t(
+                    'components.createHttpTaskForm.successAssertValuePlaceholder'
+                  )}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
         )}
 
         {/* Load mode selector: fixed concurrency vs stepped */}
@@ -729,7 +916,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
                     },
                   ]}
                 >
-                  <InputNumber min={1} max={5000} className='w-full' />
+                  <InputNumber min={1} max={1000} className='w-full' />
                 </Form.Item>
               </Col>
               <Col span={8}>
@@ -764,7 +951,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
                     },
                   ]}
                 >
-                  <InputNumber min={1} max={10000} className='w-full' />
+                  <InputNumber min={1} max={5000} className='w-full' />
                 </Form.Item>
               </Col>
               <Col span={12}>

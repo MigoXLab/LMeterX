@@ -102,6 +102,7 @@ CREATE TABLE `http_tasks` (
   `request_body` longtext COLLATE utf8mb4_unicode_ci,
   `dataset_file` longtext COLLATE utf8mb4_unicode_ci,
   `curl_command` longtext COLLATE utf8mb4_unicode_ci,
+  `success_assert` text COLLATE utf8mb4_unicode_ci,
   `concurrent_users` int(11) NOT NULL,
   `spawn_rate` int(11) NOT NULL,
   `duration` int(11) NOT NULL,

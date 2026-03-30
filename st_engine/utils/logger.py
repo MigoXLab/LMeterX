@@ -3,6 +3,7 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import logging
 import os
 import sys
 
@@ -40,7 +41,7 @@ logger.add(
     encoding="utf-8",  # Sets the file encoding.
     level=LOG_LEVEL,  # Minimum log level to be written to the file.
     backtrace=False,  # Do not show the full stack trace.
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {file}:{line} | {message}",
+    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
     filter=is_system_log,  # Only log records without 'task_id'
     # enqueue=True,  # Asynchronous writing.
 )
@@ -51,6 +52,25 @@ logger.add(
     level=LOG_LEVEL,
     format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{file}:{line}</cyan> | <level>{message}</level>",
 )
+
+
+def setup_clean_log_format():
+    """Override Locust's default log format to remove hostname and module name.
+
+    Default Locust format:
+        [%(asctime)s] %(hostname)s/%(levelname)s/%(name)s: %(message)s
+
+    Clean format matching loguru pipe style for consistency:
+        YYYY-MM-DD HH:MM:SS.mmm | LEVEL    | message
+
+    Call this once inside a ``@events.init.add_listener`` callback.
+    """
+    clean_fmt = logging.Formatter(
+        "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    for handler in logging.root.handlers:
+        handler.setFormatter(clean_fmt)
 
 
 def add_task_log_sink(task_id: str) -> int:
@@ -78,7 +98,7 @@ def add_task_log_sink(task_id: str) -> int:
             encoding="utf-8",
             level="INFO",
             backtrace=True,  # Enable backtrace for task logs to help with debugging
-            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
             filter=is_current_task_log,
             enqueue=False,
         )

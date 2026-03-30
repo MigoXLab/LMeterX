@@ -657,7 +657,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'request_count',
         key: 'request_count',
         width: 110,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? value.toLocaleString() : '0',
       },
@@ -666,7 +666,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'failure_count',
         key: 'failure_count',
         width: 100,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) => {
           const num = value ?? 0;
           return (
@@ -681,7 +681,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'avg_response_time',
         key: 'avg_response_time',
         width: 120,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
       },
@@ -690,7 +690,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'min_response_time',
         key: 'min_response_time',
         width: 120,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
       },
@@ -699,7 +699,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'max_response_time',
         key: 'max_response_time',
         width: 120,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
       },
@@ -708,7 +708,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'percentile_95_response_time',
         key: 'percentile_95_response_time',
         width: 120,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
       },
@@ -717,7 +717,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'rps',
         key: 'rps',
         width: 100,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? Number(value).toFixed(2) : '0.00',
       },
@@ -726,7 +726,7 @@ const HttpResults: React.FC = () => {
         dataIndex: 'avg_content_length',
         key: 'avg_content_length',
         width: 140,
-        align: 'right' as const,
+        align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? Number(value).toLocaleString() : '-',
       },
@@ -946,6 +946,38 @@ const HttpResults: React.FC = () => {
             </div>
           </>
         )}
+        <div className='info-grid-item'>
+          <span className='info-label'>
+            {t('pages.results.successAssert', 'Business Assertion')}
+          </span>
+          <span className='info-value'>
+            {(() => {
+              const raw = taskInfo?.success_assert;
+              if (!raw)
+                return t('pages.results.successAssertNone', 'Not configured');
+              try {
+                const rule = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                const opLabels: Record<string, string> = {
+                  eq: '=',
+                  neq: '≠',
+                  gt: '>',
+                  gte: '≥',
+                  lt: '<',
+                  lte: '≤',
+                  in: 'IN',
+                  not_in: 'NOT IN',
+                };
+                const op = opLabels[rule.operator] || rule.operator;
+                const val = Array.isArray(rule.value)
+                  ? rule.value.join(', ')
+                  : rule.value;
+                return `${rule.field} ${op} ${val}`;
+              } catch {
+                return raw;
+              }
+            })()}
+          </span>
+        </div>
         <div className='info-grid-item'>
           <span className='info-label'>
             {t('pages.results.engineId', 'Engine ID')}

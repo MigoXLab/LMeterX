@@ -7,6 +7,11 @@ import os
 import shutil
 from typing import List
 
+from config.multiprocess import (
+    get_cpu_count,
+    get_process_count,
+    should_enable_multiprocess,
+)
 from engine.llm_runner import LlmLocustRunner
 from model.http_task import HttpTask
 
@@ -68,8 +73,23 @@ class HttpLocustRunner(LlmLocustRunner):
                 ]
             )
 
+        # Multi-process support: automatically enable when concurrency is high
+        cpu_count = get_cpu_count()
+        concurrent_users = int(task.concurrent_users)
+        process_count = get_process_count(concurrent_users, cpu_count)
+
+        if (
+            should_enable_multiprocess(concurrent_users, cpu_count)
+            and process_count > 1
+        ):
+            cmd.extend(["--processes", str(process_count)])
+            task_logger.info(
+                f"Multi-process enabled: {process_count} workers "
+                f"(CPU={cpu_count}, users={concurrent_users})"
+            )
+
         # Optional args
-        for key in ["request_body", "dataset_file"]:
+        for key in ["request_body", "dataset_file", "success_assert"]:
             value = getattr(task, key, None)
             if value:
                 cmd.extend([f"--{key}", value])

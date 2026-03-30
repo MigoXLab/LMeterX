@@ -21,7 +21,7 @@ from engine.core import ConfigManager, GlobalStateManager, ValidationManager
 from engine.request_processor import APIClient, PayloadBuilder
 from utils.common import mask_sensitive_data
 from utils.event_handler import EventManager
-from utils.logger import logger
+from utils.logger import logger, setup_clean_log_format
 from utils.realtime_metrics import realtime_metrics_greenlet
 from utils.stats_manager import StatsManager
 from utils.token_counter import AsyncTokenCounter
@@ -321,6 +321,9 @@ def init_parser(parser):
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
     """Initialize Locust configuration and setup environment."""
+
+    # Override Locust's default log format to remove hostname and module name.
+    setup_clean_log_format()
 
     if not environment.parsed_options:
         logger.warning(

@@ -23,7 +23,6 @@ import {
   Select,
   Space,
   Switch,
-  theme,
   Tooltip,
   Typography,
 } from 'antd';
@@ -38,6 +37,17 @@ import { decodeUnicodeEscapes } from '../utils/data';
 
 const { Search } = Input;
 const { Text } = Typography;
+
+// Pre-compiled regexes for log line parsing (created once at module load)
+// Pattern 1: Structured log with pipe separators (3 or 4 segments)
+const STRUCTURED_LOG_REGEX =
+  /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*\|\s*(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\s*\|\s*(?:\S+:\d+\s*\|\s*)?(.*)/i;
+// Pattern 2: Locust-style log
+const LOCUST_LOG_REGEX =
+  /^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\]\s+(?:.+?)\/(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\/(?:[^:]+):\s*(.*)/i;
+// Fallback: any line with a level keyword
+const LEVEL_REGEX =
+  /(^|\s)(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)(\s|:)/i;
 
 const FINAL_TASK_STATUSES = [
   'COMPLETED',
@@ -80,7 +90,6 @@ const TaskLogs: React.FC = () => {
   const logContainerRef = useRef<HTMLDivElement>(null);
   const autoRefreshTimerRef = useRef<number | null>(null);
   const errorRetryTimerRef = useRef<number | null>(null);
-  const { token } = theme.useToken();
   const shouldScrollToBottom = useRef(true);
   const taskRef = useRef<Job | null>(null);
   const fetchErrorRef = useRef<string | null>(null);
@@ -403,58 +412,107 @@ const TaskLogs: React.FC = () => {
     setFullscreen(!fullscreen);
   };
 
-  const formatLogLine = (line: string) => {
-    // Handle empty lines - ensure they have proper height
-    if (line.trim() === '') {
-      return <div className='log-line'>&nbsp;</div>;
-    }
-
-    const levelRegex =
-      /(^|\s)(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)(\s|:)/i;
-    const levelMatch = line.match(levelRegex);
-
-    if (!levelMatch) {
-      return <div className='log-line'>{line}</div>;
-    }
-
-    const level = levelMatch[2].toUpperCase();
-    let levelColor = '';
-
+  const getLevelClass = (level: string): string => {
     switch (level) {
       case 'ERROR':
       case 'FATAL':
       case 'CRITICAL':
-        levelColor = token.colorError;
-        break;
+        return 'error';
       case 'WARN':
       case 'WARNING':
-        levelColor = token.colorWarning;
-        break;
+        return 'warning';
       case 'INFO':
-        levelColor = token.colorInfo;
-        break;
+        return 'info';
       case 'DEBUG':
-        levelColor = token.colorSuccess;
-        break;
+        return 'debug';
       default:
-        levelColor = token.colorText;
+        return 'default';
+    }
+  };
+
+  const formatLogLine = (line: string, lineNumber: number) => {
+    // Handle empty lines
+    if (line.trim() === '') {
+      return (
+        <div className='log-line'>
+          <span className='log-line-number'>{lineNumber}</span>
+          <span className='log-content'>&nbsp;</span>
+        </div>
+      );
     }
 
-    const fullMatchIndex = line.indexOf(levelMatch[0]);
-    const levelIndex = fullMatchIndex + levelMatch[1].length;
-    const levelEnd = levelIndex + levelMatch[2].length;
+    const structuredMatch = line.match(STRUCTURED_LOG_REGEX);
 
-    const beforeLevel = line.substring(0, levelIndex);
-    const levelPart = line.substring(levelIndex, levelEnd);
-    const afterLevel = line.substring(levelEnd);
+    if (structuredMatch) {
+      const [, timestamp, level, msg] = structuredMatch;
+      const levelClass = getLevelClass(level.toUpperCase());
 
+      return (
+        <div className={`log-line log-line-${levelClass}`}>
+          <span className='log-line-number'>{lineNumber}</span>
+          <span className='log-content'>
+            <span className='log-timestamp'>{timestamp}</span>
+            <span className='log-separator'> | </span>
+            <span className={`log-level-badge log-level-${levelClass}`}>
+              {level.toUpperCase().padEnd(8)}
+            </span>
+            <span className='log-separator'> | </span>
+            <span className='log-message'>{msg}</span>
+          </span>
+        </div>
+      );
+    }
+
+    const locustMatch = line.match(LOCUST_LOG_REGEX);
+
+    if (locustMatch) {
+      const [, timestamp, level, msg] = locustMatch;
+      const levelClass = getLevelClass(level.toUpperCase());
+
+      return (
+        <div className={`log-line log-line-${levelClass}`}>
+          <span className='log-line-number'>{lineNumber}</span>
+          <span className='log-content'>
+            <span className='log-timestamp'>{timestamp}</span>
+            <span className='log-separator'> | </span>
+            <span className={`log-level-badge log-level-${levelClass}`}>
+              {level.toUpperCase().padEnd(8)}
+            </span>
+            <span className='log-separator'> | </span>
+            <span className='log-message'>{msg}</span>
+          </span>
+        </div>
+      );
+    }
+
+    const levelMatch = line.match(LEVEL_REGEX);
+
+    if (levelMatch) {
+      const level = levelMatch[2].toUpperCase();
+      const levelClass = getLevelClass(level);
+      const fullMatchIndex = line.indexOf(levelMatch[0]);
+      const levelIndex = fullMatchIndex + levelMatch[1].length;
+      const levelEnd = levelIndex + levelMatch[2].length;
+
+      return (
+        <div className={`log-line log-line-${levelClass}`}>
+          <span className='log-line-number'>{lineNumber}</span>
+          <span className='log-content'>
+            <span className='log-message'>{line.substring(0, levelIndex)}</span>
+            <span className={`log-level-badge log-level-${levelClass}`}>
+              {line.substring(levelIndex, levelEnd)}
+            </span>
+            <span className='log-message'>{line.substring(levelEnd)}</span>
+          </span>
+        </div>
+      );
+    }
+
+    // Plain text lines (HTML content, continuation lines, etc.)
     return (
       <div className='log-line'>
-        <span>{beforeLevel}</span>
-        <span className='log-level-text' style={{ color: levelColor }}>
-          {levelPart}
-        </span>
-        <span>{afterLevel}</span>
+        <span className='log-line-number'>{lineNumber}</span>
+        <span className='log-content log-plain-text'>{line}</span>
       </div>
     );
   };
@@ -490,7 +548,9 @@ const TaskLogs: React.FC = () => {
       filteredLogs
         .split('\n')
         .map((line, index) => (
-          <React.Fragment key={index}>{formatLogLine(line)}</React.Fragment>
+          <React.Fragment key={index}>
+            {formatLogLine(line, index + 1)}
+          </React.Fragment>
         )),
     [filteredLogs]
   );
@@ -604,67 +664,62 @@ const TaskLogs: React.FC = () => {
   // Render log container
   const renderLogContainer = () => {
     return (
-      <div style={{ position: 'relative', backgroundColor: '#ffffff' }}>
-        <div
-          ref={logContainerRef}
-          className='custom-scrollbar'
-          style={{
-            backgroundColor: '#ffffff',
-            padding: '20px',
-            borderRadius: '0',
-            height: getLogContainerHeight(),
-            overflowY: 'auto',
-            fontFamily:
-              '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
-            fontSize: '14px',
-            lineHeight: '1.8',
-            border: 'none',
-            boxShadow: 'none',
-          }}
-        >
-          {searchTerm && (
-            <Alert
-              message={t('pages.taskLog.searchResults', { searchTerm })}
-              type='info'
-              showIcon
-              closable
-              onClose={() => {
-                setSearchTerm('');
-                setFilteredLogs(logs);
-              }}
-              className='mb-16'
-            />
-          )}
+      <div style={{ position: 'relative' }}>
+        {searchTerm && (
+          <Alert
+            message={t('pages.taskLog.searchResults', { searchTerm })}
+            type='info'
+            showIcon
+            closable
+            onClose={() => {
+              setSearchTerm('');
+              setFilteredLogs(logs);
+            }}
+            className='mb-16'
+          />
+        )}
 
-          {fetchError && (
-            <Alert
-              message={t('pages.taskLog.autoRefreshError')}
-              description={
-                <div>
-                  <p>{fetchError}</p>
-                  <p>{t('pages.taskLog.autoRefreshPaused')}</p>
-                </div>
-              }
-              type='warning'
-              showIcon
-              icon={<WarningOutlined />}
-              closable
-              action={
-                <Button
-                  size='small'
-                  type='primary'
-                  onClick={handleManualRefresh}
-                >
-                  {t('pages.taskLog.refreshNow')}
-                </Button>
-              }
-              onClose={() => setFetchError(null)}
-              className='mb-16'
-            />
-          )}
+        {fetchError && (
+          <Alert
+            message={t('pages.taskLog.autoRefreshError')}
+            description={
+              <div>
+                <p>{fetchError}</p>
+                <p>{t('pages.taskLog.autoRefreshPaused')}</p>
+              </div>
+            }
+            type='warning'
+            showIcon
+            icon={<WarningOutlined />}
+            closable
+            action={
+              <Button size='small' type='primary' onClick={handleManualRefresh}>
+                {t('pages.taskLog.refreshNow')}
+              </Button>
+            }
+            onClose={() => setFetchError(null)}
+            className='mb-16'
+          />
+        )}
 
-          {renderedLogLines}
+        <div className='log-viewer'>
+          <div
+            ref={logContainerRef}
+            className='log-viewer-scrollbar'
+            style={{
+              padding: '12px 0',
+              height: getLogContainerHeight(),
+              overflowY: 'auto',
+              fontFamily:
+                '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+              fontSize: '13px',
+              lineHeight: '1.6',
+            }}
+          >
+            {renderedLogLines}
+          </div>
         </div>
+
         {showScrollToBottom && (
           <Button
             type='text'
@@ -677,12 +732,12 @@ const TaskLogs: React.FC = () => {
               borderRadius: '50%',
               width: '40px',
               height: '40px',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+              backgroundColor: 'rgba(30, 30, 46, 0.9)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
             }}
             icon={
-              <DownOutlined
-                style={{ fontSize: '20px', color: token.colorPrimary }}
-              />
+              <DownOutlined style={{ fontSize: '20px', color: '#89b4fa' }} />
             }
           />
         )}

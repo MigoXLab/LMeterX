@@ -1161,6 +1161,7 @@ const Tasks: React.FC = () => {
       if (success) {
         setIsModalVisible(false);
         setTaskToCopy(null);
+        setHttpTaskToCopy(null);
       }
     },
     [activeMode, createHttpTask, createJob]
@@ -1284,6 +1285,7 @@ const Tasks: React.FC = () => {
   const handleModalCancel = useCallback(() => {
     setIsModalVisible(false);
     setTaskToCopy(null);
+    setHttpTaskToCopy(null);
   }, []);
 
   const handleResetFilters = useCallback(() => {
@@ -1760,7 +1762,11 @@ const Tasks: React.FC = () => {
       </Modal>
 
       <Modal
-        title={taskToCopy ? t('pages.jobs.edit') : t('pages.jobs.createNew')}
+        title={
+          taskToCopy || httpTaskToCopy
+            ? t('pages.jobs.edit')
+            : t('pages.jobs.createNew')
+        }
         open={isModalVisible}
         onCancel={handleModalCancel}
         footer={null}

@@ -85,6 +85,7 @@ export interface HttpTask {
   }>;
   request_body?: string;
   curl_command?: string;
+  success_assert?: string;
   concurrent_users: number;
   spawn_rate?: number;
   duration: number;

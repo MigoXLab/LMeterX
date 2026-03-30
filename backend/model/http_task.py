@@ -65,6 +65,15 @@ class HttpTaskCreateReq(BaseModel):
     curl_command: Optional[str] = Field(
         default=None, max_length=8000, description="Original curl command"
     )
+    success_assert: Optional[str] = Field(
+        default=None,
+        max_length=2000,
+        description=(
+            "Business-level success assertion rule (JSON). "
+            "When set, response body will be checked against this rule. "
+            'Example: {"field":"code","operator":"eq","value":0}'
+        ),
+    )
     duration: int = Field(
         default=300,
         ge=1,
@@ -152,6 +161,32 @@ class HttpTaskCreateReq(BaseModel):
                     f"maximum allowed 172800s (48h). Reduce step parameters."
                 )
         return v
+
+    @validator("success_assert")
+    def validate_success_assert(cls, v: Optional[str]) -> Optional[str]:
+        """Validate success_assert is valid JSON with required fields."""
+        if v is None or v.strip() == "":
+            return None
+        import json as _json
+
+        try:
+            rule = _json.loads(v)
+        except _json.JSONDecodeError:
+            raise ValueError("success_assert must be valid JSON")
+        if not isinstance(rule, dict):
+            raise ValueError("success_assert must be a JSON object")
+        if "field" not in rule or not rule["field"]:
+            raise ValueError("success_assert requires a 'field' key")
+        if "operator" not in rule:
+            raise ValueError("success_assert requires an 'operator' key")
+        valid_ops = {"eq", "neq", "gt", "gte", "lt", "lte", "in", "not_in"}
+        if rule["operator"] not in valid_ops:
+            raise ValueError(
+                f"success_assert operator must be one of: {', '.join(sorted(valid_ops))}"
+            )
+        if "value" not in rule:
+            raise ValueError("success_assert requires a 'value' key")
+        return v.strip()
 
     @validator("name")
     def validate_name(cls, v: str) -> str:
@@ -409,6 +444,7 @@ class HttpTask(Base):
     request_body = Column(Text, nullable=True)
     dataset_file = Column(Text, nullable=True)
     curl_command = Column(Text, nullable=True)
+    success_assert = Column(Text, nullable=True)
     concurrent_users = Column(Integer, nullable=False)
     spawn_rate = Column(Integer, nullable=False)
     duration = Column(Integer, nullable=False)

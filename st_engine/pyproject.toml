@@ -102,9 +102,9 @@ exclude = [
 per-file-ignores = [
     # __init__.py files can have unused imports and be empty
     "__init__.py:F401,D104,W391,E261",
-    # Test files can have unused imports and long lines
-    "test_*.py:F401,E501,D100,D103",
-    "*_test.py:F401,E501,D100,D103",
+    # Test files can have unused imports, long lines, and omit method docstrings
+    "test_*.py:F401,E501,D100,D102,D103,D209",
+    "*_test.py:F401,E501,D100,D102,D103,D209",
     # Engine files can use star imports and function calls in defaults
     "engine/*.py:F403,F405,B008,C901",
     # Service files can use star imports

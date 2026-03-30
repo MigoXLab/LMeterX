@@ -109,6 +109,7 @@ def _build_task_detail(task: HttpTask) -> Dict[str, Any]:
         "request_body": task.request_body or "",
         "dataset_file": task.dataset_file or "",
         "curl_command": task.curl_command or "",
+        "success_assert": task.success_assert or "",
         "error_message": task.error_message or "",
     }
     return detail
@@ -286,6 +287,7 @@ async def create_http_task_svc(
             request_body=body.request_body or "",
             dataset_file=body.dataset_file or "",
             curl_command=body.curl_command or "",
+            success_assert=body.success_assert or "",
             concurrent_users=body.concurrent_users,
             spawn_rate=spawn_rate,
             duration=body.duration,
@@ -418,9 +420,14 @@ async def test_http_api_svc(request: Request, body: HttpTaskTestReq) -> Dict[str
 
     headers = kv_items_to_dict(body.headers)
     cookies = kv_items_to_dict(body.cookies)
-    json_payload, text_payload = _prepare_request_body(body.request_body)
     method = body.method.upper()
     target_url = body.target_url
+
+    # GET / HEAD / OPTIONS should not carry a request body per HTTP semantics.
+    # Silently discard the body for these methods to avoid confusing servers.
+    _no_body_methods = {"GET", "HEAD", "OPTIONS"}
+    effective_body = body.request_body if method not in _no_body_methods else None
+    json_payload, text_payload = _prepare_request_body(effective_body)
 
     timeout_config = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)

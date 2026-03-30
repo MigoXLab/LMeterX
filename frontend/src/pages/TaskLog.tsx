@@ -38,6 +38,17 @@ import { decodeUnicodeEscapes } from '../utils/data';
 const { Search } = Input;
 const { Text } = Typography;
 
+// Pre-compiled regexes for log line parsing (created once at module load)
+// Pattern 1: Structured log with pipe separators (3 or 4 segments)
+const STRUCTURED_LOG_REGEX =
+  /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*\|\s*(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\s*\|\s*(?:\S+:\d+\s*\|\s*)?(.*)/i;
+// Pattern 2: Locust-style log
+const LOCUST_LOG_REGEX =
+  /^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\]\s+(?:.+?)\/(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\/(?:[^:]+):\s*(.*)/i;
+// Fallback: any line with a level keyword
+const LEVEL_REGEX =
+  /(^|\s)(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)(\s|:)/i;
+
 const FINAL_TASK_STATUSES = [
   'COMPLETED',
   'FAILED',
@@ -430,13 +441,7 @@ const TaskLogs: React.FC = () => {
       );
     }
 
-    // Pattern 1: Structured log with pipe separators (3 or 4 segments)
-    // 3-seg: YYYY-MM-DD HH:MM:SS.mmm | LEVEL | message
-    // 4-seg: YYYY-MM-DD HH:MM:SS.mmm | LEVEL | source:line | message
-    // Milliseconds are optional to handle different formatters
-    const structuredLogRegex =
-      /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*\|\s*(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\s*\|\s*(?:\S+:\d+\s*\|\s*)?(.*)/i;
-    const structuredMatch = line.match(structuredLogRegex);
+    const structuredMatch = line.match(STRUCTURED_LOG_REGEX);
 
     if (structuredMatch) {
       const [, timestamp, level, msg] = structuredMatch;
@@ -458,11 +463,7 @@ const TaskLogs: React.FC = () => {
       );
     }
 
-    // Pattern 2: Locust-style log (fallback for old format before backend fix)
-    // [YYYY-MM-DD HH:MM:SS,mmm] hostname/LEVEL/module: message
-    const locustLogRegex =
-      /^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\]\s+(?:.+?)\/(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\/(?:[^:]+):\s*(.*)/i;
-    const locustMatch = line.match(locustLogRegex);
+    const locustMatch = line.match(LOCUST_LOG_REGEX);
 
     if (locustMatch) {
       const [, timestamp, level, msg] = locustMatch;
@@ -484,10 +485,7 @@ const TaskLogs: React.FC = () => {
       );
     }
 
-    // Fallback: any line with a level keyword
-    const levelRegex =
-      /(^|\s)(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)(\s|:)/i;
-    const levelMatch = line.match(levelRegex);
+    const levelMatch = line.match(LEVEL_REGEX);
 
     if (levelMatch) {
       const level = levelMatch[2].toUpperCase();

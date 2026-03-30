@@ -4,7 +4,6 @@ Supports both fixed concurrency and stepped load patterns.
 """
 
 import json
-import logging
 import os
 import queue
 import tempfile
@@ -15,7 +14,7 @@ import urllib3
 from locust import HttpUser, events, task
 from urllib3.exceptions import InsecureRequestWarning
 
-from utils.logger import logger
+from utils.logger import logger, setup_clean_log_format
 from utils.realtime_metrics import realtime_metrics_greenlet
 
 # Disable the specific InsecureRequestWarning from urllib3
@@ -242,12 +241,7 @@ def init_parser(parser):
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
     """Override Locust's default log format to remove hostname and module name."""
-    _clean_fmt = logging.Formatter(
-        "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    for _handler in logging.root.handlers:
-        _handler.setFormatter(_clean_fmt)
+    setup_clean_log_format()
 
 
 def _preload_dataset(environment) -> None:

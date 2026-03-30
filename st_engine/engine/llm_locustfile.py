@@ -4,7 +4,6 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import json
-import logging
 import os
 import signal
 import tempfile
@@ -22,7 +21,7 @@ from engine.core import ConfigManager, GlobalStateManager, ValidationManager
 from engine.request_processor import APIClient, PayloadBuilder
 from utils.common import mask_sensitive_data
 from utils.event_handler import EventManager
-from utils.logger import logger
+from utils.logger import logger, setup_clean_log_format
 from utils.realtime_metrics import realtime_metrics_greenlet
 from utils.stats_manager import StatsManager
 from utils.token_counter import AsyncTokenCounter
@@ -324,14 +323,7 @@ def on_locust_init(environment, **kwargs):
     """Initialize Locust configuration and setup environment."""
 
     # Override Locust's default log format to remove hostname and module name.
-    # Default Locust format: [%(asctime)s] %(hostname)s/%(levelname)s/%(name)s: %(message)s
-    # Clean format matching loguru pipe style for consistency.
-    _clean_fmt = logging.Formatter(
-        "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    for _handler in logging.root.handlers:
-        _handler.setFormatter(_clean_fmt)
+    setup_clean_log_format()
 
     if not environment.parsed_options:
         logger.warning(

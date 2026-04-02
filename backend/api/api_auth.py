@@ -142,4 +142,8 @@ async def get_profile(request: Request) -> UserInfo:
         return UserInfo(username="anonymous", display_name="anonymous", email=None)
 
     user = get_current_user(request)
-    return UserInfo(**user)
+    return UserInfo(
+        username=user.get("sub", user.get("username", "")),
+        display_name=user.get("name", user.get("display_name")),
+        email=user.get("email"),
+    )

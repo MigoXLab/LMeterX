@@ -2,14 +2,17 @@
 name: run-web-loadtest
 emoji: 🚀
 description: |
-  输入一个网页 URL，后端自动爬取页面并识别核心业务 API，
-  对候选 API 执行连通性预检后创建 LMeterX 压测任务。
+  输入一个**网页/网站 URL**（非 API 端点），后端自动爬取页面并识别核心业务 API，
+  对候选 API 执行连通性预检后批量创建 LMeterX 压测任务。
+  适用场景：用户只有一个前端页面地址，不清楚后端有哪些 API。
 triggers:
   - 帮我压测这个网站
-  - 对这个 URL 做性能测试
+  - 帮我压测这个网页
+  - 分析这个页面的 API 并压测
+  - 爬取页面接口并压测
+  - load test this website
   - load test this page
-  - stress test this API page
-  - 压测
+  - analyze and stress test this page
 requires:
   env:
     - LMETERX_BASE_URL
@@ -19,7 +22,18 @@ requires:
 
 ## 用途
 
-输入一个网页 URL，自动分析页面中的核心业务 API，对候选 API 预检连通性后创建压测任务。
+输入一个**网页 URL**（如首页、管理后台页面），自动爬取页面、分析其中调用的后端 API，对候选 API 预检连通性后**批量**创建压测任务。
+
+## ⚠️ 本 Skill 与 `run-api-loadtest` 的区别
+
+| 判断条件 | 使用本 Skill（run-web-loadtest） | 使用 run-api-loadtest |
+|---------|-------------------------------|----------------------|
+| 用户给了什么 | 一个网页/网站 URL（HTML 页面） | 一个具体的 API 端点 URL 或 curl 命令 |
+| 典型 URL 特征 | `https://example.com`、`https://app.com/dashboard` | `https://api.example.com/v1/users`、包含 `/api/` 路径 |
+| 用户意图 | "不确定有哪些 API，帮我分析再压测" | "我知道要压哪个接口，直接压" |
+| 输入中是否含 curl | ❌ 通常不含 | ✅ 经常包含 curl 命令 |
+
+**快速判断**：如果用户提供的 URL 看起来是一个可以在浏览器中打开的**网页**，用本 Skill；如果 URL 明显是一个 **API 端点**（含 `/api/`、`/v1/`、`/graphql` 等路径特征）或用户直接给了 **curl 命令**，则用 `run-api-loadtest`。
 
 ## 工作流程（4 步）
 
@@ -34,7 +48,7 @@ requires:
 - 如果环境变量 `LMETERX_BASE_URL` 已设置 → 使用该值
 - 如果**未设置** → 立即询问用户：
 
-> ⚙️ 尚未配置 LMeterX 服务地址。请提供你的 LMeterX 后端 URL，例如：`https://lmeterx.example.com`
+> ⚙️ 尚未配置 LMeterX 服务地址。请提供你的 LMeterX 后端 URL，例如：`http://localhost:8080`
 
 用户回复后，将其作为 `{LMETERX_BASE_URL}` 用于后续所有请求。
 
@@ -285,7 +299,7 @@ python "${SKILL_DIR}/scripts/run.py" \
 
 ## 环境变量
 
-- `LMETERX_BASE_URL`（必须）— LMeterX 后端地址，例如 `https://lmeterx.example.com`
+- `LMETERX_BASE_URL`（必须）— LMeterX 后端地址，例如 `http://localhost:8080`
 - `LMETERX_AUTH_TOKEN`（可选）— Bearer token（启用 LDAP 认证时需要）
 
 > 如果环境变量未配置，Agent 会在对话中引导用户提供（参见 Step 0）。

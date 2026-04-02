@@ -3,11 +3,17 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 from pydantic_settings import BaseSettings
+
+_startup_logger = logging.getLogger(__name__)
+
+_INSECURE_DEFAULT_KEYS = {"change-me", "secret", "your-secret-key", ""}
 
 # Resolve project directories so .env can be found regardless of cwd
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -52,7 +58,26 @@ class AuthSettings(BaseSettings):
 @lru_cache()
 def get_auth_settings() -> AuthSettings:
     """
-    Return cached authentication settings.
+    Return cached authentication settings with security validation.
     """
 
-    return AuthSettings()
+    settings = AuthSettings()
+
+    # Skip security checks in testing mode
+    if not os.environ.get("TESTING"):
+        # Warn if JWT secret key is using an insecure default value
+        if settings.JWT_SECRET_KEY in _INSECURE_DEFAULT_KEYS:
+            _startup_logger.warning(
+                "JWT_SECRET_KEY is using an insecure default value! "
+                "Set a strong, unique JWT_SECRET_KEY in your environment."
+            )
+
+        # Warn if cookie security settings are not suitable for production
+        if settings.LDAP_ENABLED and not settings.JWT_COOKIE_SECURE:
+            _startup_logger.warning(
+                "JWT_COOKIE_SECURE is False while LDAP auth is enabled. "
+                "Set JWT_COOKIE_SECURE=True in production to prevent "
+                "cookies from being sent over insecure HTTP connections."
+            )
+
+    return settings

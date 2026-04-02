@@ -2,14 +2,19 @@
 name: run-api-loadtest
 emoji: 🎯
 description: |
-  给定 API curl 命令或 URL/方法/参数，自动判断 API 类型
-  （LLM API 或普通 HTTP API），预检连通性后创建 LMeterX 压测任务。
+  给定一个**具体的 API 端点 URL** 或 **curl 命令**，自动判断 API 类型
+  （LLM API 或普通 HTTP API），预检连通性后直接创建 LMeterX 压测任务。
+  适用场景：用户已经明确知道要压测哪个 API 接口。
 triggers:
   - 帮我压测这个 API
-  - 压测这个接口
-  - load test this API endpoint
+  - 帮我压测这个接口
+  - 直接压测这个 API
+  - 压测这个 curl
+  - 压测这个端点
+  - load test this API
+  - load test this endpoint
   - stress test this curl
-  - 直接压测 API
+  - 压测
 requires:
   env:
     - LMETERX_BASE_URL
@@ -19,7 +24,18 @@ requires:
 
 ## 用途
 
-给定一个 API 的 curl 命令或 URL/方法/参数，自动判断 API 类型并创建压测任务。
+给定一个**具体的 API 端点 URL**（如 `https://api.example.com/v1/users`）或 **curl 命令**，自动判断 API 类型并直接创建压测任务。
+
+## ⚠️ 本 Skill 与 `run-web-loadtest` 的区别
+
+| 判断条件 | 使用本 Skill（run-api-loadtest） | 使用 run-web-loadtest |
+|---------|-------------------------------|----------------------|
+| 用户给了什么 | 一个具体的 API 端点 URL 或 curl 命令 | 一个网页/网站 URL（HTML 页面） |
+| 典型 URL 特征 | `https://api.example.com/v1/users`、包含 `/api/` 路径 | `https://example.com`、`https://app.com/dashboard` |
+| 用户意图 | "我知道要压哪个接口，直接压" | "不确定有哪些 API，帮我分析再压测" |
+| 输入中是否含 curl | ✅ 经常包含 curl 命令 | ❌ 通常不含 |
+
+**快速判断**：如果用户提供的 URL 明显是一个 **API 端点**（含 `/api/`、`/v1/`、`/graphql` 等路径特征）或用户直接给了 **curl 命令**，用本 Skill；如果 URL 看起来是一个可以在浏览器中打开的**网页**，则用 `run-web-loadtest`。
 
 ## API 类型判断规则
 
@@ -60,7 +76,7 @@ https://api.anthropic.com/v1/messages
 - 如果环境变量 `LMETERX_BASE_URL` 已设置 → 使用该值
 - 如果**未设置** → 立即询问用户：
 
-> ⚙️ 尚未配置 LMeterX 服务地址。请提供你的 LMeterX 后端 URL，例如：`https://lmeterx.example.com`
+> ⚙️ 尚未配置 LMeterX 服务地址。请提供你的 LMeterX 后端 URL，例如：`http://localhost:8080`
 
 用户回复后，将其作为 `{LMETERX_BASE_URL}` 用于后续所有请求。
 
@@ -326,7 +342,7 @@ python "${SKILL_DIR}/scripts/run.py" \
 
 ## 环境变量
 
-- `LMETERX_BASE_URL`（必须）— LMeterX 后端地址，例如 `https://lmeterx.example.com`
+- `LMETERX_BASE_URL`（必须）— LMeterX 后端地址，例如 `http://localhost:8080`
 - `LMETERX_AUTH_TOKEN`（可选）— Bearer token（启用 LDAP 认证时需要）
 
 > 如果环境变量未配置，Agent 会在对话中引导用户提供（参见 Step 0）。

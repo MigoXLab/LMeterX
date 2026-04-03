@@ -913,6 +913,11 @@ const ResultComparison: React.FC = () => {
 
     const isHorizontal = data.length > 3;
 
+    // Pre-compute reversed data for horizontal bar charts (first item at top)
+    const reversedData = [...data].reverse();
+    // Pick the correct data source based on orientation
+    const displayData = isHorizontal ? reversedData : data;
+
     // Axis labels: no unit, and use integers for specific metrics
     const axisDecimals = integerAxisMetrics.has(metricKey) ? 0 : decimals;
 
@@ -983,7 +988,7 @@ const ResultComparison: React.FC = () => {
         const items = Array.isArray(params) ? params : [params];
         const item = items[0];
         if (!item) return '';
-        const dataItem = data[item.dataIndex];
+        const dataItem = displayData[item.dataIndex];
         if (!dataItem) return '';
         const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dataItem.color};margin-right:6px;vertical-align:middle;"></span>`;
         const displayName =
@@ -997,9 +1002,6 @@ const ResultComparison: React.FC = () => {
 
     // Horizontal bar chart (data.length > 3)
     if (isHorizontal) {
-      // Reverse data so that the first item appears at the top
-      const reversedData = [...data].reverse();
-
       return {
         grid: {
           left: 16,

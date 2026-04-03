@@ -36,7 +36,7 @@ from model.llm_task import (
     TaskTestReq,
 )
 from service.analysis_service import extract_multiple_task_metrics
-from utils.auth import get_current_user
+from utils.auth import get_current_user, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.be_config import UPLOAD_FOLDER
 from utils.converters import (
@@ -108,6 +108,12 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
         "step_duration": task.step_duration,
         "step_max_users": task.step_max_users,
         "step_sustain_duration": task.step_sustain_duration,
+        "warmup_enabled": (
+            bool(task.warmup_enabled) if task.warmup_enabled is not None else True
+        ),
+        "warmup_duration": (
+            task.warmup_duration if task.warmup_duration is not None else 120
+        ),
         "engine_id": task.engine_id,
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
@@ -148,6 +154,12 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "step_duration": task.step_duration,
         "step_max_users": task.step_max_users,
         "step_sustain_duration": task.step_sustain_duration,
+        "warmup_enabled": (
+            bool(task.warmup_enabled) if task.warmup_enabled is not None else True
+        ),
+        "warmup_duration": (
+            task.warmup_duration if task.warmup_duration is not None else 120
+        ),
         "engine_id": task.engine_id,
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
@@ -401,9 +413,13 @@ async def stop_task_svc(request: Request, task_id: str):
 
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
-            # forbid stopping task without creator info or by non-creator
-            if not task.created_by or task.created_by != username:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            # Admin users and "agent" tasks bypass ownership check
+            if not is_admin_user(username) and task.created_by != "agent":
+                # forbid stopping task without creator info or by non-creator
+                if not task.created_by or task.created_by != username:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
 
         if task.status != "running":
             return TaskCreateRsp(
@@ -550,11 +566,17 @@ async def update_task_svc(request: Request, task_id: str, payload: Dict[str, Any
 
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
-            # forbidden to update task without created_by
-            if not task.created_by:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
-            if task.created_by != username:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            # Admin users and "agent" tasks bypass ownership check
+            if not is_admin_user(username) and task.created_by != "agent":
+                # forbidden to update task without created_by
+                if not task.created_by:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
+                if task.created_by != username:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
 
         task.name = new_name
         await db.commit()
@@ -595,11 +617,17 @@ async def delete_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
 
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
-            # forbidden to delete task without created_by
-            if not task.created_by:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
-            if task.created_by != username:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            # Admin users bypass ownership check for deletion
+            if not is_admin_user(username):
+                # forbidden to delete task without created_by
+                if not task.created_by:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
+                if task.created_by != username:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
 
         # Soft delete: mark as deleted instead of physically removing
         task.is_deleted = 1

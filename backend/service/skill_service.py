@@ -1,13 +1,4 @@
 """
-Skill Service — Web URL analysis and loadtest config generation.
-
-Workflow:
-  1. Use Playwright to load the target page and capture XHR/Fetch requests
-  2. Filter out static resources, tracking, probes → core business APIs
-  3. If LLM is configured, call LLM to generate smart loadtest configs;
-     otherwise, assign fixed defaults (concurrent=50, duration=300s)
-  4. Return discovered APIs + ready-to-use loadtest configs
-
 Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
@@ -142,6 +133,7 @@ _FORWARD_HEADER_KEYS: Set[str] = {
 _JS_SCAN_TIMEOUT_SECONDS = 10.0
 _MAX_JS_FILES_TO_SCAN = 20
 _MAX_JS_SIZE_BYTES = 1_000_000
+_PAGE_NAV_TIMEOUT_MS = 180_000
 _JS_API_LITERAL_RE = re.compile(
     r"""(?P<quote>['"])(?P<url>(?:https?://[^"'`\s]+|/[A-Za-z0-9_\-/\.\?\=&%]*?(?:api|v\d+)[A-Za-z0-9_\-/\.\?\=&%]*))(?P=quote)""",
     re.IGNORECASE,
@@ -229,11 +221,15 @@ def _build_context_options(
 async def _navigate_with_fallback(page: Any, target_url: str) -> None:
     logger.info("Navigating to {} ...", target_url)
     try:
-        await page.goto(target_url, wait_until="networkidle", timeout=30000)
+        await page.goto(
+            target_url, wait_until="networkidle", timeout=_PAGE_NAV_TIMEOUT_MS
+        )
     except Exception:
         logger.warning("networkidle timeout, falling back to domcontentloaded")
         try:
-            await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(
+                target_url, wait_until="domcontentloaded", timeout=_PAGE_NAV_TIMEOUT_MS
+            )
         except Exception as e:
             logger.error("Failed to navigate to {}: {}", target_url, e)
             raise
@@ -307,6 +303,12 @@ async def _analyze_page(
             await context.add_cookies(cookies_to_add)
 
         page = await context.new_page()
+        # Ensure Playwright does not use default 30s timeouts for slow pages
+        try:
+            await page.set_default_navigation_timeout(_PAGE_NAV_TIMEOUT_MS)
+            await page.set_default_timeout(_PAGE_NAV_TIMEOUT_MS)
+        except Exception as e:
+            logger.debug("Failed to set page default timeouts: {}", e)
 
         def on_response(response):
             _append_captured_response(captured, response)
@@ -623,35 +625,30 @@ def _build_default_configs(
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 3b — LLM-powered config generation
 # ─────────────────────────────────────────────────────────────────────────────
+_LLM_CONFIG_PROMPT = """You are an expert Web Performance Engineer. Analyze the following list of core business APIs crawled from {target_url}:
 
-_LLM_CONFIG_PROMPT = """你是一个 Web API 性能测试专家。
-
-下面是从目标网页 {target_url} 中自动抓取到的核心业务 API 列表（JSON 格式）：
-
-```json
 {apis_json}
-```
 
-请根据每个 API 的 HTTP 方法、URL 路径语义和请求体，为它们分别推荐一个合理的压测配置。
+**Task**: Recommend a professional load testing configuration for each API based on its HTTP method and semantic path.
 
-规则：
-- GET 请求通常并发量可以更高（100-200），持续时间 300 秒
-- POST/PUT 等写操作并发量应适当降低（10-100），持续时间 300 秒
-- 登录、注册等认证类 API 并发量应更低（10-50），持续时间 300 秒
-- spawn_rate 建议为 concurrent_users 的 100%
-- 所有 API 使用 fixed 模式
+**Configuration Logic**:
+1. **Concurrency (concurrent_users)**:
+   - **Write Operations** (POST, PUT, PATCH, DELETE): Set to 50.
+   - **Read Operations** (GET): Set to 100.
+2. **Shared Parameters**:
+   - `duration`: Always 300 seconds.
+   - `spawn_rate`: Must be equal to 100% of the `concurrent_users` value (Fixed mode).
+3. **Constraint**: Return ONLY a valid JSON array. Do not include any conversational text or explanations.
 
-请严格返回如下 JSON 数组格式（不要包含其他文字）：
-```json
+**Required JSON Structure**:
 [
   {{
-    "target_url": "原始 API URL",
+    "target_url": "original_api_url",
     "concurrent_users": 10,
     "duration": 300,
     "spawn_rate": 10
   }}
 ]
-```
 """
 
 
@@ -739,7 +736,7 @@ def _merge_llm_configs(
     llm_configs: List[Dict[str, Any]],
     fallback_concurrent: int = 10,
     fallback_duration: int = 300,
-    fallback_spawn_rate: int = 1000,
+    fallback_spawn_rate: int = 10,
 ) -> List[LoadtestConfigItem]:
     """Merge LLM-generated configs with discovered APIs, with fallback defaults."""
     # Index LLM configs by target_url

@@ -481,14 +481,83 @@ docker stats $(docker-compose ps -q)
      -d '{"username":"testuser","password":"testpass"}'
    ```
 
-3. **限制网络访问**：
+3. **配置 AI Agent Service Token**（AI Agent 集成必配）：
+
+   `LMETERX_AUTH_TOKEN` 是专为 AI Agent / Skill 程序化访问（如 Claude Code、Cursor、OpenClaw Skills）设计的静态服务令牌，使 Agent 工具无需经过交互式 LDAP 登录即可调用指定接口。
+
+   **安全模型（双重白名单）**：
+
+   | 场景 | 白名单路径 | 非白名单路径 |
+   |---|---|---|
+   | `LDAP_ENABLED=off` | 无需 Token | 无需 Token |
+   | `LDAP_ENABLED=on`，未配置 Token | 401 Unauthorized | 403 Forbidden |
+   | `LDAP_ENABLED=on`，Token 正确 | 200 OK（用户 = `agent`） | 403 Forbidden |
+   | `LDAP_ENABLED=on`，Token 错误 | 401 Unauthorized | 403 Forbidden |
+
+   **白名单路径**（仅以下路径可通过 Service Token 访问）：
+   - `POST /api/skills/analyze-url`
+   - `POST /api/http-tasks/test`
+   - `POST /api/http-tasks`
+
+   **步骤 1：生成强随机令牌**
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   **步骤 2：在后端服务中设置令牌**
+
+   在 `docker-compose.yml` 的 `backend` 服务中添加 `LMETERX_AUTH_TOKEN`：
+
+   ```yaml
+   backend:
+     environment:
+       - LDAP_ENABLED=on
+       # ... 其他 LDAP 配置 ...
+       - LMETERX_AUTH_TOKEN=<your-strong-random-token>
+   ```
+
+   **步骤 3：将相同令牌提供给 AI Agent 工具**
+
+   将令牌写入 OpenClaw Skills 或 MCP 配置：
+   ```bash
+   LMETERX_AUTH_TOKEN=<your-strong-random-token>
+   LMETERX_BASE_URL=http://localhost:8080
+   ```
+
+   **步骤 4：重启后端服务**
+   ```bash
+   docker-compose restart backend
+   ```
+
+   > **说明**：`LMETERX_AUTH_TOKEN` 仅在 `LDAP_ENABLED=on` 时生效。LDAP 关闭时所有 API 均为开放状态，令牌不生效。即使携带正确令牌，Agent 也只能访问以上三个白名单路径，其余路径由后端 `AuthMiddleware` 拦截并返回 `403 Forbidden`。
+
+4. **配置管理员用户（`ADMIN_USERNAMES`）**：
+
+   用于指定哪些登录用户名在 LMeterX 中拥有管理员权限。
+
+   - 使用英文逗号分隔的用户名列表
+   - 适用于本地用户与启用 LDAP/AD 时的目录用户
+   - 用户名区分大小写，需与登录/LDAP 账号名一致
+   - 配置在服务启动时生效；修改后需重启后端
+
+   在 `docker-compose.yml` 的 `backend` 服务中添加：
+
+   ```yaml
+   backend:
+     environment:
+       - ADMIN_USERNAMES=alice,bob
+   ```
+
+   如不设置，将采用应用的默认管理员分配策略。生产环境建议显式配置至少一名管理员。
+
+5. **限制网络访问**：
    ```yaml
    # 仅暴露必要端口
    ports:
      - "127.0.0.1:80:80"
    ```
 
-4. **启用 HTTPS**：
+6. **启用 HTTPS**：
    ```nginx
    # 在 Nginx 配置中添加 SSL 配置
    server {

@@ -61,6 +61,8 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
 
   // Track if it should scroll to the bottom
   const shouldScrollToBottom = useRef(true);
+  // Keep latest logs string to guard against flicker caused by transient empty responses
+  const logsRef = useRef<string>('');
   const fetchErrorRef = useRef<string | null>(null);
   const fetchLogsRef = useRef<() => Promise<void>>(null!);
 
@@ -151,6 +153,17 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         typeof contentResponse.data.content === 'string'
       ) {
         const newLogs = contentResponse.data.content;
+
+        // Guard 1: avoid replacing with transient empty content which causes flicker
+        if (newLogs.trim() === '' && logsRef.current.trim() !== '') {
+          // keep existing logs; treat as a temporary backend empty read
+          return;
+        }
+        // Guard 2: skip state updates if content hasn't changed
+        if (newLogs === logsRef.current) {
+          return;
+        }
+
         setLogs(newLogs);
 
         // If a search term exists, reapply the filter on the new logs
@@ -206,6 +219,9 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
   useEffect(() => {
     fetchErrorRef.current = fetchError;
   }, [fetchError]);
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
 
   // Effect for initial load and when service or line count settings change
   useEffect(() => {

@@ -559,6 +559,21 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       };
       dataToFill.request_payload = normalizedRequestPayload;
 
+      // Normalize warmup_enabled: backend stores as integer (0/1), form uses boolean
+      if (
+        dataToFill.warmup_enabled !== undefined &&
+        dataToFill.warmup_enabled !== null
+      ) {
+        dataToFill.warmup_enabled = Boolean(dataToFill.warmup_enabled);
+      }
+      // Preserve warmup_duration (integer)
+      if (
+        dataToFill.warmup_duration === undefined ||
+        dataToFill.warmup_duration === null
+      ) {
+        dataToFill.warmup_duration = 120;
+      }
+
       // clean fields that should not be copied directly or provided by the user
       delete dataToFill.id;
       delete dataToFill.status;

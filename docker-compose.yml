@@ -87,6 +87,12 @@ services:
       # JWT configuration
       # - JWT_SECRET_KEY=change-me-to-a-random-string
       # - JWT_EXPIRE_MINUTES=10080
+      # Service Token for Skill/Agent programmatic access (binds to "agent" user)
+      # Required when LDAP_ENABLED=on and AI Agent integration is needed
+      # - LMETERX_AUTH_TOKEN=<your-strong-random-token>
+      # Admin usernames (comma-separated). Admins can manage all tasks regardless of ownership.
+      # Leave empty for no admin accounts. Example: ADMIN_USERNAMES=admin,superuser
+      # - ADMIN_USERNAMES=
     volumes:
       - ./logs:/app/logs
       - ./upload_files:/app/upload_files

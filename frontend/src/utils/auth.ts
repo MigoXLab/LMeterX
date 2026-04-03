@@ -8,6 +8,7 @@ export type StoredUser = {
   username: string;
   display_name?: string | null;
   email?: string | null;
+  is_admin?: boolean;
 };
 
 const TOKEN_KEY = 'lmeterx_token';

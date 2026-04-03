@@ -341,8 +341,8 @@ class StreamProcessor:
         if not chunk_str:
             return False, None, metrics
 
-        if StreamProcessor._stream_debug_enabled():
-            task_logger.debug(f"[stream-raw] {chunk_str}")
+        # if StreamProcessor._stream_debug_enabled():
+        #     task_logger.debug(f"[stream-raw] {chunk_str}")
 
         if StreamProcessor.should_skip_non_json_chunk(chunk_str):
             return False, None, metrics

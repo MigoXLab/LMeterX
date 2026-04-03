@@ -91,16 +91,33 @@ const Tasks: React.FC = () => {
   // Get message instance from App context
   const { message: messageApi, modal } = App.useApp();
 
-  const currentUsername = useMemo(() => getStoredUser()?.username || '', []);
+  const storedUser = useMemo(() => getStoredUser(), []);
+  const currentUsername = useMemo(
+    () => storedUser?.username || '',
+    [storedUser]
+  );
+  const isAdmin = useMemo(() => storedUser?.is_admin === true, [storedUser]);
+
   const canManage = useCallback(
     (creator?: string) => {
+      // Admin users can manage all tasks
+      if (isAdmin) return true;
       // Allow managing anonymous tasks when LDAP is disabled
       if (creator === '-') return true;
       // forbidden to manage task without created_by
       if (!creator || !currentUsername) return false;
       return creator === currentUsername;
     },
-    [currentUsername]
+    [currentUsername, isAdmin]
+  );
+
+  // Allow all users to stop and rename tasks created by "agent"
+  const canStopOrRename = useCallback(
+    (creator?: string) => {
+      if (creator === 'agent') return true;
+      return canManage(creator);
+    },
+    [canManage]
   );
 
   // Using the custom hook to manage job-related logic
@@ -361,6 +378,14 @@ const Tasks: React.FC = () => {
           rerunData.field_mapping = deepClone(fieldMappingObject) || {};
         }
 
+        // Preserve warmup configuration
+        if (
+          rerunData.warmup_enabled !== undefined &&
+          rerunData.warmup_enabled !== null
+        ) {
+          rerunData.warmup_enabled = Boolean(rerunData.warmup_enabled);
+        }
+
         const resp = await llmTaskApi.createJob(rerunData);
         const success = !!(resp as any)?.data?.task_id;
         if (success) {
@@ -487,7 +512,7 @@ const Tasks: React.FC = () => {
 
   const openRenameModal = useCallback(
     (record: LlmTask | HttpTask, type: 'llm' | 'http') => {
-      if (!canManage(record.created_by)) {
+      if (!canStopOrRename(record.created_by)) {
         messageApi.warning(t('pages.jobs.ownerOnly'));
         return;
       }
@@ -499,7 +524,7 @@ const Tasks: React.FC = () => {
       });
       setRenameValue(record.name || '');
     },
-    [canManage, messageApi, t]
+    [canStopOrRename, messageApi, t]
   );
 
   const handleRenameSubmit = useCallback(async () => {
@@ -653,7 +678,7 @@ const Tasks: React.FC = () => {
                 </span>
               </Tooltip>
             </div>
-            {canManage(record.created_by) && (
+            {canStopOrRename(record.created_by) && (
               <div className='table-cell-action'>
                 <Button
                   type='text'
@@ -770,7 +795,7 @@ const Tasks: React.FC = () => {
           }
 
           if (
-            canManage(record.created_by) &&
+            canStopOrRename(record.created_by) &&
             ['running', 'queued'].includes(statusLower)
           ) {
             moreMenuItems.push({
@@ -867,6 +892,7 @@ const Tasks: React.FC = () => {
   }, [
     allModels,
     canManage,
+    canStopOrRename,
     creatorFilter,
     currentUsername,
     handleCopyJob,
@@ -955,7 +981,7 @@ const Tasks: React.FC = () => {
                 </span>
               </Tooltip>
             </div>
-            {canManage(record.created_by) && (
+            {canStopOrRename(record.created_by) && (
               <div className='table-cell-action'>
                 <Button
                   type='text'
@@ -1044,7 +1070,7 @@ const Tasks: React.FC = () => {
           }
 
           if (
-            canManage(record.created_by) &&
+            canStopOrRename(record.created_by) &&
             ['running', 'queued'].includes(statusLower)
           ) {
             moreMenuItems.push({
@@ -1137,6 +1163,7 @@ const Tasks: React.FC = () => {
     return tableColumns;
   }, [
     canManage,
+    canStopOrRename,
     httpCreatorFilter,
     httpStatusFilter,
     currentUsername,
@@ -1443,6 +1470,13 @@ const Tasks: React.FC = () => {
                   ? safeJsonParse(rerunData.field_mapping, {})
                   : rerunData.field_mapping;
               rerunData.field_mapping = deepClone(fieldMappingObject) || {};
+            }
+            // Preserve warmup configuration
+            if (
+              rerunData.warmup_enabled !== undefined &&
+              rerunData.warmup_enabled !== null
+            ) {
+              rerunData.warmup_enabled = Boolean(rerunData.warmup_enabled);
             }
             // Call API directly to avoid per-task toast from hook
             const resp = await llmTaskApi.createJob(rerunData);

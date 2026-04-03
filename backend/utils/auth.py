@@ -66,3 +66,15 @@ def get_current_user(request: Request) -> Dict[str, Any]:
     if not user:
         raise ErrorResponse.unauthorized(ErrorMessages.UNAUTHORIZED)
     return user
+
+
+def is_admin_user(username: str) -> bool:
+    """
+    Check if the given username is in the configured admin list.
+    Admin users can manage all tasks regardless of ownership.
+    """
+    admin_usernames = settings.ADMIN_USERNAMES
+    if not admin_usernames:
+        return False
+    admin_list = [u.strip().lower() for u in admin_usernames.split(",") if u.strip()]
+    return username.lower() in admin_list

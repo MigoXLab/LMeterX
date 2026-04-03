@@ -11,7 +11,7 @@ from ldap3.core.exceptions import LDAPSocketOpenError  # type: ignore[import-unt
 from ldap3.utils.conv import escape_filter_chars  # type: ignore[import-untyped]
 
 from model.auth import LoginRequest, LoginResponse, UserInfo
-from utils.auth import create_access_token
+from utils.auth import create_access_token, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
@@ -170,6 +170,7 @@ async def login_with_ldap(_: Request, login_request: LoginRequest) -> LoginRespo
                     user_entry = conn.entries[0]
 
             user_info = _extract_user_info(user_entry, username)
+            user_info.is_admin = is_admin_user(username)
 
         token = create_access_token(user_info.model_dump())
         return LoginResponse(access_token=token, user=user_info)

@@ -11,10 +11,11 @@ triggers:
   - 直接压测这个 API
   - 压测这个 curl
   - 压测这个端点
+  - 压测这个 API 接口
+  - 压测这个 API 地址
   - load test this API
   - load test this endpoint
   - stress test this curl
-  - 压测
 requires:
   env:
     - LMETERX_BASE_URL
@@ -28,14 +29,22 @@ requires:
 
 ## ⚠️ 本 Skill 与 `run-web-loadtest` 的区别
 
-| 判断条件 | 使用本 Skill（run-api-loadtest） | 使用 run-web-loadtest |
-|---------|-------------------------------|----------------------|
-| 用户给了什么 | 一个具体的 API 端点 URL 或 curl 命令 | 一个网页/网站 URL（HTML 页面） |
-| 典型 URL 特征 | `https://api.example.com/v1/users`、包含 `/api/` 路径 | `https://example.com`、`https://app.com/dashboard` |
-| 用户意图 | "我知道要压哪个接口，直接压" | "不确定有哪些 API，帮我分析再压测" |
-| 输入中是否含 curl | ✅ 经常包含 curl 命令 | ❌ 通常不含 |
+> **重要**：如果用户提到"网站""网页""页面"或给了一个普通网站 URL（如 `https://www.baidu.com`、`https://example.com`），
+> **必须使用 `lmeterx-web-loadtest`，不要使用本 Skill**。
 
-**快速判断**：如果用户提供的 URL 明显是一个 **API 端点**（含 `/api/`、`/v1/`、`/graphql` 等路径特征）或用户直接给了 **curl 命令**，用本 Skill；如果 URL 看起来是一个可以在浏览器中打开的**网页**，则用 `run-web-loadtest`。
+| 判断条件 | 使用本 Skill（run-api-loadtest） ✅ | 使用 lmeterx-web-loadtest ❌ |
+|---------|-------------------------------|----------------------|
+| 用户给了什么 | 一个具体的 **API 端点 URL** 或 **curl 命令** | 一个**网页/网站 URL**（HTML 页面） |
+| 典型 URL | `https://api.example.com/v1/users`、含 `/api/`、`/v1/`、`/graphql` 路径 | `https://www.baidu.com`、`https://example.com`、`https://app.com/dashboard` |
+| 用户关键词 | "压测这个 **API/接口/端点**"、"压测这个 **curl**" | "压测这个**网站/网页/页面**" |
+| 输入中是否含 curl | ✅ 经常包含 curl 命令 | ❌ 通常不含 |
+| 用户意图 | "我知道要压哪个接口，直接压" | "不确定有哪些 API，帮我分析再压测" |
+
+**快速判断规则**：
+1. 用户说"压测这个网站/网页/页面" → **使用 `lmeterx-web-loadtest`**
+2. URL 看起来是浏览器可打开的普通网页（如 `https://www.baidu.com`）→ **使用 `lmeterx-web-loadtest`**
+3. 用户说"压测这个 API/接口" 或给了 curl 命令 → 使用本 Skill
+4. URL 含 `/api/`、`/v1/`、`/graphql` 等 API 路径特征 → 使用本 Skill
 
 ## API 类型判断规则
 
@@ -63,13 +72,9 @@ https://api.anthropic.com/v1/messages
 
 ## 工作流程（3 步）
 
-> 所有 API 调用都需要在请求头中附带 `Authorization: Bearer <LMETERX_AUTH_TOKEN>`（如已配置）。
+> 所有对 LMeterX 后端的 API 调用都需要在请求头中附带 `X-Authorization: <LMETERX_AUTH_TOKEN>`（不加 Bearer 前缀，仅当后端启用 LDAP 认证时需要）。
 
 ---
-
-### Step 0 — 环境配置检查与引导
-
-在执行任何业务 API 调用前，**必须**先完成以下检查。如果任何一步失败，**停止后续流程**并引导用户修正。
 
 #### 0.1 检查 `LMETERX_BASE_URL`
 
@@ -102,7 +107,7 @@ GET {LMETERX_BASE_URL}/health
 
 ```
 GET {LMETERX_BASE_URL}/api/auth/profile
-Authorization: Bearer <LMETERX_AUTH_TOKEN>
+X-Authorization: <LMETERX_AUTH_TOKEN>
 ```
 
 | 响应 | 处理 |
@@ -125,7 +130,7 @@ Authorization: Bearer <LMETERX_AUTH_TOKEN>
 > ```
 > 从返回的 JSON 中复制 `access_token` 值。
 
-用户提供 Token 后，在后续所有请求头中附带 `Authorization: Bearer <token>`。
+用户提供 Token 后，在后续所有请求头中附带 `X-Authorization: <token>`（Service Token 不加 `Bearer` 前缀）。
 
 ---
 
@@ -312,7 +317,7 @@ Content-Type: application/json
 | 错误场景 | 引导提示 |
 |---------|---------|
 | 连接失败 / 超时 | `LMETERX_BASE_URL` 可能不正确或服务未启动，请用户重新确认地址 |
-| HTTP 401 | 认证失效，引导用户重新提供 `LMETERX_AUTH_TOKEN`（参考 Step 0.3） |
+| HTTP 401 | Service Token 认证失败，引导用户检查 `LMETERX_AUTH_TOKEN` 是否与后端配置一致（参考 Step 0.3） |
 | HTTP 403 | 账号无权限，建议用户联系管理员 |
 | HTTP 404 | 接口不存在，可能 LMeterX 版本不匹配，建议确认后端版本 |
 | HTTP 5xx | 后端服务异常，建议稍后重试或联系管理员 |
@@ -343,6 +348,6 @@ python "${SKILL_DIR}/scripts/run.py" \
 ## 环境变量
 
 - `LMETERX_BASE_URL`（必须）— LMeterX 后端地址，例如 `http://localhost:8080`
-- `LMETERX_AUTH_TOKEN`（可选）— Bearer token（启用 LDAP 认证时需要）
+- `LMETERX_AUTH_TOKEN`（可选）— Service Token（启用 LDAP 认证时需要，通过 `X-Authorization` 请求头传递，不加 Bearer 前缀）
 
 > 如果环境变量未配置，Agent 会在对话中引导用户提供（参见 Step 0）。

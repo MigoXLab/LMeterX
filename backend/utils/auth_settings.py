@@ -38,6 +38,17 @@ class AuthSettings(BaseSettings):
     JWT_COOKIE_PATH: str = "/"
     ALLOWED_ORIGINS: Optional[str] = None
 
+    # Service Token for agent/skill programmatic access.
+    # When set and LDAP is enabled, requests bearing this token are
+    # authenticated as the "agent" service user without JWT decode.
+    # Generate with: python -c "import secrets; print(secrets.token_urlsafe(48))"
+    LMETERX_AUTH_TOKEN: str = ""
+
+    # Comma-separated list of admin usernames.
+    # Admin users can manage (stop, rename, delete) ALL tasks regardless of ownership.
+    # Example: ADMIN_USERNAMES=admin,superuser,john
+    ADMIN_USERNAMES: str = ""
+
     LDAP_SERVER: str = "ldap://localhost"
     LDAP_PORT: int = 389
     LDAP_USE_SSL: bool = False

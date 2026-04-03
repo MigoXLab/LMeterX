@@ -45,5 +45,11 @@ st_engine/.env
 
 # skills
 skills/
+
 .openclaw/skills/.artifacts/
-.openclaw/skills/run-api-loadtest
+.openclaw/skills/lmeterx-api-loadtest
+
+# allow specific skill to be tracked
+!.openclaw/skills/
+!.openclaw/skills/lmeterx-web-loadtest/
+!.openclaw/skills/lmeterx-web-loadtest/**

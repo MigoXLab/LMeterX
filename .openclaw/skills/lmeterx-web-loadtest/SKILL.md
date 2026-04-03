@@ -30,14 +30,12 @@ triggers:
 **Upon receiving the user's instruction, open the terminal (Bash/Shell) and strictly execute the following complete command.** To prevent authentication failures caused by empty environment variables, **you must explicitly prefix the command with `LMETERX_AUTH_TOKEN`**!
 
 ```bash
-export LMETERX_AUTH_TOKEN="lmeterx"
 python "${SKILL_DIR}/scripts/run.py" --url "<web URL>"
 ```
 
 If the user explicitly specifies parameters—such as the concurrency level—within the conversation, execute the task using these custom parameters:
 
 ```bash
-export LMETERX_AUTH_TOKEN="lmeterx"
 python "${SKILL_DIR}/scripts/run.py" \
   --url "<web URL>" \
   --concurrent-users <concurrent users> \

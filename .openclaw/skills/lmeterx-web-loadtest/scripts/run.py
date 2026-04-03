@@ -25,7 +25,7 @@ import httpx
 
 # ── Global configuration ──────────────────────────────────────────────────────
 
-LMETERX_BASE_URL: str = os.getenv("LMETERX_BASE_URL", "https://localhost:8080").rstrip(
+LMETERX_BASE_URL: str = os.getenv("LMETERX_BASE_URL", "http://localhost:8080").rstrip(
     "/"
 )
 

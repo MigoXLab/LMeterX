@@ -598,7 +598,7 @@ def _build_default_configs(
     apis: List[DiscoveredApiItem],
     concurrent_users: int = 10,
     duration: int = 300,
-    spawn_rate: int = 1000,
+    spawn_rate: int = 10,
 ) -> List[LoadtestConfigItem]:
     """Build loadtest configs with fixed defaults (no LLM)."""
     configs: List[LoadtestConfigItem] = []

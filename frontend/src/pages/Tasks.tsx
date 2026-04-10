@@ -65,6 +65,79 @@ const { Text } = Typography;
 const MODE_STORAGE_KEY = 'jobsActiveMode';
 const LDAP_ENABLED = getLdapEnabled();
 
+const resolveTaskDetail = <T extends Record<string, any>>(
+  response: any,
+  fallback: T
+): T => {
+  const rawData = response?.data;
+  const detail =
+    rawData &&
+    typeof rawData === 'object' &&
+    !Array.isArray(rawData) &&
+    'data' in rawData
+      ? (rawData as any).data
+      : rawData;
+
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) {
+    return fallback;
+  }
+
+  // Prefer detail values while keeping list-row values as fallback.
+  return { ...fallback, ...detail } as T;
+};
+
+const withDatasetFields = <T extends Record<string, any>>(
+  target: T,
+  source: Record<string, any>
+): T => {
+  const next = { ...target } as Record<string, any>;
+
+  if (source.test_data !== undefined && source.test_data !== null) {
+    next.test_data = source.test_data;
+  }
+  if (source.chat_type !== undefined && source.chat_type !== null) {
+    next.chat_type = source.chat_type;
+  }
+
+  // Copy mode relies on this form-only field to avoid resetting dataset type.
+  if (next.test_data !== undefined && next.test_data !== null) {
+    const testDataStr = String(next.test_data).trim();
+    const isDefault = testDataStr === 'default';
+    const isEmpty = testDataStr === '';
+    const looksLikePath =
+      /\/upload_files\//i.test(testDataStr) ||
+      /^[\\/]/.test(testDataStr) ||
+      /\.(jsonl?|txt)$/i.test(testDataStr);
+    const looksLikeInlineJson =
+      testDataStr.startsWith('{') || testDataStr.includes('\n');
+
+    if (isDefault) {
+      next.test_data_input_type = 'default';
+    } else if (isEmpty) {
+      next.test_data_input_type = 'none';
+    } else if (looksLikePath) {
+      next.test_data_input_type = 'upload';
+      // Provide a display name for the uploader panel
+      try {
+        const parts = testDataStr.split(/[\\/]/);
+        const filename = parts[parts.length - 1] || '';
+        if (filename) {
+          next.test_data_file = filename;
+        }
+      } catch {
+        // ignore filename derivation errors
+      }
+    } else if (looksLikeInlineJson) {
+      next.test_data_input_type = 'input';
+    } else {
+      // Fallback: treat as inline custom JSONL content
+      next.test_data_input_type = 'input';
+    }
+  }
+
+  return next as T;
+};
+
 const Tasks: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -182,9 +255,9 @@ const Tasks: React.FC = () => {
 
         // Always fetch full task detail to preserve headers, datasets and mapping
         const fullJobResp = await llmTaskApi.getJob(job.id);
-        const fullJob = (fullJobResp as any)?.data || job;
+        const fullJob = resolveTaskDetail(fullJobResp, job);
 
-        const jobToCopyData: Partial<LlmTask> = {
+        let jobToCopyData: Partial<LlmTask> = {
           ...fullJob,
           name: copiedName,
           id: undefined,
@@ -245,15 +318,10 @@ const Tasks: React.FC = () => {
           };
         }
 
+        jobToCopyData = withDatasetFields(jobToCopyData as any, fullJob);
+
         setTaskToCopy(jobToCopyData);
         setIsModalVisible(true);
-
-        // Show toast notification about re-entering sensitive information
-        messageApi.destroy();
-        messageApi.warning({
-          content: t('pages.jobs.datasetReuploadWarning'),
-          duration: 5,
-        });
       } catch (error) {
         console.error('Failed to fetch full job details:', error);
         messageApi.error({
@@ -299,12 +367,6 @@ const Tasks: React.FC = () => {
 
         setHttpTaskToCopy(jobToCopyData);
         setIsModalVisible(true);
-
-        messageApi.destroy();
-        messageApi.warning({
-          content: t('pages.jobs.datasetReuploadWarning'),
-          duration: 5,
-        });
       } catch (error) {
         console.error('Failed to fetch full job details:', error);
         messageApi.error({
@@ -339,9 +401,9 @@ const Tasks: React.FC = () => {
       }
       try {
         const fullJobResp = await llmTaskApi.getJob(job.id);
-        const fullJob = (fullJobResp as any)?.data || job;
+        const fullJob = resolveTaskDetail(fullJobResp, job);
 
-        const rerunData: any = {
+        let rerunData: any = {
           ...fullJob,
           name: getRerunName(fullJob.name),
           id: undefined,
@@ -385,6 +447,8 @@ const Tasks: React.FC = () => {
         ) {
           rerunData.warmup_enabled = Boolean(rerunData.warmup_enabled);
         }
+
+        rerunData = withDatasetFields(rerunData, fullJob);
 
         const resp = await llmTaskApi.createJob(rerunData);
         const success = !!(resp as any)?.data?.task_id;
@@ -1440,8 +1504,8 @@ const Tasks: React.FC = () => {
               return resp.status === 200 || resp.status === 201;
             }
             const fullJobResp = await llmTaskApi.getJob(task.id);
-            const fullJob = (fullJobResp as any)?.data || task;
-            const rerunData: any = {
+            const fullJob = resolveTaskDetail(fullJobResp, task as any);
+            let rerunData: any = {
               ...fullJob,
               name: getRerunName(fullJob.name),
               id: undefined,
@@ -1478,6 +1542,7 @@ const Tasks: React.FC = () => {
             ) {
               rerunData.warmup_enabled = Boolean(rerunData.warmup_enabled);
             }
+            rerunData = withDatasetFields(rerunData, fullJob);
             // Call API directly to avoid per-task toast from hook
             const resp = await llmTaskApi.createJob(rerunData);
             return !!(resp as any)?.data?.task_id;

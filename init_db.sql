@@ -187,4 +187,14 @@ CREATE TABLE `system_config` (
   KEY `idx_config_key` (`config_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------
+-- Table structure for engine_heartbeats
+-- ----------------------------
+DROP TABLE IF EXISTS `engine_heartbeats`;
+CREATE TABLE `engine_heartbeats` (
+  `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `last_heartbeat` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`engine_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

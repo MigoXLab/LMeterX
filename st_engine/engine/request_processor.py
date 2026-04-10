@@ -1167,6 +1167,18 @@ class APIClient:
                 # Extract usage and content using FieldMapping
                 usage = self._extract_usage_from_response(resp_json, field_mapping)
 
+                api_type = getattr(self.config, "api_type", "")
+                if api_type == "openai-chat":
+                    choices = resp_json.get("choices", [])
+                    if choices and isinstance(choices, list) and len(choices) > 0:
+                        first_choice = choices[0]
+                        if isinstance(first_choice, dict) and "finish_reason" in first_choice:
+                            finish_reason = first_choice.get("finish_reason")
+                            if finish_reason not in ("stop", "tool_calls"):
+                                self.task_logger.warning(
+                                    f"Unexpected finish_reason: {finish_reason}"
+                                )
+
                 if field_mapping.content:
                     content = StreamProcessor.get_field_value(
                         resp_json, field_mapping.content

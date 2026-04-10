@@ -87,6 +87,7 @@ export interface HttpTask {
     value: string;
   }>;
   request_body?: string;
+  dataset_file?: string;
   curl_command?: string;
   success_assert?: string;
   concurrent_users: number;

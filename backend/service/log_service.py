@@ -29,7 +29,7 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
         A string containing the last N lines. Returns an empty string on failure.
     """
     try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, "rb") as f:
             # For small files, just read all and return last n lines
             f.seek(0, os.SEEK_END)
             file_size = f.tell()
@@ -37,7 +37,7 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
             # If file is small (< 50KB), read all lines and return last n
             if file_size < 50 * 1024:
                 f.seek(0)
-                all_lines = f.readlines()
+                all_lines = f.read().decode("utf-8", errors="replace").splitlines(True)
                 return "".join(all_lines[-n:]) if all_lines else ""
 
             # For larger files, use a more efficient approach
@@ -54,7 +54,8 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
 
                 # Read chunk from current position
                 f.seek(position)
-                chunk = f.read(chunk_size)
+                chunk_bytes: bytes = f.read(chunk_size)
+                chunk: str = chunk_bytes.decode("utf-8", errors="replace")
 
                 # Prepend chunk to buffer
                 buffer = chunk + buffer
@@ -95,7 +96,7 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
             if result and not result.endswith("\n"):
                 # Check if original file ends with newline
                 f.seek(max(0, file_size - 1))
-                if f.read(1) == "\n":
+                if f.read(1) == b"\n":
                     result += "\n"
 
             return result
@@ -118,10 +119,10 @@ def read_local_file(log_file_path: str, tail: int, offset: int) -> str:
         The content of the file as a string.
     """
     if tail == 0:
-        with open(log_file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(log_file_path, "rb") as f:
             if offset > 0:
                 f.seek(offset)
-            content = f.read()
+            content: str = f.read().decode("utf-8", errors="replace")
     else:
         content = get_last_n_lines(file_path=log_file_path, n=tail)
     return content

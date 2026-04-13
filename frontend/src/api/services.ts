@@ -357,7 +357,7 @@ export const skillApi = {
       }>;
       llm_used: boolean;
     }>('/skills/analyze-url', data, {
-      timeout: 120000, // 2 minutes timeout for page analysis
+      timeout: 300000, // 5 minutes timeout for page analysis (increased from 2m)
     }),
 };
 

@@ -607,7 +607,7 @@ class LLMTestUser(HttpUser):
         base_request_kwargs, user_prompt = self.request_handler.prepare_request_kwargs(
             prompt_data
         )
-        self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
+        # self.task_logger.debug(f"base_request_kwargs: {base_request_kwargs}")
         if not base_request_kwargs:
             self.task_logger.error(
                 "Failed to generate request arguments. Skipping task."

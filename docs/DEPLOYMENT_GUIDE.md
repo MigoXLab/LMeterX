@@ -480,14 +480,83 @@ docker stats $(docker-compose ps -q)
      -d '{"username":"testuser","password":"testpass"}'
    ```
 
-3. **Restrict Network Access**:
+3. **Configure AI Agent Service Token** (Required for AI Agent Integration):
+
+   `LMETERX_AUTH_TOKEN` is a static service token for AI Agent / Skill programmatic access (e.g., Claude Code, Cursor, OpenClaw Skills). It allows agent tools to call designated APIs without interactive LDAP login.
+
+   **Security Model (dual whitelist)**:
+
+   | Scenario | Whitelisted paths | Non-whitelisted paths |
+   |---|---|---|
+   | `LDAP_ENABLED=off` | No token required | No token required |
+   | `LDAP_ENABLED=on`, no token | 401 Unauthorized | 403 Forbidden |
+   | `LDAP_ENABLED=on`, correct token | 200 OK (user = `agent`) | 403 Forbidden |
+   | `LDAP_ENABLED=on`, wrong token | 401 Unauthorized | 403 Forbidden |
+
+   **Whitelisted paths** (only these paths are accessible via Service Token):
+   - `POST /api/skills/analyze-url`
+   - `POST /api/http-tasks/test`
+   - `POST /api/http-tasks`
+
+   **Step 1: Generate a strong random token**
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   **Step 2: Set the token in the backend service**
+
+   Add `LMETERX_AUTH_TOKEN` to the `backend` service in `docker-compose.yml`:
+
+   ```yaml
+   backend:
+     environment:
+       - LDAP_ENABLED=on
+       # ... other LDAP settings ...
+       - LMETERX_AUTH_TOKEN=<your-strong-random-token>
+   ```
+
+   **Step 3: Provide the token to the AI Agent tool**
+
+   Supply the same token to OpenClaw Skills or your MCP configuration:
+   ```bash
+   LMETERX_AUTH_TOKEN=<your-strong-random-token>
+   LMETERX_BASE_URL=http://localhost:8080
+   ```
+
+   **Step 4: Restart the backend service**
+   ```bash
+   docker-compose restart backend
+   ```
+
+   > **Note**: `LMETERX_AUTH_TOKEN` only takes effect when `LDAP_ENABLED=on`. When LDAP is disabled, all APIs are open and the token has no effect. Even with a valid token, the agent can only access the three whitelisted paths — all other paths remain protected.
+
+4. **Configure Admin Users (`ADMIN_USERNAMES`)**:
+
+   Define which login usernames are granted administrator privileges in LMeterX.
+
+   - Set as a comma-separated list of usernames
+   - Applies to both local users and LDAP/AD users (when LDAP is enabled)
+   - Usernames are case-sensitive and must match the login/LDAP account name
+   - The value is read on service startup; restart backend after changes
+
+   Add to the `backend` service in `docker-compose.yml`:
+
+   ```yaml
+   backend:
+     environment:
+       - ADMIN_USERNAMES=alice,bob
+   ```
+
+   If unset, the application uses its default behavior for admin assignment. For production, explicitly configure at least one admin.
+
+5. **Restrict Network Access**:
    ```yaml
    # Only expose necessary ports
    ports:
      - "127.0.0.1:80:80"
    ```
 
-4. **Enable HTTPS**:
+6. **Enable HTTPS**:
    ```nginx
    # Add SSL configuration in Nginx config
    server {

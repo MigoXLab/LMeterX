@@ -242,6 +242,35 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     return payload;
   };
 
+  const extractFilename = (filePath?: string): string | undefined => {
+    if (!filePath || typeof filePath !== 'string') return undefined;
+    const parts = filePath.split(/[\\/]/);
+    const filename = parts[parts.length - 1];
+    return filename || undefined;
+  };
+
+  const toSingleUploadFileList = (filename?: string, uid: string = '-1') =>
+    filename
+      ? [
+          {
+            uid,
+            name: String(filename),
+            status: 'done' as const,
+          },
+        ]
+      : [];
+
+  const looksLikeDatasetPath = (value?: string): boolean => {
+    if (!value || typeof value !== 'string') return false;
+    const str = value.trim();
+    if (!str) return false;
+    return (
+      /\/upload_files\//i.test(str) ||
+      /^[\\/]/.test(str) ||
+      /\.(jsonl?|txt)$/i.test(str)
+    );
+  };
+
   // Helper: update specific fields in the current payload JSON without regenerating the entire payload
   const updatePayloadFields = (updates: Record<string, any>): string | null => {
     const currentPayload = form.getFieldValue('request_payload');
@@ -559,6 +588,49 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       };
       dataToFill.request_payload = normalizedRequestPayload;
 
+      // Normalize warmup_enabled: backend stores as integer (0/1), form uses boolean
+      if (
+        dataToFill.warmup_enabled !== undefined &&
+        dataToFill.warmup_enabled !== null
+      ) {
+        dataToFill.warmup_enabled = Boolean(dataToFill.warmup_enabled);
+      }
+      // Preserve warmup_duration (integer)
+      if (
+        dataToFill.warmup_duration === undefined ||
+        dataToFill.warmup_duration === null
+      ) {
+        dataToFill.warmup_duration = 120;
+      }
+
+      // Fill certificate display names for copy mode
+      const certConfig = (initialData as any)?.cert_config || {};
+      const certPathFromConfig =
+        (certConfig?.cert_file as string | undefined) ||
+        (initialData as any)?.cert_file;
+      const keyPathFromConfig =
+        (certConfig?.key_file as string | undefined) ||
+        (initialData as any)?.key_file;
+      const certDisplayName = extractFilename(certPathFromConfig);
+      const keyDisplayName = extractFilename(keyPathFromConfig);
+      dataToFill.cert_file_name = certDisplayName;
+      dataToFill.key_file_name = keyDisplayName;
+      if (certDisplayName && keyDisplayName) {
+        dataToFill.cert_type = 'separate';
+      } else if (certDisplayName) {
+        dataToFill.cert_type = 'combined';
+      }
+
+      // Fallback: derive dataset filename from persisted path when copy payload
+      // does not explicitly include test_data_file.
+      if (
+        dataToFill.test_data_input_type === 'upload' &&
+        !dataToFill.test_data_file &&
+        looksLikeDatasetPath(dataToFill.test_data)
+      ) {
+        dataToFill.test_data_file = extractFilename(dataToFill.test_data);
+      }
+
       // clean fields that should not be copied directly or provided by the user
       delete dataToFill.id;
       delete dataToFill.status;
@@ -630,6 +702,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       form.setFieldsValue({
         temp_task_id: tempTaskId,
         cert_file: file,
+        cert_file_name: file.name,
       });
       message.success(
         t('components.createJobForm.fileSelected', { fileName: file.name })
@@ -662,6 +735,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       form.setFieldsValue({
         temp_task_id: tempTaskId,
         key_file: file,
+        key_file_name: file.name,
       });
       message.success(
         t('components.createJobForm.fileSelected', { fileName: file.name })
@@ -695,6 +769,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         temp_task_id: tempTaskId,
         cert_file: file,
         key_file: null,
+        cert_file_name: file.name,
+        key_file_name: undefined,
       });
       message.success(
         t('components.createJobForm.fileSelected', { fileName: file.name })
@@ -728,6 +804,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       form.setFieldsValue({
         temp_task_id: tempTaskId,
         test_data_file: file.name,
+        test_data: undefined, // Clear existing dataset path when a new file is uploaded
       });
       message.success(
         t('components.createJobForm.fileSelected', { fileName: file.name })
@@ -745,6 +822,32 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     setDatasetFile(null);
     form.setFieldsValue({
       test_data_file: undefined,
+    });
+    return true;
+  };
+
+  const handleCombinedCertRemove = () => {
+    form.setFieldsValue({
+      cert_file: undefined,
+      key_file: undefined,
+      cert_file_name: undefined,
+      key_file_name: undefined,
+    });
+    return true;
+  };
+
+  const handleCertFileRemove = () => {
+    form.setFieldsValue({
+      cert_file: undefined,
+      cert_file_name: undefined,
+    });
+    return true;
+  };
+
+  const handleKeyFileRemove = () => {
+    form.setFieldsValue({
+      key_file: undefined,
+      key_file_name: undefined,
     });
     return true;
   };
@@ -1039,34 +1142,51 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       // Handle test data input type
       const inputType = values.test_data_input_type || 'default';
       if (inputType === 'upload') {
-        if (!datasetFile) {
+        // validateFields() may omit unmounted fields; read from form store as fallback.
+        const storedTestData = form.getFieldValue('test_data');
+        const existingDatasetRef =
+          typeof values.test_data === 'string'
+            ? values.test_data.trim()
+            : typeof storedTestData === 'string'
+              ? storedTestData.trim()
+              : '';
+        const canReuseExistingPath = looksLikeDatasetPath(existingDatasetRef);
+        if (!datasetFile && !canReuseExistingPath) {
           message.error(t('components.createJobForm.pleaseUploadDatasetFile'));
           setSubmitting(false);
           setUploading(false);
           return;
         }
-        try {
-          setUploading(true);
-          const result = await uploadDatasetFile(datasetFile, tempTaskId);
-          values.test_data = result.test_data;
-          values.temp_task_id = tempTaskId;
-        } catch (error: any) {
-          let errorMessage = t('components.createJobForm.testDataUploadFailed');
+        if (!datasetFile && canReuseExistingPath) {
+          // Explicitly persist reused dataset path into submit payload.
+          values.test_data = existingDatasetRef;
+        }
+        if (datasetFile) {
+          try {
+            setUploading(true);
+            const result = await uploadDatasetFile(datasetFile, tempTaskId);
+            values.test_data = result.test_data;
+            values.temp_task_id = tempTaskId;
+          } catch (error: any) {
+            let errorMessage = t(
+              'components.createJobForm.testDataUploadFailed'
+            );
 
-          if (error?.message) {
-            errorMessage = error.message;
-          } else if (error?.response?.data?.detail) {
-            errorMessage = error.response.data.detail;
-          } else if (error?.response?.data?.error) {
-            errorMessage = error.response.data.error;
+            if (error?.message) {
+              errorMessage = error.message;
+            } else if (error?.response?.data?.detail) {
+              errorMessage = error.response.data.detail;
+            } else if (error?.response?.data?.error) {
+              errorMessage = error.response.data.error;
+            }
+
+            message.error(errorMessage);
+            setSubmitting(false);
+            setUploading(false);
+            return;
+          } finally {
+            setUploading(false);
           }
-
-          message.error(errorMessage);
-          setSubmitting(false);
-          setUploading(false);
-          return;
-        } finally {
-          setUploading(false);
         }
       }
 
@@ -1415,6 +1535,12 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                     maxCount={1}
                     accept='.pem'
                     customRequest={handleCombinedCertUpload}
+                    onRemove={handleCombinedCertRemove}
+                    fileList={toSingleUploadFileList(
+                      getFieldValue('cert_file_name'),
+                      '-cert-combined'
+                    )}
+                    showUploadList={{ showRemoveIcon: false }}
                     listType='text'
                     style={{ width: '100%' }}
                   >
@@ -1452,6 +1578,12 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                         maxCount={1}
                         accept='.crt,.pem'
                         customRequest={handleCertFileUpload}
+                        onRemove={handleCertFileRemove}
+                        fileList={toSingleUploadFileList(
+                          getFieldValue('cert_file_name'),
+                          '-cert-file'
+                        )}
+                        showUploadList={{ showRemoveIcon: false }}
                         listType='text'
                       >
                         <Button
@@ -1479,6 +1611,12 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                         maxCount={1}
                         accept='.key,.pem'
                         customRequest={handleKeyFileUpload}
+                        onRemove={handleKeyFileRemove}
+                        fileList={toSingleUploadFileList(
+                          getFieldValue('key_file_name'),
+                          '-key-file'
+                        )}
+                        showUploadList={{ showRemoveIcon: false }}
                         listType='text'
                       >
                         <Button
@@ -1976,14 +2114,30 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
           const renderUploadDatasetPanel = () => (
             <Form.Item
-              name='test_data_file'
               style={{ marginBottom: 0 }}
               rules={[
                 {
-                  required: inputType === 'upload',
-                  message: t(
-                    'components.createJobForm.pleaseUploadDatasetFile'
-                  ),
+                  validator: () => {
+                    if (inputType !== 'upload') {
+                      return Promise.resolve();
+                    }
+                    const selectedFileName =
+                      form.getFieldValue('test_data_file');
+                    const existingDatasetRef = form.getFieldValue('test_data');
+                    const canReuseExistingPath = looksLikeDatasetPath(
+                      typeof existingDatasetRef === 'string'
+                        ? existingDatasetRef
+                        : undefined
+                    );
+                    if (selectedFileName || canReuseExistingPath) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(
+                        t('components.createJobForm.pleaseUploadDatasetFile')
+                      )
+                    );
+                  },
                 },
               ]}
             >
@@ -1992,6 +2146,12 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                 accept='.json,.jsonl'
                 customRequest={handleDatasetFileUpload}
                 onRemove={handleDatasetFileRemove}
+                // Show the filename when copying a task that used an uploaded dataset
+                fileList={toSingleUploadFileList(
+                  getFieldValue('test_data_file'),
+                  '-dataset-file'
+                )}
+                showUploadList={{ showRemoveIcon: false }}
                 style={{
                   borderRadius: 12,
                   borderColor: token.colorBorderSecondary,
@@ -3447,9 +3607,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                 chat_type: undefined,
               });
             } else if (newInputType === 'upload') {
-              // Clear test_data when switching to file upload
+              // Keep existing dataset path for copy/rerun reuse.
               form.setFieldsValue({
-                test_data: undefined,
                 chat_type: undefined,
               });
             } else if (newInputType === 'default') {
@@ -3486,6 +3645,12 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           <Input />
         </Form.Item>
         <Form.Item name='key_file' hidden>
+          <Input />
+        </Form.Item>
+        <Form.Item name='cert_file_name' hidden>
+          <Input />
+        </Form.Item>
+        <Form.Item name='key_file_name' hidden>
           <Input />
         </Form.Item>
         <Form.Item name='test_data_file' hidden>

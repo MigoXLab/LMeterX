@@ -48,7 +48,7 @@ from model.http_task import (
     HttpTaskStatusRsp,
     HttpTaskTestReq,
 )
-from utils.auth import get_current_user
+from utils.auth import get_current_user, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.converters import kv_items_to_dict, safe_isoformat
 from utils.error_handler import ErrorMessages, ErrorResponse
@@ -339,11 +339,17 @@ async def update_http_task_svc(
 
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
-            # forbidden to update task without created_by
-            if not task.created_by:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
-            if task.created_by != username:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            # Admin users and "agent" tasks bypass ownership check
+            if not is_admin_user(username) and task.created_by != "agent":
+                # forbidden to update task without created_by
+                if not task.created_by:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
+                if task.created_by != username:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
 
         task.name = new_name
         await db.commit()
@@ -385,11 +391,17 @@ async def delete_http_task_svc(request: Request, task_id: str) -> Dict[str, Any]
 
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
-            # forbidden to delete task without created_by
-            if not task.created_by:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
-            if task.created_by != username:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            # Admin users bypass ownership check for deletion
+            if not is_admin_user(username):
+                # forbidden to delete task without created_by
+                if not task.created_by:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
+                if task.created_by != username:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
 
         # Soft delete: mark as deleted instead of physically removing
         task.is_deleted = 1
@@ -510,9 +522,13 @@ async def stop_http_task_svc(request: Request, task_id: str) -> HttpTaskCreateRs
 
         if settings.LDAP_ENABLED:
             username = _get_username_from_request(request)
-            # forbid stopping task without creator info or by non-creator
-            if not task.created_by or task.created_by != username:
-                raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+            # Admin users and "agent" tasks bypass ownership check
+            if not is_admin_user(username) and task.created_by != "agent":
+                # forbid stopping task without creator info or by non-creator
+                if not task.created_by or task.created_by != username:
+                    raise ErrorResponse.forbidden(
+                        ErrorMessages.INSUFFICIENT_PERMISSIONS
+                    )
 
         if task.status != "running":
             return HttpTaskCreateRsp(

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request, Response
 
 from model.auth import LoginRequest, LoginResponse, UserInfo
 from service.auth_service import login_with_ldap
-from utils.auth import get_current_user
+from utils.auth import get_current_user, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
@@ -142,4 +142,10 @@ async def get_profile(request: Request) -> UserInfo:
         return UserInfo(username="anonymous", display_name="anonymous", email=None)
 
     user = get_current_user(request)
-    return UserInfo(**user)
+    username = user.get("sub", user.get("username", ""))
+    return UserInfo(
+        username=username,
+        display_name=user.get("name", user.get("display_name")),
+        email=user.get("email"),
+        is_admin=is_admin_user(username),
+    )

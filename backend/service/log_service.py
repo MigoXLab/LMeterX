@@ -3,12 +3,17 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import os
 import os.path
+import re
 
 from model.log import LogContentResponse
 from utils.be_config import LOG_DIR
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
+
+# Only allow alphanumeric, underscore and hyphen in service/task names
+_SAFE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 def get_last_n_lines(file_path: str, n: int = 100) -> str:
@@ -24,7 +29,7 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
         A string containing the last N lines. Returns an empty string on failure.
     """
     try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, "rb") as f:
             # For small files, just read all and return last n lines
             f.seek(0, os.SEEK_END)
             file_size = f.tell()
@@ -32,7 +37,7 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
             # If file is small (< 50KB), read all lines and return last n
             if file_size < 50 * 1024:
                 f.seek(0)
-                all_lines = f.readlines()
+                all_lines = f.read().decode("utf-8", errors="replace").splitlines(True)
                 return "".join(all_lines[-n:]) if all_lines else ""
 
             # For larger files, use a more efficient approach
@@ -49,7 +54,8 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
 
                 # Read chunk from current position
                 f.seek(position)
-                chunk = f.read(chunk_size)
+                chunk_bytes: bytes = f.read(chunk_size)
+                chunk: str = chunk_bytes.decode("utf-8", errors="replace")
 
                 # Prepend chunk to buffer
                 buffer = chunk + buffer
@@ -90,7 +96,7 @@ def get_last_n_lines(file_path: str, n: int = 100) -> str:
             if result and not result.endswith("\n"):
                 # Check if original file ends with newline
                 f.seek(max(0, file_size - 1))
-                if f.read(1) == "\n":
+                if f.read(1) == b"\n":
                     result += "\n"
 
             return result
@@ -113,10 +119,10 @@ def read_local_file(log_file_path: str, tail: int, offset: int) -> str:
         The content of the file as a string.
     """
     if tail == 0:
-        with open(log_file_path, "r", encoding="utf-8") as f:
+        with open(log_file_path, "rb") as f:
             if offset > 0:
                 f.seek(offset)
-            content = f.read()
+            content: str = f.read().decode("utf-8", errors="replace")
     else:
         content = get_last_n_lines(file_path=log_file_path, n=tail)
     return content
@@ -141,10 +147,19 @@ async def get_service_log_svc(service_name: str, offset: int, tail: int):
     if not service_name:
         raise ErrorResponse.bad_request(ErrorMessages.SERVICE_NAME_EMPTY)
 
+    if not _SAFE_NAME_PATTERN.match(service_name):
+        raise ErrorResponse.bad_request("Invalid service name")
+
     log_file_path = os.path.join(LOG_DIR, f"{service_name}.log")
 
-    if not os.path.exists(log_file_path):
-        logger.warning(f"Log file not found: {log_file_path}")
+    # Ensure resolved path stays within LOG_DIR to prevent path traversal
+    resolved_path = os.path.realpath(log_file_path)
+    log_dir_real = os.path.realpath(LOG_DIR) + os.sep
+    if not resolved_path.startswith(log_dir_real):
+        raise ErrorResponse.bad_request("Invalid service name")
+
+    if not os.path.exists(resolved_path):
+        logger.warning("Log file not found for service: {}", service_name)
         raise ErrorResponse.not_found(
             f"Log file for service '{service_name}' not found"
         )
@@ -167,13 +182,20 @@ async def get_task_log_svc(task_id: str, offset: int, tail: int):
     if not task_id:
         raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_EMPTY)
 
+    if not _SAFE_NAME_PATTERN.match(task_id):
+        raise ErrorResponse.bad_request("Invalid task ID")
+
     log_file_path = os.path.join(LOG_DIR, "task", f"task_{task_id}.log")
 
-    if not os.path.exists(log_file_path):
-        logger.warning(f"Log file not found: {log_file_path}")
-        raise ErrorResponse.not_found(
-            f"Log file for task '{task_id}' not found at {log_file_path}"
-        )
+    # Ensure resolved path stays within LOG_DIR to prevent path traversal
+    resolved_path = os.path.realpath(log_file_path)
+    log_dir_real = os.path.realpath(LOG_DIR) + os.sep
+    if not resolved_path.startswith(log_dir_real):
+        raise ErrorResponse.bad_request("Invalid task ID")
+
+    if not os.path.exists(resolved_path):
+        logger.warning("Log file not found for task: {}", task_id)
+        raise ErrorResponse.not_found(f"Log file for task '{task_id}' not found")
 
     try:
         content = read_local_file(log_file_path, tail, offset)

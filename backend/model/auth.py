@@ -25,6 +25,7 @@ class UserInfo(BaseModel):
     username: str
     display_name: Optional[str] = None
     email: Optional[str] = None
+    is_admin: bool = False
 
 
 class LoginResponse(BaseModel):

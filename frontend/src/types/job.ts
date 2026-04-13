@@ -51,6 +51,9 @@ export interface LlmTask {
   step_duration?: number;
   step_max_users?: number;
   step_sustain_duration?: number;
+  // Warmup configuration
+  warmup_enabled?: boolean;
+  warmup_duration?: number;
   created_by?: string;
   test_data?: string;
   engine_id?: string;
@@ -84,6 +87,7 @@ export interface HttpTask {
     value: string;
   }>;
   request_body?: string;
+  dataset_file?: string;
   curl_command?: string;
   success_assert?: string;
   concurrent_users: number;

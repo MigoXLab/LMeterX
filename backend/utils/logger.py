@@ -32,13 +32,18 @@ if not os.environ.get("TESTING"):
         encoding="utf-8",
         level=LOG_LEVEL,
         backtrace=False,
+        diagnose=False,
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
     )
 
 # Configure console logging.
+# colorize=None lets loguru auto-detect: colors ON for interactive TTY (local dev),
+# colors OFF for non-TTY (Docker/K8S) to avoid ANSI escape codes showing as garbled blocks.
 logger.add(
     sys.stdout,
     level=LOG_LEVEL,
-    colorize=True,
+    colorize=None,
+    backtrace=False,
+    diagnose=False,
     format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{file}:{line}</cyan> | <level>{message}</level>",  # noqa: E501
 )

@@ -3,7 +3,6 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import os
 import subprocess  # nosec B404
 
 import pymysql.err  # type: ignore[import-untyped]
@@ -11,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from config.base import ST_ENGINE_DIR, UPLOAD_FOLDER
+from config.base import ST_ENGINE_DIR
 from config.business import (
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
@@ -44,45 +43,7 @@ class LlmTaskService:
         self.runner = LlmLocustRunner(ST_ENGINE_DIR)
         self.result_service = LlmResultService()
 
-    def _cleanup_task_files(self, task: Task):
-        """
-        Clean up uploaded files associated with a completed or failed task.
-
-        Args:
-            task (Task): The task object containing file paths to clean up.
-        """
-        task_logger = logger.bind(task_id=task.id)
-        files_to_remove = []
-
-        # Collect all file paths associated with this task
-        if hasattr(task, "test_data") and task.test_data:
-            if task.test_data not in ["default", ""]:
-                # Only add actual file paths, not default dataset or empty strings
-                if not task.test_data.strip().startswith("{"):  # Not JSONL content
-                    files_to_remove.append(task.test_data)
-
-        if hasattr(task, "cert_file") and task.cert_file:
-            files_to_remove.append(task.cert_file)
-
-        if hasattr(task, "key_file") and task.key_file:
-            files_to_remove.append(task.key_file)
-
-        # Remove each file if it exists
-        for file_path in files_to_remove:
-            if file_path and file_path.strip():
-                try:
-                    # Ensure we're working with absolute paths
-                    if not os.path.isabs(file_path):
-                        file_path = os.path.join(UPLOAD_FOLDER, file_path)  # type: ignore
-
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                        task_logger.info(f"Successfully removed file: {file_path}")
-                    else:
-                        task_logger.debug(f"File not found for cleanup: {file_path}")
-
-                except Exception as e:
-                    task_logger.warning(f"Failed to remove file {file_path}: {e}")
+    # _cleanup_task_files removed along with its test cases (files are kept for reuse).
 
     def update_task_status(
         self,
@@ -116,23 +77,7 @@ class LlmTaskService:
                     task.error_message = error_message  # type: ignore
             session.commit()
 
-            # Clean up uploaded files for terminal states
-            if status in [
-                TASK_STATUS_COMPLETED,
-                TASK_STATUS_STOPPED,
-                TASK_STATUS_FAILED,
-                TASK_STATUS_FAILED_REQUESTS,
-            ]:
-                try:
-                    self._cleanup_task_files(task)
-                except Exception as cleanup_error:
-                    if hasattr(task, "id") and task.id:
-                        task_logger = logger.bind(task_id=task.id)
-                        task_logger.warning(f"File cleanup failed: {cleanup_error}")
-                    else:
-                        logger.warning(
-                            f"File cleanup failed for a task: {cleanup_error}"
-                        )
+            # Skip uploaded file cleanup for terminal states (reuse enabled)
 
         except (OperationalError, pymysql.err.OperationalError) as e:
             if hasattr(task, "id") and task.id:

@@ -167,6 +167,18 @@ JWT_EXPIRE_MINUTES=10080                 # Token expiration time in minutes (def
 - **Security**: Always use `LDAP_USE_SSL=true` in production environments
 - **Frontend**: Set `VITE_LDAP_ENABLED=on` to enable login UI
 
+### AI Agent Service Token Configuration
+
+`LMETERX_AUTH_TOKEN` is a static service token designed for AI Agent / Skill programmatic access (e.g., Claude Code, Cursor, OpenClaw Skills). It allows agent tools to call designated APIs without going through the interactive LDAP login flow. For detailed configuration and whitelist APIs, please see:[Contributing Guide](docs/CONTRIBUTING.md)
+
+```bash
+# ================= Service Token Configuration =================
+# Static token for AI Agent / Skill programmatic access.
+# When set, the token is bound to the built-in "agent" user.
+# Required only when LDAP_ENABLED=on and AI Agent integration is needed.
+LMETERX_AUTH_TOKEN=<your-strong-random-token>
+```
+
 ### Resource Configuration
 ```bash
 # ================= High-Concurrency Load Testing Deployment Requirements =================

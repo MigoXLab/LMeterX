@@ -6,6 +6,7 @@ import {
   BugOutlined,
   CopyOutlined,
   InfoCircleOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -77,6 +78,18 @@ const CreateHttpTaskForm: React.FC<Props> = ({
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const { token } = theme.useToken();
+
+  const toSingleUploadFileList = (filename?: string, uid: string = '-1') =>
+    filename
+      ? [
+          {
+            uid,
+            name: String(filename),
+            status: 'done' as const,
+          },
+        ]
+      : [];
+
   const methodValue = Form.useWatch('method', form);
   const urlValue = Form.useWatch('target_url', form);
   const datasetSource = Form.useWatch('dataset_source', form);
@@ -160,7 +173,10 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         headers: headersValue,
         request_body: requestBodyValue,
         dataset_source:
-          (initialData as any).dataset_source ?? defaultValues.dataset_source,
+          (initialData as any).dataset_source ??
+          ((initialData as any).dataset_file
+            ? 'upload'
+            : defaultValues.dataset_source),
         dataset_file:
           (initialData as any).dataset_file ?? defaultValues.dataset_file,
         temp_task_id: tempTaskId, // Always use new tempTaskId
@@ -474,6 +490,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       form.setFieldsValue({
         dataset_file: datasetPath,
         temp_task_id: (res as any)?.task_id || effectiveTaskId,
+        dataset_source: 'upload', // explicitly set to avoid any ambiguity
       });
       setDatasetFileName(file.name);
       message.success(t('components.createHttpTaskForm.datasetUploadSuccess'));
@@ -502,9 +519,6 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         onFinish={handleFinish}
       >
         <Form.Item name='temp_task_id' hidden>
-          <Input />
-        </Form.Item>
-        <Form.Item name='dataset_file' hidden>
           <Input />
         </Form.Item>
 
@@ -691,27 +705,48 @@ const CreateHttpTaskForm: React.FC<Props> = ({
             {datasetSource === 'upload' && (
               <Form.Item
                 label={t('components.createHttpTaskForm.datasetFile')}
-                name='dataset_file'
-                rules={[
-                  {
-                    required: true,
-                    message: t(
-                      'components.createHttpTaskForm.datasetFileRequired'
-                    ),
-                  },
-                ]}
+                required
               >
+                <Form.Item
+                  name='dataset_file'
+                  noStyle
+                  rules={[
+                    {
+                      required: true,
+                      message: t(
+                        'components.createHttpTaskForm.datasetFileRequired'
+                      ),
+                    },
+                  ]}
+                >
+                  <Input type='hidden' />
+                </Form.Item>
                 <Dragger
                   name='file'
-                  multiple={false}
+                  maxCount={1}
+                  accept='.jsonl,.json'
                   customRequest={handleDatasetUpload}
                   onRemove={handleDatasetRemove}
                   disabled={datasetUploading}
-                  showUploadList={false}
-                  accept='.jsonl,.json'
+                  fileList={toSingleUploadFileList(datasetFileName)}
+                  showUploadList={{ showRemoveIcon: false }}
+                  style={{
+                    borderRadius: 12,
+                    borderColor: token.colorBorderSecondary,
+                    background: token.colorFillAlter,
+                  }}
                 >
-                  <p>{t('components.createHttpTaskForm.datasetUploadTip')}</p>
-                  {datasetFileName && <p>{datasetFileName}</p>}
+                  <p
+                    className='ant-upload-drag-icon'
+                    style={{ marginBottom: 12 }}
+                  >
+                    <UploadOutlined
+                      style={{ color: token.colorPrimary, fontSize: 24 }}
+                    />
+                  </p>
+                  <Text strong style={{ fontSize: 16 }}>
+                    {t('components.createHttpTaskForm.datasetUploadTip')}
+                  </Text>
                 </Dragger>
               </Form.Item>
             )}

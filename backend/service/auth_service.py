@@ -8,9 +8,10 @@ from typing import Optional
 from fastapi import Request
 from ldap3 import ALL, BASE, Connection, Server  # type: ignore[import-untyped]
 from ldap3.core.exceptions import LDAPSocketOpenError  # type: ignore[import-untyped]
+from ldap3.utils.conv import escape_filter_chars  # type: ignore[import-untyped]
 
 from model.auth import LoginRequest, LoginResponse, UserInfo
-from utils.auth import create_access_token
+from utils.auth import create_access_token, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
@@ -62,7 +63,7 @@ def _search_user_dn(
     if not search_base:
         return None
 
-    resolved_filter = search_filter.format(username=username)
+    resolved_filter = search_filter.format(username=escape_filter_chars(username))
     conn.search(
         search_base=search_base,
         search_filter=resolved_filter,
@@ -156,7 +157,9 @@ async def login_with_ldap(_: Request, login_request: LoginRequest) -> LoginRespo
                 user_entry = conn.entries[0]
             elif settings.LDAP_SEARCH_BASE:
                 # Fallback to configured search base if the direct DN lookup fails
-                resolved_filter = settings.LDAP_SEARCH_FILTER.format(username=username)
+                resolved_filter = settings.LDAP_SEARCH_FILTER.format(
+                    username=escape_filter_chars(username)
+                )
                 conn.search(
                     search_base=settings.LDAP_SEARCH_BASE,
                     search_filter=resolved_filter,
@@ -167,6 +170,7 @@ async def login_with_ldap(_: Request, login_request: LoginRequest) -> LoginRespo
                     user_entry = conn.entries[0]
 
             user_info = _extract_user_info(user_entry, username)
+            user_info.is_admin = is_admin_user(username)
 
         token = create_access_token(user_info.model_dump())
         return LoginResponse(access_token=token, user=user_info)
@@ -175,7 +179,6 @@ async def login_with_ldap(_: Request, login_request: LoginRequest) -> LoginRespo
         logger.error("LDAP connection failed: {}", exc)
         raise ErrorResponse.internal_server_error(
             ErrorMessages.LDAP_CONNECTION_FAILED,
-            details=f"LDAP connection error: {exc}",
         )
     except ErrorResponse:
         raise

@@ -679,6 +679,7 @@
       "headersRequired": "Please enter headers",
       "body": "Request Body",
       "bodyPlaceholder": "JSON or form data",
+      "bodyRequired": "Please enter request body",
       "datasetSource": "Dataset",
       "datasetNone": "Do not use dataset",
       "datasetUpload": "Upload JSONL dataset",

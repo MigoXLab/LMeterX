@@ -671,6 +671,12 @@ const CreateHttpTaskForm: React.FC<Props> = ({
             <Form.Item
               label={t('components.createHttpTaskForm.body')}
               name='request_body'
+              rules={[
+                {
+                  required: datasetSource === 'none',
+                  message: t('components.createHttpTaskForm.bodyRequired'),
+                },
+              ]}
             >
               <TextArea
                 rows={4}

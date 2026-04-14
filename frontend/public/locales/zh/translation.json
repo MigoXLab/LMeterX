@@ -680,6 +680,7 @@
       "headersRequired": "请输入请求头",
       "body": "请求体",
       "bodyPlaceholder": "JSON 或表单内容",
+      "bodyRequired": "请输入请求体",
       "datasetSource": "数据集",
       "datasetNone": "不使用数据集",
       "datasetUpload": "上传 JSONL 数据集",

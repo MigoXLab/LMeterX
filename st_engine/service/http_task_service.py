@@ -414,8 +414,9 @@ class HttpTaskService:
         try:
             session.refresh(task)
         except (OperationalError, pymysql.err.OperationalError) as e:
+            error_msg = str(getattr(e, "orig", e))
             task_logger.warning(
-                f" Database connection error while refreshing task state: {e}. "
+                f" Database connection error while refreshing task state: {error_msg}. "
                 "Continuing with task processing."
             )
             try:

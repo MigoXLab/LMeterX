@@ -162,13 +162,11 @@ class ErrorResponse:
         response_time = (time.perf_counter() - start_time) * 1000
 
         if "Read timed out" in error_msg:
-            self.task_logger.error(
-                f"Stream request timeout (current timeout: {DEFAULT_TIMEOUT} seconds): {error_msg}."
-            )
+            error_msg = f"Stream request timeout (current timeout: {DEFAULT_TIMEOUT} seconds): {error_msg}"
         elif "Connection" in error_msg:
-            self.task_logger.error(f"Network connection error: {error_msg}.")
+            error_msg = f"Network connection error: {error_msg}"
         else:
-            self.task_logger.error(f"Stream processing network error: {error_msg}")
+            error_msg = f"Stream processing network error: {error_msg}"
 
         self._handle_general_exception_event(
             error_msg=error_msg,

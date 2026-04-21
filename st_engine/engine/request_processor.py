@@ -875,7 +875,7 @@ class APIClient:
                     line = line.encode("utf-8", errors="ignore")
                 yield line
         except Exception as e:
-            self.task_logger.error(f"Error iterating over stream lines: {e}")
+            self.task_logger.debug(f"Error iterating over stream lines: {e}")
             # Propagate the exception so callers can record the failure properly.
             raise
 
@@ -994,7 +994,6 @@ class APIClient:
             return "", "", usage
         except Exception as e:
             response_time = (time.perf_counter() - start_time) * 1000
-            self.task_logger.error(f"Stream processing error: {e}")
             self.error_handler._handle_general_exception_event(
                 error_msg=f"Unexpected error: {e}",
                 response=response,
@@ -1133,7 +1132,7 @@ class APIClient:
 
                 try:
                     resp_json = response.json()
-                    # self.task_logger.info(f"resp_json: {resp_json}")
+                    self.task_logger.debug(f"resp_json: {resp_json}")
                 except (orjson.JSONDecodeError, KeyError) as e:
                     self.task_logger.error(f"Failed to parse response JSON: {e}")
                     self.error_handler._handle_general_exception_event(
@@ -1172,11 +1171,14 @@ class APIClient:
                     choices = resp_json.get("choices", [])
                     if choices and isinstance(choices, list) and len(choices) > 0:
                         first_choice = choices[0]
-                        if isinstance(first_choice, dict) and "finish_reason" in first_choice:
+                        if (
+                            isinstance(first_choice, dict)
+                            and "finish_reason" in first_choice
+                        ):
                             finish_reason = first_choice.get("finish_reason")
                             if finish_reason not in ("stop", "tool_calls"):
                                 self.task_logger.warning(
-                                    f"Unexpected finish_reason: {finish_reason}"
+                                    f"Unexpected finish_reason: {finish_reason}, response: {resp_json}"
                                 )
 
                 if field_mapping.content:

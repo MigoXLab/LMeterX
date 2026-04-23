@@ -12,12 +12,15 @@ import { useSearchParams } from 'react-router-dom';
 import EngineResources from '../components/EngineResources';
 import SystemLogs from '../components/SystemLogs';
 import { PageHeader } from '../components/ui/PageHeader';
+import { getStoredUser } from '../utils/auth';
+import { getLdapEnabled } from '../utils/runtimeConfig';
 
 const SYSTEM_MONITOR_TAB_STORAGE_KEY = 'system-monitor-active-tab';
 const VALID_TABS = new Set(['engine-resources', 'engine-logs', 'backend-logs']);
 
 const SystemMonitor: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const canViewLogs = !getLdapEnabled() || getStoredUser()?.is_admin;
   // Read engine_id from URL query params (e.g. /system-monitor?engine_id=xxx)
   const urlEngineId = useMemo(
     () => searchParams.get('engine_id') || undefined,
@@ -28,7 +31,16 @@ const SystemMonitor: React.FC = () => {
     if (urlEngineId) return 'engine-resources';
     if (typeof window === 'undefined') return 'engine-resources';
     const saved = window.localStorage.getItem(SYSTEM_MONITOR_TAB_STORAGE_KEY);
-    return saved && VALID_TABS.has(saved) ? saved : 'engine-resources';
+    if (saved && VALID_TABS.has(saved)) {
+      if (
+        !canViewLogs &&
+        (saved === 'engine-logs' || saved === 'backend-logs')
+      ) {
+        return 'engine-resources';
+      }
+      return saved;
+    }
+    return 'engine-resources';
   });
   const { t } = useTranslation();
 
@@ -51,44 +63,48 @@ const SystemMonitor: React.FC = () => {
         />
       ),
     },
-    {
-      key: 'engine-logs',
-      label: (
-        <span className='tab-label'>
-          {t('components.systemLogs.engineLogs', {
-            defaultValue: 'Engine Logs',
-          })}
-        </span>
-      ),
-      children: (
-        <SystemLogs
-          serviceName='engine'
-          displayName={t('components.systemLogs.engineLogs', {
-            defaultValue: 'Engine Logs',
-          })}
-          isActive={activeTab === 'engine-logs'}
-        />
-      ),
-    },
-    {
-      key: 'backend-logs',
-      label: (
-        <span className='tab-label'>
-          {t('components.systemLogs.backendLogs', {
-            defaultValue: 'Backend Service Logs',
-          })}
-        </span>
-      ),
-      children: (
-        <SystemLogs
-          serviceName='backend'
-          displayName={t('components.systemLogs.backendLogs', {
-            defaultValue: 'Backend Service Logs',
-          })}
-          isActive={activeTab === 'backend-logs'}
-        />
-      ),
-    },
+    ...(canViewLogs
+      ? [
+          {
+            key: 'engine-logs',
+            label: (
+              <span className='tab-label'>
+                {t('components.systemLogs.engineLogs', {
+                  defaultValue: 'Engine Logs',
+                })}
+              </span>
+            ),
+            children: (
+              <SystemLogs
+                serviceName='engine'
+                displayName={t('components.systemLogs.engineLogs', {
+                  defaultValue: 'Engine Logs',
+                })}
+                isActive={activeTab === 'engine-logs'}
+              />
+            ),
+          },
+          {
+            key: 'backend-logs',
+            label: (
+              <span className='tab-label'>
+                {t('components.systemLogs.backendLogs', {
+                  defaultValue: 'Backend Service Logs',
+                })}
+              </span>
+            ),
+            children: (
+              <SystemLogs
+                serviceName='backend'
+                displayName={t('components.systemLogs.backendLogs', {
+                  defaultValue: 'Backend Service Logs',
+                })}
+                isActive={activeTab === 'backend-logs'}
+              />
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (

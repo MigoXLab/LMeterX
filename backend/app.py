@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from api.api_analysis import router as analysis
 from api.api_auth import router as auth
+from api.api_collection import router as collection
 from api.api_http_task import router as http_task
 from api.api_llm_task import router as llm_task
 from api.api_log import router as log
@@ -121,6 +122,7 @@ def read_root():
 # add api routers
 app.include_router(analysis, prefix="/api/analyze", tags=["analysis"])
 app.include_router(auth, prefix="/api/auth", tags=["auth"])
+app.include_router(collection, prefix="/api/collections", tags=["collections"])
 app.include_router(system, prefix="/api/system", tags=["system"])
 app.include_router(llm_task, prefix="/api/llm-tasks", tags=["llm-tasks"])
 app.include_router(http_task, prefix="/api/http-tasks", tags=["http-tasks"])

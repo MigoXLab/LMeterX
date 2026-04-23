@@ -25,7 +25,9 @@ import SystemConfiguration from './pages/SystemConfiguration';
 import SystemMonitor from './pages/SystemMonitor';
 import TaskLog from './pages/TaskLog';
 import TasksPage from './pages/Tasks';
-import { isAuthenticated } from './utils/auth';
+import Collections from './pages/Collections';
+import CollectionDetail from './pages/CollectionDetail';
+import { isAuthenticated, getStoredUser } from './utils/auth';
 import { getLdapEnabled } from './utils/runtimeConfig';
 
 const { Content } = Layout;
@@ -41,6 +43,23 @@ const RequireAuth: React.FC<{ children: React.ReactElement }> = ({
   }
   if (!isAuthenticated()) {
     return <Navigate to='/login' state={{ from: location }} replace />;
+  }
+  return children;
+};
+
+const RequireAdmin: React.FC<{ children: React.ReactElement }> = ({
+  children,
+}) => {
+  const location = useLocation();
+  if (!LDAP_ENABLED) {
+    return children;
+  }
+  if (!isAuthenticated()) {
+    return <Navigate to='/login' state={{ from: location }} replace />;
+  }
+  const user = getStoredUser();
+  if (!user?.is_admin) {
+    return <Navigate to='/jobs' replace />;
   }
   return children;
 };
@@ -191,6 +210,22 @@ const App: React.FC = () => {
                     }
                   />
                   <Route
+                    path='/collections'
+                    element={
+                      <RequireAuth>
+                        <Collections />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path='/collections/:id'
+                    element={
+                      <RequireAuth>
+                        <CollectionDetail />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
                     path='/system-monitor'
                     element={
                       <RequireAuth>
@@ -201,9 +236,9 @@ const App: React.FC = () => {
                   <Route
                     path='/system-config'
                     element={
-                      <RequireAuth>
+                      <RequireAdmin>
                         <SystemConfiguration />
-                      </RequireAuth>
+                      </RequireAdmin>
                     }
                   />
                   <Route

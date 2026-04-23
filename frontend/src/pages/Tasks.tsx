@@ -14,6 +14,7 @@ import {
   ExclamationCircleOutlined,
   ExperimentOutlined,
   FileTextOutlined,
+  FolderAddOutlined,
   GlobalOutlined,
   LineChartOutlined,
   MoreOutlined,
@@ -34,7 +35,6 @@ import {
   Space,
   Table,
   Tabs,
-  Tag,
   Tooltip,
   Typography,
 } from 'antd';
@@ -44,6 +44,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { httpTaskApi, llmTaskApi } from '../api/services';
+import AddToCollectionModal from '../components/AddToCollectionModal';
 import CreateHttpTaskForm from '../components/CreateHttpTaskForm';
 import CreateLlmTaskForm from '../components/CreateLlmTaskForm';
 import WebOneClickModal from '../components/WebOneClickModal';
@@ -160,6 +161,8 @@ const Tasks: React.FC = () => {
   const [renaming, setRenaming] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [webOneClickOpen, setWebOneClickOpen] = useState(false);
+  const [collectionModalOpen, setCollectionModalOpen] = useState(false);
+  const [singleAddTaskId, setSingleAddTaskId] = useState<string | null>(null);
 
   // Get message instance from App context
   const { message: messageApi, modal } = App.useApp();
@@ -523,9 +526,6 @@ const Tasks: React.FC = () => {
               {t('pages.jobs.rerunConfirmContent')}{' '}
               <Text code>{record.name || record.id}</Text>
             </p>
-            <p style={{ color: '#faad14', marginTop: 8, marginBottom: 0 }}>
-              {t('pages.jobs.rerunDatasetTip')}
-            </p>
           </div>
         ),
         okText: t('pages.jobs.confirmRerun'),
@@ -846,6 +846,17 @@ const Tasks: React.FC = () => {
           const statusLower = record.status?.toLowerCase();
           const moreMenuItems: any[] = [];
 
+          moreMenuItems.push({
+            key: 'collection',
+            icon: <FolderAddOutlined />,
+            label: t('pages.jobs.addToCollection'),
+            onClick: (info: any) => {
+              info.domEvent.stopPropagation();
+              setSingleAddTaskId(record.id);
+              setCollectionModalOpen(true);
+            },
+          });
+
           if (canManage(record.created_by)) {
             moreMenuItems.push({
               key: 'copy',
@@ -1120,6 +1131,17 @@ const Tasks: React.FC = () => {
         render: (_, record) => {
           const statusLower = record.status?.toLowerCase();
           const moreMenuItems: any[] = [];
+
+          moreMenuItems.push({
+            key: 'collection',
+            icon: <FolderAddOutlined />,
+            label: t('pages.jobs.addToCollection'),
+            onClick: (info: any) => {
+              info.domEvent.stopPropagation();
+              setSingleAddTaskId(record.id);
+              setCollectionModalOpen(true);
+            },
+          });
 
           if (canManage(record.created_by)) {
             moreMenuItems.push({
@@ -1464,9 +1486,6 @@ const Tasks: React.FC = () => {
               count: manageableTasks.length,
             })}
           </p>
-          <p style={{ color: '#faad14', marginTop: 8, marginBottom: 0 }}>
-            {t('pages.jobs.rerunDatasetTip')}
-          </p>
         </div>
       ),
       okText: t('pages.jobs.confirmRerun'),
@@ -1727,19 +1746,17 @@ const Tasks: React.FC = () => {
                   type='vertical'
                   style={{ height: 24, margin: '0 4px' }}
                 />
-                <Tag
-                  color='blue'
+                <span
                   style={{
-                    margin: 0,
-                    fontSize: 13,
-                    lineHeight: '28px',
-                    padding: '0 10px',
+                    margin: '0 8px',
+                    fontSize: 14,
+                    color: '#000',
                   }}
                 >
                   {t('pages.jobs.selectedCount', {
                     count: selectedRowKeys.length,
                   })}
-                </Tag>
+                </span>
                 <Tooltip
                   title={
                     !allSelectedManageable
@@ -1752,7 +1769,7 @@ const Tasks: React.FC = () => {
                     onClick={handleBatchRerun}
                     loading={batchRerunning}
                     disabled={!allSelectedManageable}
-                    className='modern-button-teal-light'
+                    className='btn-purple-dark'
                   >
                     {t('pages.jobs.batchRerun')}
                   </Button>
@@ -1761,16 +1778,25 @@ const Tasks: React.FC = () => {
                   <Button
                     icon={<BarChartOutlined />}
                     onClick={handleGoToCompare}
-                    className='modern-button-teal'
+                    className='btn-purple-medium'
                   >
                     {t('pages.jobs.goToCompare')}
                   </Button>
                 )}
                 <Button
-                  type='text'
-                  size='small'
+                  icon={<FolderAddOutlined />}
+                  onClick={() => {
+                    setSingleAddTaskId(null);
+                    setCollectionModalOpen(true);
+                  }}
+                  className='btn-purple-light'
+                >
+                  {t('pages.jobs.addToCollection')}
+                </Button>
+                <Button
                   icon={<CloseOutlined />}
                   onClick={() => setSelectedRowKeys([])}
+                  className='modern-button'
                   style={{ color: 'var(--color-text-secondary)' }}
                 >
                   {t('pages.jobs.clearSelection')}
@@ -1895,6 +1921,23 @@ const Tasks: React.FC = () => {
         open={webOneClickOpen}
         onClose={() => setWebOneClickOpen(false)}
         onTaskCreated={() => httpManualRefresh()}
+      />
+
+      <AddToCollectionModal
+        open={collectionModalOpen}
+        onCancel={() => {
+          setCollectionModalOpen(false);
+          setSingleAddTaskId(null);
+        }}
+        taskIds={
+          singleAddTaskId
+            ? [singleAddTaskId]
+            : selectedRowKeys.map(k => String(k))
+        }
+        taskType={activeMode}
+        onSuccess={() => {
+          if (!singleAddTaskId) setSelectedRowKeys([]);
+        }}
       />
     </div>
   );

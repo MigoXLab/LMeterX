@@ -10,6 +10,7 @@ import {
   ExperimentOutlined,
   MonitorOutlined,
   SettingOutlined,
+  FolderOpenOutlined,
 } from '@ant-design/icons';
 import { ConfigProvider, Layout, Menu } from 'antd';
 import React from 'react';
@@ -36,6 +37,15 @@ const Sidebar: React.FC = () => {
       icon: <BarChartOutlined style={{ color: '#764ba2' }} />,
       label: (
         <span className='text-bold text-xl'>{t('sidebar.perfCompare')}</span>
+      ),
+    },
+    {
+      key: '/collections',
+      icon: <FolderOpenOutlined style={{ color: '#d946ef' }} />,
+      label: (
+        <span className='text-bold text-xl'>
+          {t('sidebar.collections') || 'Collections'}
+        </span>
       ),
     },
     {

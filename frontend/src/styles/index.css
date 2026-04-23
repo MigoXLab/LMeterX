@@ -2581,3 +2581,126 @@ body {
     display: none;
   }
 }
+
+/* Purple Theme - Button 1 (Darkest) */
+.btn-purple-dark.ant-btn,
+.btn-purple-dark.ant-btn-default,
+.btn-purple-dark {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #8b6fd6 0%, #9e85e3 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(139, 111, 214, 0.3) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+.btn-purple-dark.ant-btn:hover:not(:disabled),
+.btn-purple-dark.ant-btn-default:hover:not(:disabled),
+.btn-purple-dark:hover {
+  background: linear-gradient(135deg, #7c61c7 0%, #8b6fd6 100%) !important;
+  box-shadow: 0 5px 16px rgba(139, 111, 214, 0.4) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+.btn-purple-dark.ant-btn:active:not(:disabled),
+.btn-purple-dark.ant-btn-default:active:not(:disabled),
+.btn-purple-dark:active {
+  background: linear-gradient(135deg, #6c53b8 0%, #7c61c7 100%) !important;
+  color: #ffffff !important;
+}
+.btn-purple-dark:disabled,
+.btn-purple-dark[disabled],
+.btn-purple-dark.ant-btn:disabled,
+.btn-purple-dark.ant-btn-default:disabled {
+  background: linear-gradient(
+    135deg,
+    rgba(139, 111, 214, 0.45) 0%,
+    rgba(158, 133, 227, 0.45) 100%
+  ) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Purple Theme - Button 2 (Medium) */
+.btn-purple-medium.ant-btn,
+.btn-purple-medium.ant-btn-default,
+.btn-purple-medium {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #a68ce0 0%, #ba9fee 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(166, 140, 224, 0.3) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+.btn-purple-medium.ant-btn:hover:not(:disabled),
+.btn-purple-medium.ant-btn-default:hover:not(:disabled),
+.btn-purple-medium:hover {
+  background: linear-gradient(135deg, #9e85e3 0%, #a68ce0 100%) !important;
+  box-shadow: 0 5px 16px rgba(166, 140, 224, 0.4) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+.btn-purple-medium.ant-btn:active:not(:disabled),
+.btn-purple-medium.ant-btn-default:active:not(:disabled),
+.btn-purple-medium:active {
+  background: linear-gradient(135deg, #8b6fd6 0%, #9e85e3 100%) !important;
+  color: #ffffff !important;
+}
+.btn-purple-medium:disabled,
+.btn-purple-medium[disabled],
+.btn-purple-medium.ant-btn:disabled,
+.btn-purple-medium.ant-btn-default:disabled {
+  background: linear-gradient(
+    135deg,
+    rgba(166, 140, 224, 0.45) 0%,
+    rgba(186, 159, 238, 0.45) 100%
+  ) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Purple Theme - Button 3 (Lightest) */
+.btn-purple-light.ant-btn,
+.btn-purple-light.ant-btn-default,
+.btn-purple-light {
+  border-radius: var(--radius-md) !important;
+  background: linear-gradient(135deg, #be9ef2 0%, #d1b5f2 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(190, 158, 242, 0.3) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+}
+.btn-purple-light.ant-btn:hover:not(:disabled),
+.btn-purple-light.ant-btn-default:hover:not(:disabled),
+.btn-purple-light:hover {
+  background: linear-gradient(135deg, #b091eb 0%, #be9ef2 100%) !important;
+  box-shadow: 0 5px 16px rgba(190, 158, 242, 0.4) !important;
+  transform: translateY(-1px);
+  color: #ffffff !important;
+}
+.btn-purple-light.ant-btn:active:not(:disabled),
+.btn-purple-light.ant-btn-default:active:not(:disabled),
+.btn-purple-light:active {
+  background: linear-gradient(135deg, #a68ce0 0%, #b091eb 100%) !important;
+  color: #ffffff !important;
+}
+.btn-purple-light:disabled,
+.btn-purple-light[disabled],
+.btn-purple-light.ant-btn:disabled,
+.btn-purple-light.ant-btn-default:disabled {
+  background: linear-gradient(
+    135deg,
+    rgba(190, 158, 242, 0.45) 0%,
+    rgba(209, 181, 242, 0.45) 100%
+  ) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}

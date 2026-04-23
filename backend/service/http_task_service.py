@@ -441,7 +441,8 @@ async def test_http_api_svc(request: Request, body: HttpTaskTestReq) -> Dict[str
     effective_body = body.request_body if method not in _no_body_methods else None
     json_payload, text_payload = _prepare_request_body(effective_body)
 
-    timeout_config = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
+    # No timeout for testing API endpoints
+    timeout_config = None
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
 
     try:

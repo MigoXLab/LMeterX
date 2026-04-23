@@ -488,13 +488,15 @@ class CommonApiUser(HttpUser):
             req_kwargs["catch_response"] = True
 
             req_id = uuid.uuid4().hex[:8]
-            self.task_logger.opt(lazy=True).debug(
-                "[{req_id}] Request Payload: {payload}",
-                req_id=lambda: req_id,
-                payload=lambda: (
-                    lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
-                )(repr(req_kwargs)),
-            )
+            payload_data = req_kwargs.get("json") or req_kwargs.get("data")
+            if payload_data:
+                self.task_logger.opt(lazy=True).debug(
+                    "[{req_id}] Request Payload: {payload}",
+                    req_id=lambda: req_id,
+                    payload=lambda: (
+                        lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
+                    )(repr(payload_data)),
+                )
 
             with self.client.request(
                 self.method,

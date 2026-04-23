@@ -3,10 +3,11 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import copy
 import time
 import uuid
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import orjson
 
@@ -511,6 +512,17 @@ class PayloadBuilder:
         try:
             # Extract prompt data
             user_prompt = prompt_data.get("prompt", DEFAULT_PROMPT)
+            # Fallback to messages text if prompt is empty or default
+            if (not user_prompt or user_prompt == DEFAULT_PROMPT) and prompt_data.get(
+                "messages"
+            ):
+                for msg in reversed(prompt_data.get("messages", [])):
+                    if msg.get("role") == "user" and isinstance(
+                        msg.get("content"), str
+                    ):
+                        user_prompt = msg.get("content", "")
+                        break
+
             image_url = prompt_data.get("image_url", "")
             image_base64 = prompt_data.get("image_base64", "")
             image_path = prompt_data.get("image_path", "")
@@ -530,11 +542,11 @@ class PayloadBuilder:
             # Route to appropriate updater based on API type
             if api_type == "openai-chat":
                 self._update_openai_chat_payload(
-                    payload, user_prompt, image_url, image_base64
+                    payload, user_prompt, image_url, image_base64, prompt_data
                 )
             elif api_type == "claude-chat":
                 self._update_claude_chat_payload(
-                    payload, user_prompt, image_url, image_base64
+                    payload, user_prompt, image_url, image_base64, prompt_data
                 )
             elif api_type == "embeddings":
                 self._update_embeddings_payload(payload, user_prompt)
@@ -614,6 +626,7 @@ class PayloadBuilder:
         user_prompt: str,
         image_url: str,
         image_base64: str,
+        prompt_data: Dict[str, Any] = None,
     ) -> None:
         """Update payload for OpenAI Chat API format.
 
@@ -623,54 +636,77 @@ class PayloadBuilder:
         Args:
             payload: The request payload to update
             user_prompt: The prompt text from dataset
-            image_url: Image URL from dataset if available
-            image_base64: Base64 encoded image from dataset if available
+            image_url: Image URL from dataset if available (ignored for standard chat API)
+            image_base64: Base64 encoded image from dataset if available (ignored for standard chat API)
+            prompt_data: Full dataset row dictionary
         """
-        # Get existing messages or create new list
-        messages = payload.get("messages", [])
-        if not isinstance(messages, list):
-            messages = []
-
-        # Build user message content based on whether images are present
-        has_image = bool(image_base64 or image_url)
-
-        if has_image:
-            # Multimodal: use array format with text and image
-            user_content: List[Dict[str, Any]] = [{"type": "text", "text": user_prompt}]
-
-            # Add image (prioritize base64 over URL)
-            if image_base64:
-                user_content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    }
-                )
-            elif image_url:
-                user_content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": image_url},
-                    }
-                )
-
-            user_message = {"role": "user", "content": user_content}
+        has_dataset_messages = bool(prompt_data and prompt_data.get("messages"))
+        if has_dataset_messages:
+            messages = copy.deepcopy(prompt_data.get("messages"))
         else:
-            # Text-only: use simple string format
+            messages = payload.get("messages", [])
+            if not isinstance(messages, list):
+                messages = []
+
+        if image_url or image_base64:
+            user_message_found = False
+            for i in range(len(messages) - 1, -1, -1):
+                msg = messages[i]
+                if isinstance(msg, dict) and msg.get("role") == "user":
+                    user_message_found = True
+
+                    if has_dataset_messages:
+                        # If messages came from dataset, preserve its content and append image
+                        existing_content = msg.get("content", "")
+                        if isinstance(existing_content, str):
+                            content_list = [{"type": "text", "text": existing_content}]
+                        elif isinstance(existing_content, list):
+                            content_list = existing_content
+                        else:
+                            content_list = [
+                                {"type": "text", "text": str(existing_content)}
+                            ]
+                    else:
+                        # If messages came from payload template, OVERWRITE text with dataset's user_prompt
+                        content_list = [{"type": "text", "text": user_prompt}]
+
+                    if image_base64:
+                        image_data_uri = f"data:image/jpeg;base64,{image_base64}"
+                        content_list.append(
+                            {"type": "image_url", "image_url": {"url": image_data_uri}}
+                        )
+                    elif image_url:
+                        content_list.append(
+                            {"type": "image_url", "image_url": {"url": image_url}}
+                        )
+
+                    messages[i]["content"] = content_list
+                    break
+
+            if not user_message_found:
+                content = [{"type": "text", "text": user_prompt}]
+                if image_base64:
+                    image_data_uri = f"data:image/jpeg;base64,{image_base64}"
+                    content.append(
+                        {"type": "image_url", "image_url": {"url": image_data_uri}}
+                    )
+                elif image_url:
+                    content.append(
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    )
+                messages.append({"role": "user", "content": content})
+        elif not has_dataset_messages:
+            # Text-only and NO messages provided from dataset: update or append user message with user_prompt
             user_message = {"role": "user", "content": user_prompt}
-
-        # Find and update existing user message, or append new one
-        user_message_found = False
-        for i, msg in enumerate(messages):
-            if isinstance(msg, dict) and msg.get("role") == "user":
-                # Update existing user message
-                messages[i] = user_message
-                user_message_found = True
-                break
-
-        if not user_message_found:
-            # Append new user message
-            messages.append(user_message)
+            user_message_found = False
+            # Find the first user message (historical behavior for text-only)
+            for i, msg in enumerate(messages):
+                if isinstance(msg, dict) and msg.get("role") == "user":
+                    messages[i] = user_message
+                    user_message_found = True
+                    break
+            if not user_message_found:
+                messages.append(user_message)
 
         # Update messages in payload (preserves all other parameters)
         payload["messages"] = messages
@@ -681,6 +717,7 @@ class PayloadBuilder:
         user_prompt: str,
         image_url: str,
         image_base64: str,
+        prompt_data: Dict[str, Any] = None,
     ) -> None:
         """Update payload for Claude Chat API format.
 
@@ -690,53 +727,89 @@ class PayloadBuilder:
         Args:
             payload: The request payload to update
             user_prompt: The prompt text from dataset
-            image_url: Image URL from dataset if available
-            image_base64: Base64 encoded image from dataset if available
+            image_url: Image URL from dataset if available (ignored for standard chat API)
+            image_base64: Base64 encoded image from dataset if available (ignored for standard chat API)
+            prompt_data: Full dataset row dictionary
         """
-        # Get existing messages or create new list
-        messages = payload.get("messages", [])
-        if not isinstance(messages, list):
-            messages = []
+        has_dataset_messages = bool(prompt_data and prompt_data.get("messages"))
+        if has_dataset_messages:
+            messages = copy.deepcopy(prompt_data.get("messages"))
+        else:
+            messages = payload.get("messages", [])
+            if not isinstance(messages, list):
+                messages = []
 
-        # Build user message content
-        user_content: List[Dict[str, Any]] = [{"type": "text", "text": user_prompt}]
+        if image_url or image_base64:
+            user_message_found = False
+            for i in range(len(messages) - 1, -1, -1):
+                msg = messages[i]
+                if isinstance(msg, dict) and msg.get("role") == "user":
+                    user_message_found = True
 
-        # Add images if available
-        if image_url:
-            user_content.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "url",
-                        "url": image_url,
-                    },
-                }
-            )
+                    if has_dataset_messages:
+                        existing_content = msg.get("content", "")
+                        if isinstance(existing_content, str):
+                            content_list = [{"type": "text", "text": existing_content}]
+                        elif isinstance(existing_content, list):
+                            content_list = existing_content
+                        else:
+                            content_list = [
+                                {"type": "text", "text": str(existing_content)}
+                            ]
+                    else:
+                        content_list = [{"type": "text", "text": user_prompt}]
 
-        if image_base64:
-            user_content.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": image_base64,
-                    },
-                }
-            )
+                    if image_url:
+                        content_list.append(
+                            {
+                                "type": "image",
+                                "source": {"type": "url", "url": image_url},
+                            }
+                        )
+                    if image_base64:
+                        content_list.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": image_base64,
+                                },
+                            }
+                        )
 
-        # Find and update existing user message, or append new one
-        user_message_found = False
-        for i, msg in enumerate(messages):
-            if isinstance(msg, dict) and msg.get("role") == "user":
-                # Update existing user message
-                messages[i]["content"] = user_content
-                user_message_found = True
-                break
+                    messages[i]["content"] = content_list
+                    break
 
-        if not user_message_found:
-            # Append new user message
-            messages.append({"role": "user", "content": user_content})
+            if not user_message_found:
+                content = [{"type": "text", "text": user_prompt}]
+                if image_url:
+                    content.append(
+                        {"type": "image", "source": {"type": "url", "url": image_url}}
+                    )
+                if image_base64:
+                    content.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_base64,
+                            },
+                        }
+                    )
+                messages.append({"role": "user", "content": content})
+        elif not has_dataset_messages:
+            # Text-only and NO messages provided from dataset
+            user_message = {"role": "user", "content": user_prompt}
+            user_message_found = False
+            for i, msg in enumerate(messages):
+                if isinstance(msg, dict) and msg.get("role") == "user":
+                    messages[i] = user_message
+                    user_message_found = True
+                    break
+            if not user_message_found:
+                messages.append(user_message)
 
         # Update messages in payload (preserves all other parameters)
         payload["messages"] = messages
@@ -887,13 +960,15 @@ class APIClient:
         try:
             req_id = uuid.uuid4().hex[:8]
             # Use perf_counter for high-precision monotonic timing
-            self.task_logger.opt(lazy=True).debug(
-                "[{req_id}] Request Payload: {payload}",
-                req_id=lambda: req_id,
-                payload=lambda: (
-                    lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
-                )(repr(request_kwargs)),
-            )
+            payload_data = request_kwargs.get("json") or request_kwargs.get("data")
+            if payload_data:
+                self.task_logger.opt(lazy=True).debug(
+                    "[{req_id}] Request Payload: {payload}",
+                    req_id=lambda: req_id,
+                    payload=lambda: (
+                        lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
+                    )(repr(payload_data)),
+                )
             actual_start_time = time.perf_counter()
             with client.post(self.config.api_path, **request_kwargs) as response:
                 if self.error_handler._handle_status_code_error(
@@ -1125,13 +1200,15 @@ class APIClient:
 
         try:
             req_id = uuid.uuid4().hex[:8]
-            self.task_logger.opt(lazy=True).debug(
-                "[{req_id}] Request Payload: {payload}",
-                req_id=lambda: req_id,
-                payload=lambda: (
-                    lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
-                )(repr(request_kwargs)),
-            )
+            payload_data = request_kwargs.get("json") or request_kwargs.get("data")
+            if payload_data:
+                self.task_logger.opt(lazy=True).debug(
+                    "[{req_id}] Request Payload: {payload}",
+                    req_id=lambda: req_id,
+                    payload=lambda: (
+                        lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
+                    )(repr(payload_data)),
+                )
             with client.post(self.config.api_path, **request_kwargs) as response:
                 total_time = (time.perf_counter() - start_time) * 1000
 

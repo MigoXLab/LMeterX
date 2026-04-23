@@ -174,6 +174,7 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
           ? t('components.addToCollectionModal.addBtn')
           : t('components.addToCollectionModal.createAndAddBtn')
       }
+      cancelText={t('common.cancel')}
       destroyOnHidden
     >
       {loading ? (

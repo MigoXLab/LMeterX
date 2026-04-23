@@ -3,8 +3,8 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import os
 import time
+import uuid
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,7 +28,6 @@ global_state = GlobalStateManager()
 # Maximum accumulated content size per streaming response (10 MB)
 # Prevents OOM from malicious or buggy servers sending unbounded data
 MAX_STREAM_CONTENT_SIZE = 10 * 1024 * 1024  # 10 MB
-STREAM_DEBUG_ENV = "LMETERX_STREAM_DEBUG"
 
 
 # === LAZY IMAGE ENCODING ===
@@ -60,16 +59,6 @@ def _encode_image_cached(image_path: str) -> str:
 # === STREAM PROCESSING ===
 class StreamProcessor:
     """Handles streaming response processing."""
-
-    @staticmethod
-    def _stream_debug_enabled() -> bool:
-        """Whether verbose stream parsing logs are enabled."""
-        return str(os.getenv(STREAM_DEBUG_ENV, "false")).lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
 
     @staticmethod
     def get_field_value(data: Dict[str, Any], path: str) -> Any:
@@ -341,8 +330,7 @@ class StreamProcessor:
         if not chunk_str:
             return False, None, metrics
 
-        # if StreamProcessor._stream_debug_enabled():
-        #     task_logger.debug(f"[stream-raw] {chunk_str}")
+        # task_logger.debug(f"[stream-raw] {chunk_str}")
 
         if StreamProcessor.should_skip_non_json_chunk(chunk_str):
             return False, None, metrics
@@ -897,7 +885,15 @@ class APIClient:
         }
 
         try:
+            req_id = uuid.uuid4().hex[:8]
             # Use perf_counter for high-precision monotonic timing
+            self.task_logger.opt(lazy=True).debug(
+                "[{req_id}] Request Payload: {payload}",
+                req_id=lambda: req_id,
+                payload=lambda: (
+                    lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
+                )(repr(request_kwargs)),
+            )
             actual_start_time = time.perf_counter()
             with client.post(self.config.api_path, **request_kwargs) as response:
                 if self.error_handler._handle_status_code_error(
@@ -961,6 +957,12 @@ class APIClient:
                                 METRIC_TTOC, completion_time, 0
                             )
                         EventManager.fire_metric_event(METRIC_TTT, total_time, 0)
+                        self.task_logger.opt(lazy=True).debug(
+                            "[{req_id}] Stream Response Content: reasoning_content={r_content}, content={content}",
+                            req_id=lambda: req_id,
+                            r_content=lambda: repr(metrics.reasoning_content),
+                            content=lambda: repr(metrics.content),
+                        )
                         response.success()
 
                     except Exception as e:
@@ -1122,6 +1124,14 @@ class APIClient:
         }
 
         try:
+            req_id = uuid.uuid4().hex[:8]
+            self.task_logger.opt(lazy=True).debug(
+                "[{req_id}] Request Payload: {payload}",
+                req_id=lambda: req_id,
+                payload=lambda: (
+                    lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
+                )(repr(request_kwargs)),
+            )
             with client.post(self.config.api_path, **request_kwargs) as response:
                 total_time = (time.perf_counter() - start_time) * 1000
 
@@ -1132,7 +1142,11 @@ class APIClient:
 
                 try:
                     resp_json = response.json()
-                    self.task_logger.debug(f"resp_json: {resp_json}")
+                    self.task_logger.opt(lazy=True).debug(
+                        "[{req_id}] resp_json: {json_val}",
+                        req_id=lambda: req_id,
+                        json_val=lambda: repr(resp_json),
+                    )
                 except (orjson.JSONDecodeError, KeyError) as e:
                     self.task_logger.error(f"Failed to parse response JSON: {e}")
                     self.error_handler._handle_general_exception_event(

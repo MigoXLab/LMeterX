@@ -7,6 +7,7 @@ import json
 import os
 import queue
 import tempfile
+import uuid
 from typing import Any, Dict, Optional
 
 import gevent
@@ -486,12 +487,24 @@ class CommonApiUser(HttpUser):
             # success/failure marking for both HTTP-level and business-level checks.
             req_kwargs["catch_response"] = True
 
+            req_id = uuid.uuid4().hex[:8]
+            self.task_logger.opt(lazy=True).debug(
+                "[{req_id}] Request Payload: {payload}",
+                req_id=lambda: req_id,
+                payload=lambda: (
+                    lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
+                )(repr(req_kwargs)),
+            )
+
             with self.client.request(
                 self.method,
                 self.api_path,
                 name=request_name,
                 **req_kwargs,
             ) as resp:
+                self.task_logger.debug(
+                    f"[{req_id}] Response: status={resp.status_code}, body={repr(resp.text)}"
+                )
                 if resp.status_code >= 300:
                     # Non-2xx HTTP status → mark as failure
                     resp.failure(f"HTTP {resp.status_code}: {resp.text[:500]}")

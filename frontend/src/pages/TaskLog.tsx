@@ -35,6 +35,8 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Job } from '../types/job';
 import { decodeUnicodeEscapes } from '../utils/data';
 
+import { getApiBaseUrl } from '../utils/runtimeConfig';
+
 const { Search } = Input;
 const { Text } = Typography;
 
@@ -74,6 +76,7 @@ const isTaskRunning = (status: string | null | undefined): boolean => {
 const TaskLogs: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
+  const [logSource, setLogSource] = useState<'engine' | 'backend'>('engine');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string>('');
@@ -157,7 +160,12 @@ const TaskLogs: React.FC = () => {
     try {
       if (fetchError) setFetchError(null);
 
-      const contentResponse = await logApi.getTaskLogContent(id, 0, tailLines);
+      const contentResponse = await logApi.getTaskLogContent(
+        id,
+        0,
+        tailLines,
+        logSource
+      );
 
       if (contentResponse.data) {
         const newLogs = decodeUnicodeEscapes(
@@ -318,7 +326,7 @@ const TaskLogs: React.FC = () => {
     };
 
     load();
-  }, [id, tailLines]);
+  }, [id, tailLines, logSource]);
 
   useEffect(() => {
     if (autoRefreshTimerRef.current) {
@@ -353,7 +361,7 @@ const TaskLogs: React.FC = () => {
         clearInterval(autoRefreshTimerRef.current);
       }
     };
-  }, [autoRefresh, loading, id, tailLines]);
+  }, [autoRefresh, loading, id, tailLines, logSource]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -389,7 +397,11 @@ const TaskLogs: React.FC = () => {
 
   const handleDownload = () => {
     if (logUrl) {
-      window.open(logUrl, '_blank');
+      const baseUrl = getApiBaseUrl();
+      const downloadUrl = logUrl.startsWith('http')
+        ? logUrl
+        : `${baseUrl.replace(/\/+$/, '')}/${logUrl.replace(/^\/+/, '')}`;
+      window.open(downloadUrl, '_blank');
       return;
     }
 

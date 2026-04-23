@@ -6,6 +6,11 @@ Copyright (c) 2025, All Rights Reserved.
 import os
 import os.path
 import re
+import tempfile
+import zipfile
+
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from model.log import LogContentResponse
 from utils.be_config import LOG_DIR
@@ -172,7 +177,9 @@ async def get_service_log_svc(service_name: str, offset: int, tail: int):
         raise ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)
 
 
-async def get_task_log_svc(task_id: str, offset: int, tail: int):
+async def get_task_log_svc(
+    task_id: str, offset: int, tail: int, source: str = "engine"
+):
     """
     Service function to get the log content for a given task ID.
 
@@ -185,7 +192,10 @@ async def get_task_log_svc(task_id: str, offset: int, tail: int):
     if not _SAFE_NAME_PATTERN.match(task_id):
         raise ErrorResponse.bad_request("Invalid task ID")
 
-    log_file_path = os.path.join(LOG_DIR, "task", f"task_{task_id}.log")
+    if source not in ["engine", "backend"]:
+        raise ErrorResponse.bad_request("Invalid log source")
+
+    log_file_path = os.path.join(LOG_DIR, "task", f"task_{task_id}_{source}.log")
 
     # Ensure resolved path stays within LOG_DIR to prevent path traversal
     resolved_path = os.path.realpath(log_file_path)
@@ -200,7 +210,135 @@ async def get_task_log_svc(task_id: str, offset: int, tail: int):
     try:
         content = read_local_file(log_file_path, tail, offset)
         file_size = os.path.getsize(log_file_path)
-        return LogContentResponse(content=content, file_size=file_size)
+        log_url = f"/logs/task/{task_id}/download?source={source}"
+        return LogContentResponse(content=content, file_size=file_size, log_url=log_url)
     except Exception as e:
         logger.error("Failed to read log file {}: {}", log_file_path, e)
         raise ErrorResponse.internal_server_error(ErrorMessages.LOG_FILE_READ_FAILED)
+
+
+def _find_engine_log_files(resolved_task_log_dir: str, task_id: str) -> list[str]:
+    related_files = []
+    prefix_detail = f"task_{task_id}_engine_detail.log"
+    prefix_detail_rotated = f"task_{task_id}_engine_detail."
+    prefix_legacy_detail = f"task_{task_id}_detail.log"
+    prefix_legacy_detail_rotated = f"task_{task_id}_detail."
+
+    prefix_main = f"task_{task_id}_engine.log"
+    prefix_main_rotated = f"task_{task_id}_engine."
+    prefix_legacy_main = f"task_{task_id}.log"
+    prefix_legacy_rotated = f"task_{task_id}."
+
+    for filename in os.listdir(resolved_task_log_dir):
+        if (
+            filename == prefix_detail
+            or filename.startswith(prefix_detail_rotated)
+            or filename == prefix_legacy_detail
+            or filename.startswith(prefix_legacy_detail_rotated)
+        ):
+            related_files.append(os.path.join(resolved_task_log_dir, filename))
+
+    # If no detail logs found, fallback to main logs
+    if not related_files:
+        for filename in os.listdir(resolved_task_log_dir):
+            if (
+                filename == prefix_main
+                or filename.startswith(prefix_main_rotated)
+                or filename == prefix_legacy_main
+                or (
+                    filename.startswith(prefix_legacy_rotated)
+                    and "detail" not in filename
+                    and "engine" not in filename
+                    and "backend" not in filename
+                )
+            ):
+                related_files.append(os.path.join(resolved_task_log_dir, filename))
+    return related_files
+
+
+def _find_backend_log_files(resolved_task_log_dir: str, task_id: str) -> list[str]:
+    related_files = []
+    prefix_main = f"task_{task_id}_backend.log"
+    prefix_main_rotated = f"task_{task_id}_backend."
+
+    for filename in os.listdir(resolved_task_log_dir):
+        if filename == prefix_main or filename.startswith(prefix_main_rotated):
+            related_files.append(os.path.join(resolved_task_log_dir, filename))
+    return related_files
+
+
+async def download_task_log_svc(task_id: str, source: str = "engine"):
+    """
+    Download the full log file for a given task ID based on the log source.
+    If logs have rotated or detail logs exist, package all of them into a zip file.
+    """
+    if not task_id:
+        raise ErrorResponse.bad_request(ErrorMessages.TASK_ID_EMPTY)
+
+    if not _SAFE_NAME_PATTERN.match(task_id):
+        raise ErrorResponse.bad_request("Invalid task ID")
+
+    if source not in ["engine", "backend"]:
+        raise ErrorResponse.bad_request("Invalid log source")
+
+    task_log_dir = os.path.join(LOG_DIR, "task")
+    log_dir_real = os.path.realpath(LOG_DIR) + os.sep
+    resolved_task_log_dir = os.path.realpath(task_log_dir)
+
+    if not resolved_task_log_dir.startswith(log_dir_real):
+        raise ErrorResponse.bad_request("Invalid task ID")
+
+    if not os.path.exists(resolved_task_log_dir):
+        logger.warning("Task log directory not found")
+        raise ErrorResponse.not_found(f"Log directory for task '{task_id}' not found")
+
+    # Find all log files related to this task
+    if source == "engine":
+        related_files = _find_engine_log_files(resolved_task_log_dir, task_id)
+    elif source == "backend":
+        related_files = _find_backend_log_files(resolved_task_log_dir, task_id)
+    else:
+        related_files = []
+
+    if not related_files:
+        logger.warning("Log files not found for task: {}", task_id)
+        raise ErrorResponse.not_found(f"Log file for task '{task_id}' not found")
+
+    # If there's only one file and it's a plain log, return it directly
+    if len(related_files) == 1 and related_files[0].endswith(".log"):
+        return FileResponse(
+            path=related_files[0],
+            filename=os.path.basename(related_files[0]),
+            media_type="text/plain",
+        )
+
+    # Otherwise, package all related files into a zip archive
+    temp_fd, temp_zip_path = tempfile.mkstemp(
+        suffix=".zip", prefix=f"task_{task_id}_logs_"
+    )
+    os.close(temp_fd)
+
+    def cleanup_temp_file():
+        try:
+            if os.path.exists(temp_zip_path):
+                os.remove(temp_zip_path)
+        except Exception as e:
+            logger.error("Failed to delete temp zip file {}: {}", temp_zip_path, e)
+
+    try:
+        with zipfile.ZipFile(temp_zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file_path in related_files:
+                zipf.write(file_path, arcname=os.path.basename(file_path))
+
+        return FileResponse(
+            path=temp_zip_path,
+            filename=f"task_{task_id}_logs.zip",
+            media_type="application/zip",
+            background=BackgroundTask(cleanup_temp_file),
+        )
+    except Exception as e:
+        cleanup_temp_file()
+        logger.error("Failed to create zip file for task {}: {}", task_id, e)
+        raise ErrorResponse.internal_server_error(
+            "Failed to package log files for download"
+        )

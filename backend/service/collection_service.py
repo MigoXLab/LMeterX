@@ -283,7 +283,10 @@ async def list_collection_tasks_svc(
     result_tasks: list[Dict[str, Any]] = []
     if http_task_ids:
         http_result = await db.execute(
-            select(HttpTask).where(HttpTask.id.in_(http_task_ids))
+            select(HttpTask).where(
+                HttpTask.id.in_(http_task_ids),
+                HttpTask.is_deleted == 0,
+            )
         )
         for task in http_result.scalars().all():
             result_tasks.append(
@@ -301,7 +304,10 @@ async def list_collection_tasks_svc(
 
     if llm_task_ids:
         llm_result = await db.execute(
-            select(LlmTask).where(LlmTask.id.in_(llm_task_ids))
+            select(LlmTask).where(
+                LlmTask.id.in_(llm_task_ids),
+                LlmTask.is_deleted == 0,
+            )
         )
         for task in llm_result.scalars().all():
             result_tasks.append(

@@ -369,8 +369,13 @@ export const logApi = {
     tail: number = 0
   ) => api.get<any>(`/logs/${serviceName}`, { params: { offset, tail } }),
 
-  getTaskLogContent: (taskId: string, offset: number = 0, tail: number = 0) =>
-    api.get<any>(`/logs/task/${taskId}`, { params: { offset, tail } }),
+  getTaskLogContent: (
+    taskId: string,
+    offset: number = 0,
+    tail: number = 0,
+    source: string = 'engine'
+  ) =>
+    api.get<any>(`/logs/task/${taskId}`, { params: { offset, tail, source } }),
 };
 
 // Analysis API methods

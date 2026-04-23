@@ -2,7 +2,7 @@
   "sidebar": {
     "testTasks": "测试任务",
     "perfCompare": "性能对比",
-    "collections": "性能基线",
+    "collections": "项目空间",
     "monitorHub": "系统监控",
     "systemConfig": "系统配置"
   },
@@ -415,7 +415,7 @@
       "backHome": "返回首页"
     },
     "collections": {
-      "title": "性能基线",
+      "title": "项目空间",
       "description": "管理任务测试集并生成对比报告。",
       "create": "创建测试集",
       "searchPlaceholder": "搜索测试集...",

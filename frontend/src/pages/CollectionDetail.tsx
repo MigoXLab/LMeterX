@@ -41,6 +41,12 @@ const CollectionDetail: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [tasksLoading, setTasksLoading] = useState(false);
 
+  // Selection states
+  const [selectedLlmTaskIds, setSelectedLlmTaskIds] = useState<React.Key[]>([]);
+  const [selectedHttpTaskIds, setSelectedHttpTaskIds] = useState<React.Key[]>(
+    []
+  );
+
   // Edit mode states
   const [isEditingContent, setIsEditingContent] = useState(false);
   const [editContent, setEditContent] = useState('');
@@ -192,14 +198,15 @@ const CollectionDetail: React.FC = () => {
   };
 
   const goToComparison = (mode: 'http' | 'llm') => {
-    const modeTasks = tasks.filter(t => t.task_type === mode);
-    if (modeTasks.length < 2) {
+    const selectedIds =
+      mode === 'llm' ? selectedLlmTaskIds : selectedHttpTaskIds;
+    if (selectedIds.length < 2) {
       message.warning(
         t('pages.collectionDetail.needAtLeast2', { mode: mode.toUpperCase() })
       );
       return;
     }
-    const taskIds = modeTasks.map(t => t.id).join(',');
+    const taskIds = selectedIds.join(',');
     navigate(
       `/result-comparison?mode=${mode === 'llm' ? 'model' : 'http'}&tasks=${taskIds}`
     );
@@ -215,6 +222,19 @@ const CollectionDetail: React.FC = () => {
       key: 'name',
       width: 300,
       ellipsis: true,
+      render: (text: string, record: CollectionTaskItem) => (
+        <Button
+          type='link'
+          style={{ padding: 0 }}
+          onClick={() => {
+            const basePath =
+              record.task_type === 'llm' ? '/llm-results' : '/http-results';
+            navigate(`${basePath}/${record.id}`);
+          }}
+        >
+          {text}
+        </Button>
+      ),
     },
     {
       title: t('pages.jobs.loadConfig'),
@@ -402,20 +422,51 @@ const CollectionDetail: React.FC = () => {
                                 type='primary'
                                 icon={<BarChartOutlined />}
                                 onClick={() => goToComparison('llm')}
-                                disabled={llmTasks.length < 2}
+                                disabled={
+                                  selectedLlmTaskIds.length < 2 ||
+                                  selectedLlmTaskIds.length > 5
+                                }
                               >
                                 {t('pages.collectionDetail.compareLlm')}
                               </Button>
-                              {llmTasks.length < 2 && (
+                              {selectedLlmTaskIds.length < 2 ? (
                                 <Text
                                   type='secondary'
                                   style={{ marginLeft: 8 }}
                                 >
                                   {t('pages.collectionDetail.selectAtLeast2')}
                                 </Text>
-                              )}
+                              ) : selectedLlmTaskIds.length > 5 ? (
+                                <Text
+                                  type='danger'
+                                  style={{ marginLeft: 8, color: '#ff4d4f' }}
+                                >
+                                  {t(
+                                    'pages.collectionDetail.selectMax5',
+                                    '最多只能选择5个任务进行对比'
+                                  )}
+                                </Text>
+                              ) : null}
                             </div>
                             <Table
+                              rowSelection={{
+                                selectedRowKeys: selectedLlmTaskIds,
+                                onChange: newSelectedRowKeys => {
+                                  if (
+                                    newSelectedRowKeys.length > 5 &&
+                                    newSelectedRowKeys.length >
+                                      selectedLlmTaskIds.length
+                                  ) {
+                                    message.warning(
+                                      t(
+                                        'pages.collectionDetail.maxCompareLimit',
+                                        '最多只能选择5个任务进行对比'
+                                      )
+                                    );
+                                  }
+                                  setSelectedLlmTaskIds(newSelectedRowKeys);
+                                },
+                              }}
                               columns={taskColumns}
                               dataSource={llmTasks}
                               rowKey='id'
@@ -443,20 +494,51 @@ const CollectionDetail: React.FC = () => {
                                 type='primary'
                                 icon={<BarChartOutlined />}
                                 onClick={() => goToComparison('http')}
-                                disabled={httpTasks.length < 2}
+                                disabled={
+                                  selectedHttpTaskIds.length < 2 ||
+                                  selectedHttpTaskIds.length > 5
+                                }
                               >
                                 {t('pages.collectionDetail.compareHttp')}
                               </Button>
-                              {httpTasks.length < 2 && (
+                              {selectedHttpTaskIds.length < 2 ? (
                                 <Text
                                   type='secondary'
                                   style={{ marginLeft: 8 }}
                                 >
                                   {t('pages.collectionDetail.selectAtLeast2')}
                                 </Text>
-                              )}
+                              ) : selectedHttpTaskIds.length > 5 ? (
+                                <Text
+                                  type='danger'
+                                  style={{ marginLeft: 8, color: '#ff4d4f' }}
+                                >
+                                  {t(
+                                    'pages.collectionDetail.selectMax5',
+                                    '最多只能选择5个任务进行对比'
+                                  )}
+                                </Text>
+                              ) : null}
                             </div>
                             <Table
+                              rowSelection={{
+                                selectedRowKeys: selectedHttpTaskIds,
+                                onChange: newSelectedRowKeys => {
+                                  if (
+                                    newSelectedRowKeys.length > 5 &&
+                                    newSelectedRowKeys.length >
+                                      selectedHttpTaskIds.length
+                                  ) {
+                                    message.warning(
+                                      t(
+                                        'pages.collectionDetail.maxCompareLimit',
+                                        '最多只能选择5个任务进行对比'
+                                      )
+                                    );
+                                  }
+                                  setSelectedHttpTaskIds(newSelectedRowKeys);
+                                },
+                              }}
                               columns={taskColumns}
                               dataSource={httpTasks}
                               rowKey='id'

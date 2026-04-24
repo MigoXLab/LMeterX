@@ -182,7 +182,7 @@ const Collections: React.FC = () => {
                   >
                     <Card
                       hoverable
-                      bordered={false}
+                      variant='borderless'
                       loading={loading}
                       style={{
                         height: '100%',

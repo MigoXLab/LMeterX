@@ -95,6 +95,68 @@ const CollectionDetail: React.FC = () => {
     }
   };
 
+  const handleSaveDescription = async (newDescription: string) => {
+    try {
+      await api.put(`/collections/${id}`, { description: newDescription });
+      message.success(t('pages.collectionDetail.saveSuccess'));
+      fetchCollection();
+    } catch (error) {
+      message.error(t('pages.collectionDetail.saveFailed'));
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = event => {
+            const base64 = event.target?.result as string;
+            const textarea = e.target as HTMLTextAreaElement;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+
+            // Generate unique identifier for the image reference
+            const uniqueId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+            // The short reference to insert at cursor position
+            const imageMarkdown = `![image][${uniqueId}]`;
+
+            // The actual base64 data to append at the end of the document
+            const base64Reference = `\n[${uniqueId}]: ${base64}\n`;
+
+            // Replace the selected text (if any) with the short reference
+            let newContent =
+              editContent.substring(0, start) +
+              imageMarkdown +
+              editContent.substring(end);
+
+            // Ensure there's a newline before appending the reference at the end
+            if (newContent && !newContent.endsWith('\n')) {
+              newContent += '\n';
+            }
+            newContent += base64Reference;
+
+            setEditContent(newContent);
+
+            // Keep cursor immediately after the inserted reference
+            setTimeout(() => {
+              textarea.selectionStart = start + imageMarkdown.length;
+              textarea.selectionEnd = start + imageMarkdown.length;
+            }, 0);
+          };
+          reader.readAsDataURL(file);
+        }
+        break; // Only handle the first image
+      }
+    }
+  };
+
   const handleRemoveTask = async (taskId: string) => {
     try {
       await api.delete(`/collections/${id}/tasks/${taskId}`);
@@ -208,11 +270,25 @@ const CollectionDetail: React.FC = () => {
               {collection.name}
             </Space>
           }
-          description={
-            collection.description || t('pages.collectionDetail.noDescription')
-          }
           level={3}
         />
+        <div style={{ paddingLeft: '44px', marginTop: '8px' }}>
+          <Typography.Paragraph
+            type='secondary'
+            editable={
+              canEdit
+                ? {
+                    onChange: handleSaveDescription,
+                    tooltip: t('common.edit') || 'Edit',
+                    maxLength: 5000,
+                  }
+                : false
+            }
+          >
+            {collection.description ||
+              t('pages.collectionDetail.noDescription')}
+          </Typography.Paragraph>
+        </div>
       </div>
 
       <div className='results-content' style={{ padding: '24px' }}>
@@ -258,6 +334,7 @@ const CollectionDetail: React.FC = () => {
                   rows={15}
                   value={editContent}
                   onChange={e => setEditContent(e.target.value)}
+                  onPaste={handlePaste}
                   placeholder={t('pages.collectionDetail.reportPlaceholder')}
                 />
               </div>

@@ -33,7 +33,7 @@
       "title": "Benchmark Jobs",
       "description": "Test task management and monitoring",
       "createNew": "Create Task",
-      "addToCollection": "Add to Test Suite",
+      "addToCollection": "Collect",
       "edit": "Edit Task",
       "status": "Status",
       "actions": "Actions",
@@ -437,9 +437,11 @@
       "createFailed": "Creation failed. Please check your inputs."
     },
     "collectionDetail": {
+      "maxImagesLimit": "Maximum 2 images allowed",
+      "imageTooLarge": "Image size cannot exceed 2MB",
       "noDescription": "No description provided.",
       "delete": "Delete Test Suite",
-      "reportContent": "Report Content",
+      "reportContent": "Performance Conclusion",
       "cancel": "Cancel",
       "save": "Save",
       "editReport": "Edit Report",
@@ -837,8 +839,8 @@
     },
     "addToCollectionModal": {
       "title": "Add {{count}} Task(s) to Test Suite",
-      "addBtn": "Add to Test Suite",
-      "createAndAddBtn": "Create & Add to Test Suite",
+      "addBtn": "Collect",
+      "createAndAddBtn": "Create & Collect",
       "nameLabel": "Test Suite Name",
       "namePlaceholder": "Enter test suite name",
       "nameRequired": "Please enter test suite name",

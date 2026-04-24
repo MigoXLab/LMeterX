@@ -438,9 +438,11 @@
       "createFailed": "创建失败，请检查输入。"
     },
     "collectionDetail": {
+      "maxImagesLimit": "最多只能粘贴 2 张图片",
+      "imageTooLarge": "图片大小不能超过 2MB",
       "noDescription": "未提供描述。",
       "delete": "删除测试集",
-      "reportContent": "报告内容",
+      "reportContent": "性能结论",
       "cancel": "取消",
       "save": "保存",
       "editReport": "编辑",

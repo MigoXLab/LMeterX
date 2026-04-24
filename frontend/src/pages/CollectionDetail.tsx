@@ -112,8 +112,31 @@ const CollectionDetail: React.FC = () => {
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image') !== -1) {
         e.preventDefault();
+
+        // Check existing images count limit
+        const existingImagesCount = (editContent.match(/data:image/g) || [])
+          .length;
+        if (existingImagesCount >= 2) {
+          message.warning(
+            t('pages.collectionDetail.maxImagesLimit', 'Limit to 2 images')
+          );
+          return;
+        }
+
         const file = items[i].getAsFile();
         if (file) {
+          // Check file size (2MB limit)
+          const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+          if (file.size > MAX_SIZE) {
+            message.warning(
+              t(
+                'pages.collectionDetail.imageTooLarge',
+                'Image size cannot exceed 2MB'
+              )
+            );
+            return;
+          }
+
           const reader = new FileReader();
           reader.onload = event => {
             const base64 = event.target?.result as string;

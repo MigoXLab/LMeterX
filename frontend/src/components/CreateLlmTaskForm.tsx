@@ -3466,7 +3466,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           stream_mode: true,
           spawn_rate: 1,
           concurrent_users: 1,
-          chat_type: 0,
+          chat_type: 2,
           test_data_input_type: 'default',
           temp_task_id: tempTaskId,
           target_host: '',
@@ -3526,6 +3526,25 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               if (isEmbedType) {
                 form.setFieldsValue({ stream_mode: false });
                 setStreamMode(false);
+              }
+
+              // Update dataset settings based on API type
+              if (
+                newApiType === 'openai-chat' ||
+                newApiType === 'claude-chat'
+              ) {
+                form.setFieldsValue({
+                  test_data_input_type: 'default',
+                  chat_type: 2,
+                });
+              } else if (
+                newApiType === 'embeddings' ||
+                newApiType === 'custom-chat'
+              ) {
+                form.setFieldsValue({
+                  test_data_input_type: 'none',
+                  chat_type: undefined,
+                });
               }
 
               // Update field_mapping based on API type
@@ -3655,10 +3674,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               form.setFieldsValue({
                 test_data: undefined,
                 test_data_file: undefined,
+                chat_type: 0,
               });
-              if (form.getFieldValue('chat_type') === undefined) {
-                form.setFieldsValue({ chat_type: 0 });
-              }
             } else {
               // Clear dataset-related fields when no dataset is selected
               form.setFieldsValue({

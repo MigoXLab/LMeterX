@@ -76,7 +76,7 @@ const isTaskRunning = (status: string | null | undefined): boolean => {
 const TaskLogs: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const [logSource, setLogSource] = useState<'engine' | 'backend'>('engine');
+  const [logSource] = useState<'engine' | 'backend'>('engine');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string>('');

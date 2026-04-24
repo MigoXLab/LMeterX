@@ -1,6 +1,6 @@
 import { theme } from 'antd';
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 interface MarkdownRendererProps {
@@ -281,7 +281,30 @@ const createMarkdownComponents = (token: any) => ({
       {...props}
     />
   ),
+  img: ({ alt, src, title, ...props }: any) => (
+    <img
+      alt={alt}
+      src={src}
+      title={title}
+      style={{
+        maxWidth: '100%',
+        height: 'auto',
+        display: 'block',
+        margin: '16px 0',
+        borderRadius: '4px',
+        boxShadow: `0 2px 8px ${token.colorTextSecondary}20`,
+      }}
+      {...props}
+    />
+  ),
 });
+
+const urlTransform = (value: string) => {
+  if (value.startsWith('data:image/')) {
+    return value;
+  }
+  return defaultUrlTransform(value);
+};
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   content,
@@ -299,7 +322,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         lineHeight: '1.6',
       }}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={components}
+        urlTransform={urlTransform}
+      >
         {content}
       </ReactMarkdown>
     </div>

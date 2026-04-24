@@ -801,7 +801,10 @@ class PayloadBuilder:
                 messages.append({"role": "user", "content": content})
         elif not has_dataset_messages:
             # Text-only and NO messages provided from dataset
-            user_message = {"role": "user", "content": user_prompt}
+            user_message = {
+                "role": "user",
+                "content": [{"type": "text", "text": user_prompt}],
+            }
             user_message_found = False
             for i, msg in enumerate(messages):
                 if isinstance(msg, dict) and msg.get("role") == "user":
@@ -918,6 +921,15 @@ class APIClient:
         # Create ErrorResponse instance
         self.error_handler = ErrorResponse(config, task_logger)
 
+    def _log_error_with_payload(
+        self, req_id: str, error_msg: str, payload_data: Any
+    ) -> None:
+        """Log an error message with truncated payload and req_id."""
+        payload_str = repr(payload_data) if payload_data else ""
+        if len(payload_str) > 500:
+            payload_str = payload_str[:500] + "... (truncated)"
+        self.task_logger.error(f"[{req_id}] {error_msg} | Payload: {payload_str}")
+
     def _iter_stream_lines(self, response) -> Any:
         """Yield SSE lines separated by blank lines for HttpUser streaming."""
         # For HttpUser, response is a requests.Response object
@@ -957,22 +969,15 @@ class APIClient:
             "total_tokens": 0,
         }
 
+        req_id = uuid.uuid4().hex[:8]
+        payload_data = request_kwargs.get("json") or request_kwargs.get("data")
+
         try:
-            req_id = uuid.uuid4().hex[:8]
             # Use perf_counter for high-precision monotonic timing
-            payload_data = request_kwargs.get("json") or request_kwargs.get("data")
-            if payload_data:
-                self.task_logger.opt(lazy=True).debug(
-                    "[{req_id}] Request Payload: {payload}",
-                    req_id=lambda: req_id,
-                    payload=lambda: (
-                        lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
-                    )(repr(payload_data)),
-                )
             actual_start_time = time.perf_counter()
             with client.post(self.config.api_path, **request_kwargs) as response:
                 if self.error_handler._handle_status_code_error(
-                    response, start_time, request_name
+                    response, start_time, request_name, req_id, payload_data
                 ):
                     return "", "", usage
 
@@ -993,7 +998,7 @@ class APIClient:
                             if error_message:
                                 # Error occurred, mark failure and exit
                                 self.error_handler._handle_general_exception_event(
-                                    error_msg=error_message,
+                                    error_msg=f"Stream processing error: {error_message}",
                                     response=response,
                                     response_time=(time.perf_counter() - start_time)
                                     * 1000,
@@ -1003,6 +1008,8 @@ class APIClient:
                                         ),
                                         "api_path": self.config.api_path,
                                     },
+                                    req_id=req_id,
+                                    payload_data=payload_data,
                                 )
                                 return "", "", usage
                             # Normal end of stream, break the loop
@@ -1032,13 +1039,25 @@ class APIClient:
                                 METRIC_TTOC, completion_time, 0
                             )
                         EventManager.fire_metric_event(METRIC_TTT, total_time, 0)
+                        response.success()
+                        if payload_data:
+                            self.task_logger.opt(lazy=True).debug(
+                                "[{req_id}] Request Payload: {payload}",
+                                req_id=lambda: req_id,
+                                payload=lambda: (
+                                    lambda s: (
+                                        s[:500] + "... (truncated)"
+                                        if len(s) > 500
+                                        else s
+                                    )
+                                )(repr(payload_data)),
+                            )
                         self.task_logger.opt(lazy=True).debug(
                             "[{req_id}] Stream Response Content: reasoning_content={r_content}, content={content}",
                             req_id=lambda: req_id,
                             r_content=lambda: repr(metrics.reasoning_content),
                             content=lambda: repr(metrics.content),
                         )
-                        response.success()
 
                     except Exception as e:
                         self.task_logger.error(
@@ -1048,7 +1067,7 @@ class APIClient:
 
                 except OSError as e:
                     self.error_handler._handle_stream_error(
-                        e, response, start_time, request_name
+                        e, response, start_time, request_name, req_id, payload_data
                     )
                     return "", "", usage
                 except (orjson.JSONDecodeError, ValueError) as e:
@@ -1058,6 +1077,8 @@ class APIClient:
                         response=response,
                         response_time=response_time,
                         additional_context={"api_path": self.config.api_path},
+                        req_id=req_id,
+                        payload_data=payload_data,
                     )
                     return "", "", usage
         except (ConnectionError, TimeoutError) as e:
@@ -1067,6 +1088,8 @@ class APIClient:
                 response=response,
                 response_time=response_time,
                 additional_context={"api_path": self.config.api_path},
+                req_id=req_id,
+                payload_data=payload_data,
             )
             return "", "", usage
         except Exception as e:
@@ -1078,6 +1101,8 @@ class APIClient:
                 additional_context={
                     "api_path": self.config.api_path,
                 },
+                req_id=req_id,
+                payload_data=payload_data,
             )
             return "", "", usage
         return metrics.reasoning_content, metrics.content, metrics.usage
@@ -1162,13 +1187,17 @@ class APIClient:
     ) -> Tuple[str, str, Dict[str, Optional[int]]]:
         """Handle non-streaming API request."""
 
+        req_id = uuid.uuid4().hex[:8]
+        request_kwargs = {**base_request_kwargs, "stream": False}
+        payload_data = request_kwargs.get("json") or request_kwargs.get("data")
+        response = None
+
         json_payload = base_request_kwargs.get("json", {})
         if isinstance(json_payload, dict) and json_payload.get("stream") is True:
             error_msg = (
                 "Payload contains 'stream': true, but task is configured for non-streaming mode (stream_mode=False). "
                 "Please either set stream_mode=True in task config, or remove 'stream' field from payload."
             )
-            self.task_logger.error(error_msg)
             response_time = (time.perf_counter() - start_time) * 1000
             self.error_handler._handle_general_exception_event(
                 error_msg=error_msg,
@@ -1177,6 +1206,8 @@ class APIClient:
                 additional_context={
                     "api_path": self.config.api_path,
                 },
+                req_id=req_id,
+                payload_data=payload_data,
             )
             return (
                 "",
@@ -1187,7 +1218,6 @@ class APIClient:
                 },
             )
 
-        request_kwargs = {**base_request_kwargs, "stream": False}
         content, reasoning_content = "", ""
         field_mapping = ConfigManager.resolve_field_mapping(
             self.config, required_fields=("content",)
@@ -1199,21 +1229,11 @@ class APIClient:
         }
 
         try:
-            req_id = uuid.uuid4().hex[:8]
-            payload_data = request_kwargs.get("json") or request_kwargs.get("data")
-            if payload_data:
-                self.task_logger.opt(lazy=True).debug(
-                    "[{req_id}] Request Payload: {payload}",
-                    req_id=lambda: req_id,
-                    payload=lambda: (
-                        lambda s: s[:1000] + "... (truncated)" if len(s) > 1000 else s
-                    )(repr(payload_data)),
-                )
             with client.post(self.config.api_path, **request_kwargs) as response:
                 total_time = (time.perf_counter() - start_time) * 1000
 
                 if self.error_handler._handle_status_code_error(
-                    response, start_time, request_name
+                    response, start_time, request_name, req_id, payload_data
                 ):
                     return "", "", usage
 
@@ -1225,26 +1245,29 @@ class APIClient:
                         json_val=lambda: repr(resp_json),
                     )
                 except (orjson.JSONDecodeError, KeyError) as e:
-                    self.task_logger.error(f"Failed to parse response JSON: {e}")
                     self.error_handler._handle_general_exception_event(
-                        error_msg=str(e),
+                        error_msg=f"Failed to parse response JSON: {e}",
                         response=response,
                         response_time=total_time,
                         additional_context={
                             "api_path": self.config.api_path,
                         },
+                        req_id=req_id,
+                        payload_data=payload_data,
                     )
                     return "", "", usage
 
                 error_msg = ErrorResponse._handle_json_error(resp_json)
                 if error_msg:
                     self.error_handler._handle_general_exception_event(
-                        error_msg=error_msg,
+                        error_msg=f"JSON error response: {error_msg}",
                         response=response,
                         response_time=total_time,
                         additional_context={
                             "api_path": self.config.api_path,
                         },
+                        req_id=req_id,
+                        payload_data=payload_data,
                     )
                     return "", "", usage
 
@@ -1281,8 +1304,31 @@ class APIClient:
                         resp_json, field_mapping.reasoning_content
                     )
                 response.success()
+                if payload_data:
+                    self.task_logger.opt(lazy=True).debug(
+                        "[{req_id}] Request Payload: {payload}",
+                        req_id=lambda: req_id,
+                        payload=lambda: (
+                            lambda s: (
+                                s[:500] + "... (truncated)" if len(s) > 500 else s
+                            )
+                        )(repr(payload_data)),
+                    )
                 return reasoning_content, content, usage
 
+        except (ConnectionError, TimeoutError) as e:
+            response_time = (time.perf_counter() - start_time) * 1000
+            self.error_handler._handle_general_exception_event(
+                error_msg=f"Connection error: {e}",
+                response=response,
+                response_time=response_time,
+                additional_context={
+                    "api_path": self.config.api_path,
+                },
+                req_id=req_id,
+                payload_data=payload_data,
+            )
+            return "", "", usage
         except Exception as e:
             response_time = (time.perf_counter() - start_time) * 1000
             self.error_handler._handle_general_exception_event(
@@ -1292,5 +1338,7 @@ class APIClient:
                 additional_context={
                     "api_path": self.config.api_path,
                 },
+                req_id=req_id,
+                payload_data=payload_data,
             )
             return "", "", usage

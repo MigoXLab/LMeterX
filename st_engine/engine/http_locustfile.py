@@ -1,12 +1,13 @@
 """
-Locustfile for common HTTP API load testing (non-LLM).
-Supports both fixed concurrency and stepped load patterns.
+Author: Charm
+Copyright (c) 2025, All Rights Reserved.
 """
 
 import json
 import os
 import queue
 import tempfile
+import uuid
 from typing import Any, Dict, Optional
 
 import gevent
@@ -70,11 +71,16 @@ def _format_context(
         if cookies:
             parts.append(f"cookies: {cookies}")
     if json_payload is not None:
-        parts.append(f"request_json: {json_payload}")
+        req_json_str = repr(json_payload)
+        parts.append(
+            f"request_json: {req_json_str[:500] + ('... (truncated)' if len(req_json_str) > 500 else '')}"
+        )
     elif text_payload is not None and text_payload != "":
-        parts.append(f"request_data: {text_payload}")
+        parts.append(
+            f"request_data: {text_payload[:500] + ('... (truncated)' if len(text_payload) > 500 else '')}"
+        )
     if response_body is not None and response_body != "":
-        parts.append(f"response_body: {response_body[:1000]}")  # cap length
+        parts.append(f"response_body: {response_body[:500]}")  # cap length
 
     # If nothing was added, return empty to avoid noisy blank context lines
     return " | ".join(parts) if parts else ""
@@ -451,6 +457,7 @@ class CommonApiUser(HttpUser):
         # bound, even if an exception occurs before assignment inside try.
         json_payload = None
         text_payload = None
+        req_id = uuid.uuid4().hex[:8]
         try:
             if self.dataset_queue:
                 try:
@@ -486,17 +493,23 @@ class CommonApiUser(HttpUser):
             # success/failure marking for both HTTP-level and business-level checks.
             req_kwargs["catch_response"] = True
 
+            payload_data = req_kwargs.get("json") or req_kwargs.get("data")
+
             with self.client.request(
                 self.method,
                 self.api_path,
                 name=request_name,
                 **req_kwargs,
             ) as resp:
+                self.task_logger.debug(
+                    f"[{req_id}] Response: status={resp.status_code}, body={repr(resp.text)}"
+                )
                 if resp.status_code >= 300:
                     # Non-2xx HTTP status → mark as failure
                     resp.failure(f"HTTP {resp.status_code}: {resp.text[:500]}")
                     self.task_logger.error(
-                        _format_context(
+                        f"[{req_id}] HTTP error | "
+                        + _format_context(
                             json_payload=json_payload,
                             text_payload=text_payload,
                             status=resp.status_code,
@@ -514,10 +527,22 @@ class CommonApiUser(HttpUser):
                     )
                     if is_success:
                         resp.success()
+                        if payload_data:
+                            self.task_logger.opt(lazy=True).debug(
+                                "[{req_id}] Request Payload: {payload}",
+                                req_id=lambda: req_id,
+                                payload=lambda: (
+                                    lambda s: (
+                                        s[:500] + "... (truncated)"
+                                        if len(s) > 500
+                                        else s
+                                    )
+                                )(repr(payload_data)),
+                            )
                     else:
                         resp.failure(reason)
                         self.task_logger.error(
-                            f"Business assertion failed | "
+                            f"[{req_id}] Business assertion failed | "
                             + _format_context(
                                 json_payload=json_payload,
                                 text_payload=text_payload,
@@ -528,10 +553,20 @@ class CommonApiUser(HttpUser):
                 else:
                     # 2xx (or 204 / empty body with assert) → success
                     resp.success()
+                    if payload_data:
+                        self.task_logger.opt(lazy=True).debug(
+                            "[{req_id}] Request Payload: {payload}",
+                            req_id=lambda: req_id,
+                            payload=lambda: (
+                                lambda s: (
+                                    s[:500] + "... (truncated)" if len(s) > 500 else s
+                                )
+                            )(repr(payload_data)),
+                        )
         except Exception as e:  # pragma: no cover - network dependent
             # Log failure with request context
             self.task_logger.error(
-                f"Common API request failed: {e} | "
+                f"[{req_id}] Common API request failed: {e} | "
                 + _format_context(
                     json_payload=json_payload,
                     text_payload=text_payload,

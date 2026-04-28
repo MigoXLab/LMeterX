@@ -1194,13 +1194,8 @@ async def test_llm_api_svc(request: Request, body: TaskTestReq):
         # Prepare certificate configuration
         client_cert = _prepare_client_cert(body)
 
-        # Optimized timeout settings
-        timeout_config = httpx.Timeout(
-            connect=10.0,  # connect timeout: 10s
-            read=30.0,  # read timeout: 30s (for testing purposes, not too long)
-            write=10.0,  # write timeout: 10s
-            pool=5.0,  # pool timeout: 5s
-        )
+        # Set 30 minutes timeout for testing API endpoints as some LLM models may take a long time
+        timeout_config = httpx.Timeout(1800.0)
 
         # Use connection limits for better performance
         limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)

@@ -64,6 +64,8 @@ class ErrorResponse:
         response=None,
         response_time: float = 0,
         additional_context: Optional[Dict[str, Any]] = None,
+        req_id: Optional[str] = None,
+        payload_data: Any = None,
     ) -> None:
         """Centralized handler for logging exceptions during requests."""
         # Enhanced error logging with context
@@ -72,7 +74,17 @@ class ErrorResponse:
             context_info = f" | Context: {additional_context}"
 
         full_error_msg = f"{error_msg}{context_info}"
-        self.task_logger.error(full_error_msg)
+
+        log_msg = full_error_msg
+        if req_id:
+            log_msg = f"[{req_id}] {log_msg}"
+        if payload_data is not None:
+            payload_str = repr(payload_data)
+            if len(payload_str) > 500:
+                payload_str = payload_str[:500] + "... (truncated)"
+            log_msg += f" | Payload: {payload_str}"
+
+        self.task_logger.error(log_msg)
 
         if response is not None and hasattr(response, "failure"):
             try:
@@ -94,7 +106,12 @@ class ErrorResponse:
             self.task_logger.warning(f"Failed to emit failure event: {fire_err}")
 
     def _handle_status_code_error(
-        self, response, start_time: float = 0, request_name: str = "failure"
+        self,
+        response,
+        start_time: float = 0,
+        request_name: str = "failure",
+        req_id: Optional[str] = None,
+        payload_data: Any = None,
     ) -> bool:
         """Handle HTTP status code errors."""
         # Add safety checks for response object
@@ -107,6 +124,8 @@ class ErrorResponse:
                 error_msg=error_msg,
                 response=None,
                 response_time=response_time,
+                req_id=req_id,
+                payload_data=payload_data,
             )
             return True
 
@@ -122,6 +141,8 @@ class ErrorResponse:
                     error_msg=error_msg,
                     response=response,
                     response_time=response_time,
+                    req_id=req_id,
+                    payload_data=payload_data,
                 )
                 return True
 
@@ -138,6 +159,8 @@ class ErrorResponse:
                     error_msg=error_msg,
                     response=response,
                     response_time=response_time,
+                    req_id=req_id,
+                    payload_data=payload_data,
                 )
                 return True
         except Exception as e:
@@ -149,13 +172,21 @@ class ErrorResponse:
                 error_msg=error_msg,
                 response=response,
                 response_time=response_time,
+                req_id=req_id,
+                payload_data=payload_data,
             )
             return True
 
         return False
 
     def _handle_stream_error(
-        self, e: OSError, response, start_time: float, request_name: str
+        self,
+        e: OSError,
+        response,
+        start_time: float,
+        request_name: str,
+        req_id: Optional[str] = None,
+        payload_data: Any = None,
     ) -> None:
         """Handle specific stream processing errors."""
         error_msg = str(e)
@@ -172,4 +203,6 @@ class ErrorResponse:
             error_msg=error_msg,
             response=response,
             response_time=response_time,
+            req_id=req_id,
+            payload_data=payload_data,
         )

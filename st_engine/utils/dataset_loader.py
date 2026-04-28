@@ -16,11 +16,11 @@ from utils.logger import logger
 # Mapping between chat_type (dataset selector) and concrete dataset filenames.
 # 0 -> Pure text dataset (self-built), JSONL format
 # 1 -> Pure text ShareGPT dataset, JSON array format
-# 2 -> Multimodal (vision) dataset (self-built), JSONL format
+# 2 -> Comprehensive dataset (self-built), JSONL format
 BUILTIN_DATASET_FILES: Dict[int, str] = {
     0: "text_self-built.jsonl",
     1: "ShareGPT_V3_partial.json",
-    2: "vision_self-built.jsonl",
+    2: "comprehensive_self-build.jsonl",
 }
 
 DEFAULT_CHAT_TYPE = 0
@@ -37,6 +37,7 @@ class PromptData:
         image_base64: str = "",
         image_url: str = "",
         image_path: str = "",
+        messages: Optional[List[Dict[str, Any]]] = None,
     ):
         """Initialize PromptData with prompt information and optional image data.
 
@@ -46,12 +47,14 @@ class PromptData:
             image_base64: Base64 encoded image data (optional)
             image_url: URL to image (optional)
             image_path: Local file path for lazy encoding (optional, memory-efficient)
+            messages: Optional list of messages for chat formats
         """
         self.id = prompt_id
         self.prompt = prompt
         self.image_base64 = image_base64
         self.image_url = image_url
         self.image_path = image_path
+        self.messages = messages or []
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
@@ -62,6 +65,8 @@ class PromptData:
             result["image_url"] = self.image_url
         if self.image_path:
             result["image_path"] = self.image_path
+        if self.messages:
+            result["messages"] = self.messages
         return result
 
     @classmethod
@@ -73,6 +78,7 @@ class PromptData:
             image_base64=data.get("image_base64", ""),
             image_url=data.get("image_url", ""),
             image_path=data.get("image_path", ""),
+            messages=data.get("messages", []),
         )
 
 
@@ -189,11 +195,18 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
         # Extract ID - use line_num if id field is missing (no error)
         prompt_id = json_obj.get("id", line_num)
 
-        # Extract and normalize prompt
-        # Priority: prompt field > conversations field > messages field
+        # Extract and normalize prompt and messages
         prompt = ""
         raw_prompt = json_obj.get("prompt")
+        messages_list = None
 
+        # Always extract messages if present (for openai-chat / claude-chat)
+        if "messages" in json_obj:
+            messages = json_obj.get("messages")
+            if isinstance(messages, list):
+                messages_list = messages
+
+        # Priority for extracting a text prompt: prompt field > conversations field > messages field
         if raw_prompt:
             # Priority 1: prompt field (string or list)
             prompt = normalize_prompt_field(raw_prompt)
@@ -202,14 +215,12 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
             conversations = json_obj.get("conversations")
             if isinstance(conversations, list):
                 prompt = extract_prompt_from_conversations(conversations)
-        elif "messages" in json_obj:
-            # Priority 3: messages field (OpenAI format)
-            messages = json_obj.get("messages")
-            if isinstance(messages, list):
-                prompt = extract_prompt_from_messages(messages)
+        elif messages_list:
+            # Priority 3: extract from messages field
+            prompt = extract_prompt_from_messages(messages_list)
 
-        if not prompt:
-            # Skip silently without error for missing prompt
+        if not prompt and not messages_list:
+            # Skip silently without error for missing prompt and messages
             return None
 
         # Handle images - unified image field processing
@@ -240,7 +251,9 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
                             f"Image file not found in dataset: {image_value}"
                         )
 
-        return PromptData(prompt_id, prompt, image_base64, image_url, image_path)
+        return PromptData(
+            prompt_id, prompt, image_base64, image_url, image_path, messages_list
+        )
 
     except json.JSONDecodeError as e:
         effective_logger.error(

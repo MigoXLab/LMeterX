@@ -141,6 +141,7 @@ services:
       # Memory and performance tuning
       MALLOC_ARENA_MAX: 2                    # Limit memory arenas for stability
       PYTHONMALLOC: malloc                   # Use system malloc for better memory management
+      DETAIL_LOG_LEVEL: "DEBUG"
     ulimits:
       nofile:
         soft: 65536

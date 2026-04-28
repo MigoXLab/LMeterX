@@ -73,6 +73,9 @@ def is_admin_user(username: str) -> bool:
     Check if the given username is in the configured admin list.
     Admin users can manage all tasks regardless of ownership.
     """
+    if not settings.LDAP_ENABLED:
+        return True
+
     admin_usernames = settings.ADMIN_USERNAMES
     if not admin_usernames:
         return False

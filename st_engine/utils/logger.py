@@ -6,6 +6,7 @@ Copyright (c) 2025, All Rights Reserved.
 import logging
 import os
 import sys
+from typing import List, Union
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -15,6 +16,12 @@ from config.base import LOG_DIR, LOG_TASK_DIR
 load_dotenv()
 # Get log level from environment variable, default to INFO
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+# Get detail task log level from env; fallback to LOG_LEVEL.
+# Examples:
+#   LOG_LEVEL=INFO   -> detail log keeps INFO/WARNING/ERROR
+#   LOG_LEVEL=DEBUG  -> detail log keeps DEBUG and above
+#   LOG_LEVEL=TRACE  -> detail log keeps all levels
+DETAIL_LOG_LEVEL = os.getenv("DETAIL_LOG_LEVEL", LOG_LEVEL).upper()
 
 # --- Logger Configuration ---
 
@@ -43,14 +50,13 @@ logger.add(
     backtrace=False,  # Do not show the full stack trace.
     format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
     filter=is_system_log,  # Only log records without 'task_id'
-    # enqueue=True,  # Asynchronous writing.
 )
 
 # Configure the console logger.
 logger.add(
     sys.stdout,
     level=LOG_LEVEL,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{file}:{line}</cyan> | <level>{message}</level>",
+    format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>{message}</level>",
 )
 
 
@@ -73,9 +79,10 @@ def setup_clean_log_format():
         handler.setFormatter(clean_fmt)
 
 
-def add_task_log_sink(task_id: str) -> int:
+def add_task_log_sink(task_id: str) -> List[int]:
     """
     Adds a specific log sink for a given task ID.
+    Returns a list of handler IDs (one for standard log, one for detailed log).
     """
     # Ensure the task log directory exists before creating the log file
     try:
@@ -83,10 +90,25 @@ def add_task_log_sink(task_id: str) -> int:
     except Exception as e:
         logger.warning(f"Failed to create task log directory {LOG_TASK_DIR}: {e}")
 
-    task_log_file = os.path.join(LOG_TASK_DIR, f"task_{task_id}.log")
+    task_log_file = os.path.join(LOG_TASK_DIR, f"task_{task_id}_engine.log")
+    detail_log_file = os.path.join(LOG_TASK_DIR, f"task_{task_id}_engine_detail.log")
 
     def is_current_task_log(record):
-        return "task_id" in record["extra"] and record["extra"]["task_id"] == task_id
+        # Allow INFO and above for the standard task log
+        return (
+            "task_id" in record["extra"]
+            and record["extra"]["task_id"] == task_id
+            and record["level"].no >= logger.level("INFO").no
+        )
+
+    def is_detail_task_log(record):
+        # Detail task log follows env level (DETAIL_LOG_LEVEL/LOG_LEVEL)
+        target_level_no = logger.level(DETAIL_LOG_LEVEL).no
+        return (
+            "task_id" in record["extra"]
+            and record["extra"]["task_id"] == task_id
+            and record["level"].no >= target_level_no
+        )
 
     try:
         # Add a new handler to the existing logger instead of creating a new one
@@ -96,34 +118,50 @@ def add_task_log_sink(task_id: str) -> int:
             retention="10 days",
             compression="zip",
             encoding="utf-8",
-            level="INFO",
+            level=LOG_LEVEL,  # follow the global LOG_LEVEL
             backtrace=True,  # Enable backtrace for task logs to help with debugging
             format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
             filter=is_current_task_log,
-            enqueue=False,
+        )
+
+        detail_handler_id = logger.add(
+            detail_log_file,
+            rotation="50 MB",
+            retention="10 days",
+            compression="zip",
+            encoding="utf-8",
+            level=DETAIL_LOG_LEVEL,
+            backtrace=True,
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
+            filter=is_detail_task_log,
+            enqueue=True,  # Asynchronous writing.
         )
 
         # Test the logger to ensure it's working
         test_logger = logger.bind(task_id=task_id)
         test_logger.info(f"Task log initialized for task {task_id}")
 
-        return handler_id
+        return [handler_id, detail_handler_id]
     except Exception as e:
         logger.error(f"Failed to create task log sink for task {task_id}: {e}")
         # Return a dummy handler ID to prevent downstream errors
-        return -1
+        return [-1]
 
 
-def remove_task_log_sink(handler_id: int):
+def remove_task_log_sink(handler_ids: Union[int, List[int]]):
     """
-    Removes a log sink by its handler ID.
+    Removes log sinks by their handler IDs.
     """
-    if handler_id > 0:  # Only remove valid handler IDs
-        try:
-            logger.remove(handler_id)
-        except Exception as e:
-            logger.warning(
-                f"Failed to remove log sink with handler ID {handler_id}: {e}"
-            )
-    else:
-        logger.warning(f"Skipping removal of invalid handler ID: {handler_id}")
+    if not isinstance(handler_ids, list):
+        handler_ids = [handler_ids]
+
+    for handler_id in handler_ids:
+        if handler_id > 0:  # Only remove valid handler IDs
+            try:
+                logger.remove(handler_id)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to remove log sink with handler ID {handler_id}: {e}"
+                )
+        else:
+            logger.warning(f"Skipping removal of invalid handler ID: {handler_id}")

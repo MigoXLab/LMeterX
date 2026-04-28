@@ -168,12 +168,12 @@ services:
 ## 示例文件
 
 ### LLM API 压测示例
-- JSONL 格式：`vision_self-built.jsonl`
+- JSONL 格式：`comprehensive_self-build.jsonl`
 - ShareGPT 格式：`ShareGPT_V3_partial.json`
 
 ### 通用 API 压测示例
 
-创建一个 `common_api_dataset.jsonl` 文件，示例内容：
+创建一个 `http_api_datase.jsonl` 文件，示例内容：
 
 ```jsonl
 {"model": "gpt-5.2", "messages": [{"role": "user", "content": "你好"}], "max_tokens": 128, "stream": false}
@@ -367,12 +367,12 @@ Each line must be a **complete payload JSON object** that will be sent directly 
 ## Example Files
 
 ### LLM API Load Testing Examples
-- JSONL format: `vision_self-built.jsonl`
+- JSONL format: `comprehensive_self-build.jsonl`
 - ShareGPT format: `ShareGPT_V3_partial.json`
 
 ### General API Load Testing Example
 
-Create a `common_api_dataset.jsonl` file with example content:
+Create a `http_api_datase.jsonl` file with example content:
 
 ```jsonl
 {"model": "gpt-5.2", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 128, "stream": false}

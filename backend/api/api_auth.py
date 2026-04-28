@@ -139,7 +139,9 @@ async def get_profile(request: Request) -> UserInfo:
     """
 
     if not settings.LDAP_ENABLED:
-        return UserInfo(username="anonymous", display_name="anonymous", email=None)
+        return UserInfo(
+            username="anonymous", display_name="anonymous", email=None, is_admin=True
+        )
 
     user = get_current_user(request)
     username = user.get("sub", user.get("username", ""))

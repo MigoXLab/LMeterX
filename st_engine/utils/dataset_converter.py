@@ -39,7 +39,24 @@ def jsonl_to_sharegpt(input_file: str, output_file: str) -> None:
                         sharegpt_item["id"] = item["id"]
 
                     # Conversations field
-                    if "prompt" in item:
+                    if "messages" in item:
+                        sharegpt_item["conversations"] = [
+                            {
+                                "from": (
+                                    "human"
+                                    if m.get("role") in ("user", "human")
+                                    else (
+                                        "gpt"
+                                        if m.get("role") in ("assistant", "model")
+                                        else "system"
+                                    )
+                                ),
+                                "value": m.get("content", ""),
+                            }
+                            for m in item.get("messages", [])
+                            if isinstance(m, dict)
+                        ]
+                    elif "prompt" in item:
                         sharegpt_item["conversations"] = [
                             {"from": "human", "value": item["prompt"]}
                         ]
@@ -61,7 +78,7 @@ def jsonl_to_sharegpt(input_file: str, output_file: str) -> None:
                         data.append(sharegpt_item)
                     else:
                         print(
-                            f"Warning: Skipping line {line_num} - no prompt field",
+                            f"Warning: Skipping line {line_num} - no prompt or messages field",
                             file=sys.stderr,
                         )
 
@@ -119,7 +136,9 @@ def sharegpt_to_jsonl(input_file: str, output_file: str) -> None:
                     jsonl_item["id"] = item["id"]
 
                 # Extract prompt from conversations
-                if "prompt" in item:
+                if "messages" in item:
+                    jsonl_item["messages"] = item["messages"]
+                elif "prompt" in item:
                     # Direct prompt field
                     jsonl_item["prompt"] = item["prompt"]
                 elif "conversations" in item:
@@ -127,6 +146,26 @@ def sharegpt_to_jsonl(input_file: str, output_file: str) -> None:
                     prompt = extract_prompt_from_conversations(item["conversations"])
                     if prompt:
                         jsonl_item["prompt"] = prompt
+
+                    # Also build messages array for Chat API
+                    messages = [
+                        {
+                            "role": (
+                                "user"
+                                if c.get("from") in ("human", "user")
+                                else (
+                                    "assistant"
+                                    if c.get("from") in ("gpt", "assistant")
+                                    else "system"
+                                )
+                            ),
+                            "content": c.get("value", ""),
+                        }
+                        for c in item["conversations"]
+                        if isinstance(c, dict)
+                    ]
+                    if messages:
+                        jsonl_item["messages"] = messages
 
                 # Image fields
                 if "image" in item:
@@ -141,13 +180,13 @@ def sharegpt_to_jsonl(input_file: str, output_file: str) -> None:
                 if "image_base64" in item:
                     jsonl_item["image_base64"] = item["image_base64"]
 
-                # Only add if has prompt
-                if "prompt" in jsonl_item:
+                # Only add if has prompt or messages
+                if "prompt" in jsonl_item or "messages" in jsonl_item:
                     f.write(json.dumps(jsonl_item, ensure_ascii=False) + "\n")
                     converted_count += 1
                 else:
                     print(
-                        f"Warning: Skipping item {idx} - no valid prompt found",
+                        f"Warning: Skipping item {idx} - no valid prompt or messages found",
                         file=sys.stderr,
                     )
 

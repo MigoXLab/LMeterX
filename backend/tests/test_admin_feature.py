@@ -72,6 +72,7 @@ class TestIsAdminUser:
         """Verify ADMIN_USERNAMES is empty, any user is not an admin."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(auth_mod.settings, "ADMIN_USERNAMES", "")
         assert is_admin_user("alice") is False
         assert is_admin_user("admin") is False
@@ -81,6 +82,7 @@ class TestIsAdminUser:
         """Verify single admin match, return True."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(auth_mod.settings, "ADMIN_USERNAMES", "admin")
         assert is_admin_user("admin") is True
 
@@ -88,6 +90,7 @@ class TestIsAdminUser:
         """Verify single admin no match, return False."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(auth_mod.settings, "ADMIN_USERNAMES", "admin")
         assert is_admin_user("alice") is False
 
@@ -95,6 +98,7 @@ class TestIsAdminUser:
         """Verify multiple admins, all users in the list return True."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(
             auth_mod.settings, "ADMIN_USERNAMES", "admin,superuser,john"
         )
@@ -107,6 +111,7 @@ class TestIsAdminUser:
         """Verify admin name match is case insensitive."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(auth_mod.settings, "ADMIN_USERNAMES", "Admin,SuperUser")
         assert is_admin_user("admin") is True
         assert is_admin_user("ADMIN") is True
@@ -117,6 +122,7 @@ class TestIsAdminUser:
         """Verify whitespace handling in config."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(
             auth_mod.settings, "ADMIN_USERNAMES", " admin , superuser , john "
         )
@@ -128,6 +134,7 @@ class TestIsAdminUser:
         """Verify empty username returns False."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(auth_mod.settings, "ADMIN_USERNAMES", "admin")
         assert is_admin_user("") is False
 
@@ -135,6 +142,7 @@ class TestIsAdminUser:
         """Verify trailing commas in config are ignored."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(auth_mod.settings, "ADMIN_USERNAMES", "admin,,superuser,")
         assert is_admin_user("admin") is True
         assert is_admin_user("superuser") is True
@@ -144,6 +152,7 @@ class TestIsAdminUser:
         """Verify only commas (no valid usernames) return False."""
         from utils import auth as auth_mod
 
+        monkeypatch.setattr(auth_mod.settings, "LDAP_ENABLED", True)
         monkeypatch.setattr(auth_mod.settings, "ADMIN_USERNAMES", ",,,")
         assert is_admin_user("admin") is False
 
@@ -156,13 +165,17 @@ class TestIsAdminUser:
 class TestProfileAdminFlag:
     """Test that /api/auth/profile returns correct is_admin flag."""
 
-    def test_profile_ldap_disabled_no_admin(self):
-        """Verify LDAP disabled, profile returns anonymous, is_admin default False."""
+    def test_profile_ldap_disabled_no_admin(self, monkeypatch):
+        """Verify LDAP disabled, profile returns anonymous, is_admin defaults to True when disabled."""
+        import api.api_auth as api_auth_mod
+
+        monkeypatch.setattr(api_auth_mod.settings, "LDAP_ENABLED", False)
+
         response = client.get("/api/auth/profile")
         assert response.status_code == 200
         data = response.json()
         assert data["username"] == "anonymous"
-        assert data.get("is_admin") is False
+        assert data.get("is_admin") is True
 
     def test_profile_ldap_enabled_admin_user(self, monkeypatch):
         """Verify LDAP enabled + admin user, is_admin is True."""

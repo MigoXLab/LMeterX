@@ -59,23 +59,29 @@ const Header: React.FC = () => {
     transition: 'all 0.3s ease',
   };
 
+  const canViewSystemConfig = !LDAP_ENABLED || user?.is_admin;
+
   const menuItems = [
     {
       key: '/jobs',
       label: t('sidebar.testTasks'),
     },
     {
-      key: '/result-comparison',
-      label: t('sidebar.perfCompare'),
+      key: '/collections',
+      label: t('sidebar.collections') || '测试集',
     },
     {
       key: '/system-monitor',
       label: t('sidebar.monitorHub'),
     },
-    {
-      key: '/system-config',
-      label: t('sidebar.systemConfig'),
-    },
+    ...(canViewSystemConfig
+      ? [
+          {
+            key: '/system-config',
+            label: t('sidebar.systemConfig'),
+          },
+        ]
+      : []),
   ];
 
   const menuStyle: React.CSSProperties = {

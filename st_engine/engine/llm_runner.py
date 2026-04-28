@@ -235,6 +235,11 @@ class LlmLocustRunner:
         env = os.environ.copy()
         env["TASK_ID"] = warmup_task_id
         env["LOCUST_CONCURRENT_USERS"] = str(warmup_users)
+        # Force the child process to output DEBUG logs so we can capture payloads
+        # for the detailed task log.
+        if "LOG_LEVEL" not in env or env["LOG_LEVEL"] == "INFO":
+            env["LOG_LEVEL"] = "DEBUG"
+
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
             f"{self.base_dir}{os.pathsep}{existing_pythonpath}"
@@ -288,7 +293,14 @@ class LlmLocustRunner:
                 try:
                     for line in iter(pipe.readline, ""):
                         if line.strip():
-                            task_logger.opt(raw=True).info(f"{line}")
+                            if " | DEBUG    | " in line or " | DEBUG | " in line:
+                                task_logger.opt(raw=True).debug(f"{line}")
+                            elif " | WARNING  | " in line or " | WARNING | " in line:
+                                task_logger.opt(raw=True).warning(f"{line}")
+                            elif " | ERROR    | " in line or " | ERROR | " in line:
+                                task_logger.opt(raw=True).error(f"{line}")
+                            else:
+                                task_logger.opt(raw=True).info(f"{line}")
                     pipe.close()
                 except Exception as e:
                     task_logger.debug(f"Error reading warmup {prefix}: {e}")
@@ -574,6 +586,11 @@ class LlmLocustRunner:
         env["TASK_ID"] = str(task.id)
         env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
         # Ensure Locust subprocess can import project modules
+        # Force the child process to output DEBUG logs so we can capture payloads
+        # for the detailed task log.
+        if "LOG_LEVEL" not in env or env["LOG_LEVEL"] == "INFO":
+            env["LOG_LEVEL"] = "DEBUG"
+
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
             f"{self.base_dir}{os.pathsep}{existing_pythonpath}"
@@ -633,7 +650,14 @@ class LlmLocustRunner:
                 for line in iter(pipe.readline, ""):
                     if line.strip():
                         q.put(line)
-                        task_logger.opt(raw=True).info(line)
+                        if " | DEBUG    | " in line or " | DEBUG | " in line:
+                            task_logger.opt(raw=True).debug(line)
+                        elif " | WARNING  | " in line or " | WARNING | " in line:
+                            task_logger.opt(raw=True).warning(line)
+                        elif " | ERROR    | " in line or " | ERROR | " in line:
+                            task_logger.opt(raw=True).error(line)
+                        else:
+                            task_logger.opt(raw=True).info(line)
                 pipe.close()
             except Exception as e:
                 task_logger.error(f"Error reading {name}: {e}")

@@ -44,7 +44,17 @@ LOCUST_STOP_TIMEOUT = 60
 LOCUST_WAIT_TIMEOUT_BUFFER = 30
 
 # === DATA VALIDATION ===
-MAX_QUEUE_SIZE = 10000
+MAX_QUEUE_SIZE = 20000
+
+# === MEMORY GUARDS ===
+# Keep only a bounded tail of child process output in API responses. Full logs
+# still go through task log sinks, so retaining all stdout/stderr in memory is
+# unnecessary and can OOM the engine during long runs.
+MAX_CAPTURED_OUTPUT_BYTES = int(os.getenv("MAX_CAPTURED_OUTPUT_BYTES", "1048576"))
+
+# Keep custom HTTP outcome histograms bounded when tests run for many hours.
+HTTP_OUTCOME_EXACT_LATENCY_MS = int(os.getenv("HTTP_OUTCOME_EXACT_LATENCY_MS", "10000"))
+HTTP_OUTCOME_LATENCY_BUCKET_MS = int(os.getenv("HTTP_OUTCOME_LATENCY_BUCKET_MS", "100"))
 
 # === SENSITIVE DATA ===
 SENSITIVE_KEYS = ["authorization"]
@@ -69,6 +79,10 @@ __all__ = [
     # locust
     "LOCUST_STOP_TIMEOUT",
     "LOCUST_WAIT_TIMEOUT_BUFFER",
+    "MAX_QUEUE_SIZE",
+    "MAX_CAPTURED_OUTPUT_BYTES",
+    "HTTP_OUTCOME_EXACT_LATENCY_MS",
+    "HTTP_OUTCOME_LATENCY_BUCKET_MS",
     # sensitive
     "SENSITIVE_KEYS",
 ]

@@ -226,12 +226,12 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
       setCollections(prev => [newCollection, ...prev]);
       form.setFieldsValue({ collection_id: newCollection.id });
       setSearchValue('');
-      message.success(t('collections.createSuccess'));
+      message.success(t('pages.collections.createSuccess'));
 
       // Automatically submit to add tasks to the newly created collection
       await handleSubmit();
     } catch (error) {
-      message.error(t('collections.createFailed'));
+      message.error(t('pages.collections.createFailed'));
       setSubmitting(false);
     }
   };

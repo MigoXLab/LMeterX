@@ -132,6 +132,7 @@ def _ensure_prompt_queue(environment, options, task_logger):
         environment.prompt_queue = init_prompt_queue(
             chat_type=int(getattr(options, "chat_type", 0)),
             test_data=getattr(options, "test_data", "") or "",
+            api_type=getattr(options, "api_type", ""),
             task_logger=task_logger,
         )
     except Exception as exc:

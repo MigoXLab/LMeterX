@@ -394,7 +394,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
         // Add chat_type validation when using default dataset and chat API
         const currentTestDataInputType =
-          form.getFieldValue('test_data_input_type') || 'default';
+          form.getFieldValue('test_data_input_type') ||
+          (isStandardChatApi ? 'default' : 'none');
         if (
           currentTestDataInputType === 'default' &&
           (currentApiType === 'openai-chat' || currentApiType === 'claude-chat')
@@ -432,7 +433,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
   // Form values states to replace Form.useWatch
   const [concurrentUsers, setConcurrentUsers] = useState<number>();
-  const [streamMode, setStreamMode] = useState<boolean>(true);
   const [isFormReady, setIsFormReady] = useState(false);
 
   // Initialize form ready state
@@ -451,7 +451,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       const currentStreamMode = form.getFieldValue('stream_mode');
       if (currentApiType === 'embeddings' && currentStreamMode !== false) {
         form.setFieldsValue({ stream_mode: false });
-        setStreamMode(false);
 
         // Update request_payload for embeddings API
         const currentModel = form.getFieldValue('model') || '';
@@ -631,6 +630,28 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         dataToFill.test_data_file = extractFilename(dataToFill.test_data);
       }
 
+      // Dataset source defaults must match API type (no built-in option for embeddings/custom-chat)
+      const fillApiType = dataToFill.api_type || 'openai-chat';
+      const isFillChatApi =
+        fillApiType === 'openai-chat' || fillApiType === 'claude-chat';
+      if (isFillChatApi) {
+        if (
+          dataToFill.test_data_input_type === undefined ||
+          dataToFill.test_data_input_type === null ||
+          dataToFill.test_data_input_type === ''
+        ) {
+          dataToFill.test_data_input_type = 'default';
+        }
+      } else if (
+        dataToFill.test_data_input_type === undefined ||
+        dataToFill.test_data_input_type === null ||
+        dataToFill.test_data_input_type === '' ||
+        dataToFill.test_data_input_type === 'default'
+      ) {
+        dataToFill.test_data_input_type = 'none';
+        dataToFill.chat_type = undefined;
+      }
+
       // clean fields that should not be copied directly or provided by the user
       delete dataToFill.id;
       delete dataToFill.status;
@@ -639,11 +660,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       // actual certificate file needs to be uploaded again
 
       form.setFieldsValue(dataToFill);
-
-      // Update stream mode state for proper field mapping
-      if (dataToFill.stream_mode !== undefined) {
-        setStreamMode(dataToFill.stream_mode);
-      }
 
       if (
         dataToFill.concurrent_users &&
@@ -1140,7 +1156,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       }
 
       // Handle test data input type
-      const inputType = values.test_data_input_type || 'default';
+      const submitApiType = values.api_type || 'openai-chat';
+      const isSubmitChatApi =
+        submitApiType === 'openai-chat' || submitApiType === 'claude-chat';
+      const inputType =
+        values.test_data_input_type || (isSubmitChatApi ? 'default' : 'none');
       if (inputType === 'upload') {
         // validateFields() may omit unmounted fields; read from form store as fallback.
         const storedTestData = form.getFieldValue('test_data');
@@ -1714,28 +1734,41 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             </Select>
           </Form.Item>
         </Col>
-        <Col span={12}>
-          <Form.Item
-            name='model'
-            label={
-              <span>
-                {t('components.createJobForm.modelName')}
-                <Tooltip title={t('components.createJobForm.modelNameTooltip')}>
-                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                </Tooltip>
-              </span>
-            }
-            rules={[
-              {
-                max: 255,
-                message: t('components.createJobForm.modelNameLengthLimit'),
-              },
-            ]}
-            normalize={value => value?.trim() || ''}
-          >
-            <Input placeholder='e.g. gpt-4' maxLength={255} showCount />
-          </Form.Item>
-        </Col>
+        <Form.Item noStyle shouldUpdate>
+          {({ getFieldValue }) => {
+            const apiType = getFieldValue('api_type');
+            const isEmbeddingsOrCustom =
+              apiType === 'embeddings' || apiType === 'custom-chat';
+            return !isEmbeddingsOrCustom ? (
+              <Col span={12}>
+                <Form.Item
+                  name='model'
+                  label={
+                    <span>
+                      {t('components.createJobForm.modelName')}
+                      <Tooltip
+                        title={t('components.createJobForm.modelNameTooltip')}
+                      >
+                        <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                      </Tooltip>
+                    </span>
+                  }
+                  rules={[
+                    {
+                      max: 255,
+                      message: t(
+                        'components.createJobForm.modelNameLengthLimit'
+                      ),
+                    },
+                  ]}
+                  normalize={value => value?.trim() || ''}
+                >
+                  <Input placeholder='e.g. gpt-4' maxLength={255} showCount />
+                </Form.Item>
+              </Col>
+            ) : null;
+          }}
+        </Form.Item>
       </Row>
 
       <Row gutter={24}>
@@ -2186,12 +2219,15 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                         ) ||
                         'Supports JSONL format:\n• JSONL: one JSON object per line {"id": "...", "messages": [...]}'
                       : t(
-                          'components.createJobForm.datasetFileFormatDescription'
-                        )}
+                          'components.createJobForm.datasetFileFormatDescriptionCustom'
+                        ) ||
+                        'Supports JSONL format:\n• JSONL: one JSON object per line, representing the full request payload'}
                   </span>
-                  <span>
-                    {t('components.createJobForm.datasetImageMountWarning')}
-                  </span>
+                  {isChatApi && (
+                    <span>
+                      {t('components.createJobForm.datasetImageMountWarning')}
+                    </span>
+                  )}
                 </div>
               </Upload.Dragger>
             </Form.Item>
@@ -2202,7 +2238,9 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               <Space direction='vertical' size={12} style={{ width: '100%' }}>
                 <Text strong>{t('components.createJobForm.jsonlData')}</Text>
                 <Text type='secondary' style={{ fontSize: 12 }}>
-                  {t('components.createJobForm.jsonlDataTooltip')}
+                  {isChatApi
+                    ? t('components.createJobForm.jsonlDataTooltip')
+                    : t('components.createJobForm.jsonlDataTooltipPayload')}
                 </Text>
                 <Form.Item
                   name='test_data'
@@ -2242,11 +2280,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                                   'Each line must contain "id" and "prompt" or "messages" array';
                                 throw new Error(customError);
                               }
-                            } else if (!jsonObj.id || !jsonObj.prompt) {
-                              customError = t(
-                                'components.createJobForm.eachLineMustContainFields'
-                              );
-                              throw new Error(customError);
                             }
                           });
                           return Promise.resolve();
@@ -2263,9 +2296,14 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                                   ) ||
                                     'Each line must contain "id" and "prompt" or "messages" array')
                                 ? e.message
-                                : t(
-                                    'components.createJobForm.invalidJsonlFormat'
-                                  )
+                                : isChatApi
+                                  ? t(
+                                      'components.createJobForm.invalidJsonlFormat'
+                                    )
+                                  : t(
+                                      'components.createJobForm.invalidJsonlFormatBasic'
+                                    ) ||
+                                    'Invalid JSONL format. Each line must be valid JSON.'
                             )
                           );
                         }
@@ -2278,7 +2316,9 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                     placeholder={
                       isChatApi
                         ? `{"id": "1", "messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "Hello!"}]}\n{"id": "2", "messages": [{"role": "user", "content": "What is AI?"}]}`
-                        : `{"id": "1", "prompt": "Hello, how are you?"}\n{"id": "2", "prompt": "What is artificial intelligence?"}\n{"id": "3", "prompt": "Explain machine learning in simple terms"}`
+                        : currentApiType === 'custom-chat'
+                          ? `{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"Hello, how are you?"}]}\n{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"What is artificial intelligence?"}]}`
+                          : `{"id": "1", "input": "Hello, how are you?", "model": "text-embedding-3-small"}\n{"id": "2", "input": "What is artificial intelligence?", "model": "text-embedding-3-small"}`
                     }
                     maxLength={50000}
                     showCount
@@ -2334,18 +2374,34 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                   size='large'
                   placeholder={t('components.createJobForm.datasetSource')}
                 >
-                  <Select.Option value='default'>
-                    {t('components.createJobForm.builtInDataset')}
-                  </Select.Option>
-                  <Select.Option value='input'>
-                    {t('components.createJobForm.customJsonlData')}
-                  </Select.Option>
-                  <Select.Option value='upload'>
-                    {t('components.createJobForm.uploadJsonlFile')}
-                  </Select.Option>
-                  <Select.Option value='none'>
-                    {t('components.createJobForm.noDataset')}
-                  </Select.Option>
+                  {isChatApi ? (
+                    <>
+                      <Select.Option value='default'>
+                        {t('components.createJobForm.builtInDataset')}
+                      </Select.Option>
+                      <Select.Option value='none'>
+                        {t('components.createJobForm.noDataset')}
+                      </Select.Option>
+                      <Select.Option value='upload'>
+                        {t('components.createJobForm.uploadJsonlFile')}
+                      </Select.Option>
+                      <Select.Option value='input'>
+                        {t('components.createJobForm.customJsonlData')}
+                      </Select.Option>
+                    </>
+                  ) : (
+                    <>
+                      <Select.Option value='none'>
+                        {t('components.createJobForm.noDataset')}
+                      </Select.Option>
+                      <Select.Option value='upload'>
+                        {t('components.createJobForm.uploadJsonlFile')}
+                      </Select.Option>
+                      <Select.Option value='input'>
+                        {t('components.createJobForm.customJsonlData')}
+                      </Select.Option>
+                    </>
+                  )}
                 </Select>
               </Form.Item>
               {additionalContent}
@@ -2815,22 +2871,25 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         {({ getFieldValue }) => {
           const currentApiType = getFieldValue('api_type') || 'openai-chat';
           const isEmbedType = currentApiType === 'embeddings';
+          const currentStreamMode = getFieldValue('stream_mode');
 
           // Get placeholders based on API type
           const getContentPlaceholder = () => {
             if (currentApiType === 'claude-chat') {
-              return streamMode ? 'content.-1.text' : 'content.-1.text';
+              return currentStreamMode ? 'content.-1.text' : 'content.-1.text';
             }
-            return streamMode
+            return currentStreamMode
               ? 'choices.0.delta.content'
               : 'choices.0.message.content';
           };
 
           const getReasoningPlaceholder = () => {
             if (currentApiType === 'claude-chat') {
-              return streamMode ? 'content.0.thinking' : 'content.0.thinking';
+              return currentStreamMode
+                ? 'content.0.thinking'
+                : 'content.0.thinking';
             }
-            return streamMode
+            return currentStreamMode
               ? 'choices.0.delta.reasoning_content'
               : 'choices.0.message.reasoning_content';
           };
@@ -2862,7 +2921,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             return null;
           }
 
-          return streamMode ? (
+          return currentStreamMode ? (
             // Streaming mode configuration
             <>
               {/* Stream Data Configuration */}
@@ -3509,9 +3568,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             if ('concurrent_users' in changedValues) {
               setConcurrentUsers(changedValues.concurrent_users);
             }
-            if ('stream_mode' in changedValues) {
-              setStreamMode(changedValues.stream_mode);
-            }
           } else {
             // Handle API type changes — regenerate entire payload since structure differs
             if ('api_type' in changedValues && !isCopyMode) {
@@ -3525,7 +3581,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               const isEmbedType = newApiType === 'embeddings';
               if (isEmbedType) {
                 form.setFieldsValue({ stream_mode: false });
-                setStreamMode(false);
               }
 
               // Update dataset settings based on API type
@@ -3571,7 +3626,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
             // Handle stream_mode changes — update only `stream` field in payload JSON
             if ('stream_mode' in changedValues) {
-              setStreamMode(changedValues.stream_mode);
               // Update field_mapping default values when stream mode changes (but not in copy mode)
               if (!isCopyMode) {
                 const currentApiType =
@@ -3621,7 +3675,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                   extracted.stream !== form.getFieldValue('stream_mode')
                 ) {
                   updates.stream_mode = extracted.stream;
-                  setStreamMode(extracted.stream);
                 }
                 if (Object.keys(updates).length > 0) {
                   isSyncingRef.current = true;

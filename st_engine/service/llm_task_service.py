@@ -23,8 +23,10 @@ from config.business import (
 from engine.llm_runner import LlmLocustRunner
 from engine.process_manager import (
     cleanup_task_resources,
+    find_locust_processes_by_task_id,
     get_task_process_status,
     terminate_locust_process_group,
+    terminate_locust_processes_by_task_id,
 )
 from model.llm_task import Task
 from service.llm_result_service import LlmResultService
@@ -216,22 +218,15 @@ class LlmTaskService:
             task (Task): The task whose orphaned process should be killed.
             task_logger: A logger instance bound to the task ID.
         """
-        try:
-            kill_cmd = ["pkill", "-f", f"locust .*--task-id {task.id}"]
-            subprocess.run(kill_cmd, check=True)  # nosec B603
-            task_logger.info(f"Successfully terminated orphaned process.")
-        except subprocess.CalledProcessError as e:
-            if e.returncode > 1:
-                task_logger.error(f"Failed to kill orphaned process: {e}")
-            else:
-                task_logger.warning(
-                    f"Orphaned process cleanup for task {task.id} was interrupted "
-                    f"or the process was already gone (exit code {e.returncode}). "
-                    "This is likely safe to ignore."
-                )
-        except Exception as kill_e:
-            task_logger.error(
-                f"An unexpected error occurred while trying to kill orphaned process: {kill_e}"
+        task_id = str(task.id)
+        terminated_count = terminate_locust_processes_by_task_id(task_id)
+        if terminated_count:
+            task_logger.info(
+                f"Successfully terminated {terminated_count} orphaned Locust process(es)."
+            )
+        else:
+            task_logger.warning(
+                f"No orphaned Locust process remained for task {task_id}."
             )
 
     def _reconcile_running_task(self, session: Session, task: Task, task_logger):
@@ -244,34 +239,25 @@ class LlmTaskService:
             task (Task): The running task to reconcile.
             task_logger: A logger instance bound to the task ID.
         """
-        try:
-            # Use pgrep to check if a locust process with a specific task-id exists.
-            cmd = ["pgrep", "-f", f"locust .*--task-id {task.id}"]
-            subprocess.check_output(cmd, stderr=subprocess.DEVNULL)  # nosec B603
-
-            # If pgrep succeeds, the process exists and is now an orphan.
+        task_id = str(task.id)
+        orphaned_processes = find_locust_processes_by_task_id(task_id)
+        if orphaned_processes:
             task_logger.warning(
-                f"Something went wrong with engine service."
-                f"Terminating it and marking task as FAILED."
+                f"Task {task.id} was still running during engine restart. "
+                f"Found {len(orphaned_processes)} orphaned Locust process(es); "
+                "terminating and marking task as FAILED."
             )
             self._kill_orphaned_process(task, task_logger)
 
             error_message = "Task process was orphaned by an engine restart and has been terminated."
             self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
-
-        except subprocess.CalledProcessError:
-            # pgrep returns a non-zero exit code, meaning no process was found.
+        else:
             task_logger.warning(
                 f"Task {task.id} was in '{task.status}' state, but no active process found. "
                 f"Marking as FAILED. This likely occurred during an engine restart."
             )
             error_message = "Task process was not found after an engine restart."
             self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
-        except FileNotFoundError as e:
-            task_logger.warning(
-                f"Process inspection command is missing: {e}. "
-                "Skipping startup reconciliation for this task and keeping current status."
-            )
 
     def _reconcile_single_task(self, session: Session, task: Task):
         """

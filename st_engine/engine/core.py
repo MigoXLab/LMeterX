@@ -566,9 +566,10 @@ class ValidationManager:
             task_logger.error("Task ID is required but not provided")
             return False
 
-        if not config.model_name:
-            task_logger.error("Model name is required")
-            return False
+        if getattr(config, "api_type", "") in ("openai-chat", "claude-chat"):
+            if not config.model_name:
+                task_logger.error("Model name is required for this API type")
+                return False
 
         if not config.request_payload:
             task_logger.error("Request payload is required for all API endpoints")

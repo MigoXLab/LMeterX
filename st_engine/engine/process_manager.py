@@ -239,6 +239,62 @@ class MultiprocessManager:
                 # Remove from tracking
                 del self._process_groups[task_id]
 
+    def find_locust_processes_by_task_id(self, task_id: str) -> List[psutil.Process]:
+        """Find running Locust processes whose command line references task_id."""
+        matches: List[psutil.Process] = []
+        for proc in self._iter_external_locust_processes():
+            try:
+                cmdline = proc.info.get("cmdline", [])
+                if cmdline is None:
+                    cmdline = []
+                cmdline_str = (
+                    " ".join(cmdline)
+                    if isinstance(cmdline, (list, tuple))
+                    else str(cmdline)
+                )
+                if task_id in cmdline_str:
+                    matches.append(proc)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return matches
+
+    def terminate_locust_processes_by_task_id(
+        self, task_id: str, timeout: float = 5.0
+    ) -> int:
+        """Terminate any Locust processes associated with a task id."""
+        processes = self.find_locust_processes_by_task_id(task_id)
+        terminated_count = 0
+
+        for process in processes:
+            try:
+                if not process.is_running():
+                    terminated_count += 1
+                    continue
+                process.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                terminated_count += 1
+
+        for process in processes:
+            try:
+                if not process.is_running():
+                    terminated_count += 1
+                    continue
+                try:
+                    process.wait(timeout=timeout)
+                except psutil.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=timeout)
+                terminated_count += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                terminated_count += 1
+            except psutil.TimeoutExpired:
+                logger.warning(
+                    f"Timed out while force killing Locust process {process.pid} "
+                    f"for task {task_id}"
+                )
+
+        return min(terminated_count, len(processes))
+
     def get_process_group_status(self, task_id: str) -> Optional[LocustProcessGroup]:
         """Get status of a process group."""
         with self._lock:
@@ -417,6 +473,16 @@ def terminate_locust_process_group(task_id: str, timeout: float = 15.0) -> bool:
 def cleanup_task_resources(task_id: str) -> None:
     """Clean up all resources for a task."""
     _multiprocess_manager.cleanup_task(task_id)
+
+
+def find_locust_processes_by_task_id(task_id: str) -> List[psutil.Process]:
+    """Find running Locust processes associated with a task id."""
+    return _multiprocess_manager.find_locust_processes_by_task_id(task_id)
+
+
+def terminate_locust_processes_by_task_id(task_id: str, timeout: float = 5.0) -> int:
+    """Terminate running Locust processes associated with a task id."""
+    return _multiprocess_manager.terminate_locust_processes_by_task_id(task_id, timeout)
 
 
 def get_task_process_status(task_id: str) -> Optional[LocustProcessGroup]:

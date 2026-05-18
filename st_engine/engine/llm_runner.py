@@ -11,12 +11,16 @@ import subprocess  # nosec B404
 import tempfile
 import threading
 import time
-from queue import Queue
+from collections import deque
 from typing import Dict, List, Tuple
 
 import psutil
 
-from config.base import LOCUST_STOP_TIMEOUT, LOCUST_WAIT_TIMEOUT_BUFFER
+from config.base import (
+    LOCUST_STOP_TIMEOUT,
+    LOCUST_WAIT_TIMEOUT_BUFFER,
+    MAX_CAPTURED_OUTPUT_BYTES,
+)
 from config.multiprocess import (
     get_cpu_count,
     get_process_count,
@@ -31,6 +35,45 @@ from engine.process_manager import (
 from model.llm_task import Task
 from utils.common import mask_sensitive_command
 from utils.logger import logger
+
+
+class _OutputTailBuffer:
+    """Bound retained subprocess output while preserving recent diagnostics."""
+
+    def __init__(self, max_bytes: int) -> None:
+        self.max_bytes = max(0, int(max_bytes or 0))
+        self._lines: deque[str] = deque()
+        self._bytes = 0
+        self.truncated = False
+
+    @staticmethod
+    def _line_size(line: str) -> int:
+        return len(line.encode("utf-8", errors="replace"))
+
+    def append(self, line: str) -> None:
+        if self.max_bytes <= 0:
+            self.truncated = True
+            return
+
+        size = self._line_size(line)
+        if size > self.max_bytes:
+            encoded = line.encode("utf-8", errors="replace")[-self.max_bytes :]
+            line = encoded.decode("utf-8", errors="ignore")
+            size = self._line_size(line)
+            self._lines.clear()
+            self._bytes = 0
+            self.truncated = True
+
+        self._lines.append(line)
+        self._bytes += size
+
+        while self._bytes > self.max_bytes and self._lines:
+            dropped = self._lines.popleft()
+            self._bytes -= self._line_size(dropped)
+            self.truncated = True
+
+    def text(self) -> str:
+        return "".join(self._lines)
 
 
 class LlmLocustRunner:
@@ -642,14 +685,16 @@ class LlmLocustRunner:
         self, process: subprocess.Popen, task: Task, task_logger
     ) -> Tuple[str, str]:
         """Monitor process execution and capture real-time output."""
-        stdout_queue: Queue[str] = Queue()
-        stderr_queue: Queue[str] = Queue()
+        stdout_buffer = _OutputTailBuffer(MAX_CAPTURED_OUTPUT_BYTES)
+        stderr_buffer = _OutputTailBuffer(MAX_CAPTURED_OUTPUT_BYTES)
 
-        def read_stream(pipe, q, name):
+        def read_stream(pipe, output_buffer, name):
+            if pipe is None:
+                return
             try:
                 for line in iter(pipe.readline, ""):
                     if line.strip():
-                        q.put(line)
+                        output_buffer.append(line)
                         if " | DEBUG    | " in line or " | DEBUG | " in line:
                             task_logger.opt(raw=True).debug(line)
                         elif " | WARNING  | " in line or " | WARNING | " in line:
@@ -663,10 +708,10 @@ class LlmLocustRunner:
                 task_logger.error(f"Error reading {name}: {e}")
 
         stdout_thread = threading.Thread(
-            target=read_stream, args=(process.stdout, stdout_queue, "stdout")
+            target=read_stream, args=(process.stdout, stdout_buffer, "stdout")
         )
         stderr_thread = threading.Thread(
-            target=read_stream, args=(process.stderr, stderr_queue, "stderr")
+            target=read_stream, args=(process.stderr, stderr_buffer, "stderr")
         )
 
         stdout_thread.daemon = True
@@ -708,9 +753,13 @@ class LlmLocustRunner:
         stdout_thread.join(timeout=10)
         stderr_thread.join(timeout=10)
 
-        # Drain queues
-        stdout = "".join(list(stdout_queue.queue))
-        stderr = "".join(list(stderr_queue.queue))
+        stdout = stdout_buffer.text()
+        stderr = stderr_buffer.text()
+        if stdout_buffer.truncated or stderr_buffer.truncated:
+            task_logger.warning(
+                "Subprocess output exceeded in-memory capture limit; "
+                f"retained last {MAX_CAPTURED_OUTPUT_BYTES} bytes per stream."
+            )
 
         return stdout, stderr
 

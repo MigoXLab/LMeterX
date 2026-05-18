@@ -4,7 +4,7 @@ Tests for HttpTaskService lifecycle management:
   - get_and_lock_task
   - stop_task (process not found / already finished)
   - pipeline: soft-delete check, status resolution, exception handling
-  - reconciliation on startup (owned, other-engine, locked, pgrep missing)
+  - reconciliation on startup (owned, other-engine, locked, missing process)
 """
 
 from unittest.mock import Mock, patch
@@ -380,10 +380,10 @@ class TestReconcileTasksOnStartup:
                 or "restart" in call_args[0][3].lower()
             )
 
-    def test_keeps_running_when_pgrep_missing(self, task_service):
+    def test_marks_running_failed_when_process_missing(self, task_service):
         session = Mock()
         task = Mock()
-        task.id = "task-pgrep-missing"
+        task.id = "task-process-missing"
         task.status = TASK_STATUS_RUNNING
 
         with patch("service.http_task_service.ENGINE_ID", "my-engine"):
@@ -398,13 +398,16 @@ class TestReconcileTasksOnStartup:
                 patch("service.http_task_service.remove_task_log_sink"),
                 patch.object(task_service, "update_task_status") as mock_update,
                 patch(
-                    "service.http_task_service.subprocess.check_output",
-                    side_effect=FileNotFoundError("pgrep"),
+                    "service.http_task_service.find_locust_processes_by_task_id",
+                    return_value=[],
                 ),
             ):
                 task_service.reconcile_tasks_on_startup(session)
 
-            mock_update.assert_not_called()
+            mock_update.assert_called_once()
+            call_args = mock_update.call_args
+            assert call_args[0][2] == TASK_STATUS_FAILED
+            assert "not found" in call_args[0][3].lower()
 
     def test_empty_engine_id_skipped(self, task_service):
         session = Mock()

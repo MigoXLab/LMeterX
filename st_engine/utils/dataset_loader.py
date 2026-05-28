@@ -595,3 +595,57 @@ def init_prompt_queue(
         f"Invalid test_data provided: '{test_data}'. "
         f"Expected empty string, 'default', JSONL/JSON content string, or valid file path."
     )
+
+
+def init_shared_dataset(
+    chat_type: int = 0,
+    test_data: str = "",
+    api_type: str = "",
+    task_logger=None,
+):
+    """Initialize dataset as a shared mmap reader for multiprocess mode.
+
+    Returns a SharedDatasetReader instance, or None if no dataset is configured
+    or if creation fails (caller should use queue-based fallback).
+    """
+    from utils.shared_dataset import SharedDatasetReader
+
+    effective_logger = task_logger or logger
+
+    if not test_data or test_data.strip() == "":
+        return None
+
+    try:
+        if test_data.strip().lower() == "default":
+            dataset_index = DEFAULT_CHAT_TYPE
+            try:
+                dataset_index = int(chat_type)
+            except (TypeError, ValueError):
+                pass
+            dataset_filename = BUILTIN_DATASET_FILES.get(
+                dataset_index, BUILTIN_DATASET_FILES[DEFAULT_CHAT_TYPE]
+            )
+            data_file = os.path.join(DATA_DIR, dataset_filename)
+            items = load_dataset_file(data_file, api_type, task_logger)
+        elif test_data.strip().startswith("{") or test_data.strip().startswith("["):
+            items = load_dataset_string(test_data, api_type, task_logger)
+        else:
+            items = load_dataset_file(test_data, api_type, task_logger)
+            if not items and os.path.exists(test_data):
+                items = load_dataset_file(test_data, api_type, task_logger)
+
+        if not items:
+            return None
+
+        if len(items) > MAX_QUEUE_SIZE:
+            effective_logger.warning(
+                f"Dataset ({len(items)} items) exceeds MAX_QUEUE_SIZE={MAX_QUEUE_SIZE}; truncating."
+            )
+            items = items[:MAX_QUEUE_SIZE]
+
+        return SharedDatasetReader.from_items(items, task_logger)
+    except Exception as e:
+        effective_logger.warning(
+            f"Failed to create shared dataset reader: {e}. Falling back to queue."
+        )
+        return None

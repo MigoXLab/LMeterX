@@ -85,6 +85,7 @@ class LlmLocustRunner:
     _stopped_task_ids: set[str] = (
         set()
     )  # Track task IDs that have been requested to stop
+    _STOPPED_IDS_HARD_CAP = 500
     _WARMUP_DURATION_SECONDS = 120
     _WARMUP_COOLDOWN_SECONDS = 3
     _WARMUP_STOP_TIMEOUT_SECONDS = 10
@@ -95,6 +96,23 @@ class LlmLocustRunner:
         self._locustfile_path = os.path.join(
             self.base_dir, "engine", "llm_locustfile.py"
         )
+
+    def _cleanup_stale_stopped_ids(self) -> int:
+        """Remove stopped task IDs that have no corresponding active process.
+
+        Returns the number of entries removed.
+        """
+        if len(self._stopped_task_ids) > self._STOPPED_IDS_HARD_CAP:
+            logger.warning(
+                f"_stopped_task_ids exceeded hard cap ({len(self._stopped_task_ids)}). "
+                f"Force clearing to prevent memory leak."
+            )
+            self._stopped_task_ids.clear()
+            return 0
+        stale_ids = self._stopped_task_ids - set(self._process_dict.keys())
+        for task_id in stale_ids:
+            self._stopped_task_ids.discard(task_id)
+        return len(stale_ids)
 
     # --- Shared stepped load helpers ---
 
@@ -158,6 +176,11 @@ class LlmLocustRunner:
         """
         task_logger = logger.bind(task_id=task.id)
 
+        # Opportunistic cleanup of stale stopped IDs to prevent memory leak
+        cleaned = self._cleanup_stale_stopped_ids()
+        if cleaned:
+            task_logger.debug(f"Cleaned {cleaned} stale stopped task IDs")
+
         try:
             # Step 1: Prepare environment
             self._prepare_task(task, task_logger)
@@ -196,22 +219,15 @@ class LlmLocustRunner:
                 "locust_result": {},
             }
         finally:
-            # Ensure cleanup is attempted even if an exception occurs
-            # This is a safety net. `_finalize_task` should handle normal cleanup.
+            # Always discard from stopped set to prevent memory leak
+            self._stopped_task_ids.discard(task.id)
+
+            # Emergency cleanup if process still tracked (abnormal exit)
             if task.id in self._process_dict:
                 task_logger.warning(
                     f"Task {task.id} exited abnormally. Triggering emergency cleanup."
                 )
-                # We create a dummy process object just to satisfy the _cleanup_task signature.
-                # The actual PID might be invalid, but _cleanup_task will handle it gracefully.
-                dummy_true = shutil.which("true") or "/bin/true"
-                dummy_process = subprocess.Popen(
-                    [dummy_true],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )  # nosec B607,B603 - absolute path; no untrusted input
-                dummy_process.pid = -1  # Mark it as invalid
-                self._cleanup_task(task, dummy_process, task_logger)
+                self._cleanup_task_resources(task, task_logger)
 
     def _prepare_task(self, task: Task, task_logger) -> None:
         """Prepare task environment: validate config and files."""
@@ -628,6 +644,15 @@ class LlmLocustRunner:
         env = os.environ.copy()
         env["TASK_ID"] = str(task.id)
         env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
+
+        # Expose process count so locustfiles can detect multiprocess mode
+        # and use shared memory for datasets instead of per-process copies.
+        try:
+            proc_idx = cmd.index("--processes")
+            env["LOCUST_PROCESSES"] = cmd[proc_idx + 1]
+        except (ValueError, IndexError):
+            env["LOCUST_PROCESSES"] = "1"
+
         # Ensure Locust subprocess can import project modules
         # Force the child process to output DEBUG logs so we can capture payloads
         # for the detailed task log.
@@ -823,6 +848,10 @@ class LlmLocustRunner:
 
     def _cleanup_task(self, task: Task, process: subprocess.Popen, task_logger) -> None:
         """Perform comprehensive cleanup after task completion."""
+        self._cleanup_task_resources(task, task_logger)
+
+    def _cleanup_task_resources(self, task, task_logger) -> None:
+        """Core cleanup logic that does not require a process object."""
         task_id = task.id
         task_logger.info(f"Starting cleanup for task {task_id}")
 

@@ -327,33 +327,31 @@ const HttpResults: React.FC = () => {
       : 0;
 
   const metricsDetailRows = useMemo(() => {
-    const endpointBaseName =
-      results.find(
-        r =>
-          r.metric_type !== 'total' &&
-          !r.metric_type?.endsWith('::success') &&
-          !r.metric_type?.endsWith('::failure')
-      )?.metric_type ||
-      results
-        .find(
-          r =>
-            r.metric_type?.endsWith('::success') &&
-            r.metric_type !== 'total::success'
-        )
-        ?.metric_type.replace('::success', '') ||
-      results
-        .find(
-          r =>
-            r.metric_type?.endsWith('::failure') &&
-            r.metric_type !== 'total::failure'
-        )
-        ?.metric_type.replace('::failure', '');
+    const baseNames = new Set<string>();
+    results.forEach(r => {
+      const mt = r.metric_type as string | undefined;
+      if (
+        !mt ||
+        mt === 'total' ||
+        mt === 'total::success' ||
+        mt === 'total::failure'
+      ) {
+        return;
+      }
+      if (mt.endsWith('::success')) {
+        baseNames.add(mt.replace('::success', ''));
+      } else if (mt.endsWith('::failure')) {
+        baseNames.add(mt.replace('::failure', ''));
+      } else {
+        baseNames.add(mt);
+      }
+    });
 
-    const orderedMetricTypes = [
-      endpointBaseName ? `${endpointBaseName}::success` : null,
-      endpointBaseName ? `${endpointBaseName}::failure` : null,
-      'total',
-    ].filter(Boolean);
+    const orderedMetricTypes: string[] = [];
+    Array.from(baseNames).forEach(name => {
+      orderedMetricTypes.push(`${name}::success`, `${name}::failure`);
+    });
+    orderedMetricTypes.push('total');
 
     return orderedMetricTypes
       .map(metricType => results.find(r => r.metric_type === metricType))

@@ -471,6 +471,7 @@ def _preload_dataset(environment) -> None:
 
     Called once during ``test_start`` so that all users share the same queue
     without racing during ``on_start``.
+    In multiprocess mode, uses mmap-backed SharedDatasetReader for memory efficiency.
     """
     options = environment.parsed_options
     dataset_file = getattr(options, "dataset_file", "") or ""
@@ -480,7 +481,46 @@ def _preload_dataset(environment) -> None:
     task_id = options.task_id or os.environ.get("TASK_ID", "unknown")
     task_logger = logger.bind(task_id=task_id)
 
+    is_multiprocess = os.environ.get("LOCUST_PROCESSES", "1") != "1"
+
     try:
+        if is_multiprocess:
+            from utils.shared_dataset import DatasetQueueAdapter, SharedDatasetReader
+
+            items = []
+            with open(dataset_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if len(items) >= MAX_QUEUE_SIZE:
+                        task_logger.warning(
+                            f"Dataset file {dataset_file} exceeded "
+                            f"MAX_QUEUE_SIZE={MAX_QUEUE_SIZE}; remaining records skipped."
+                        )
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                        items.append({"json": payload})
+                    except Exception:
+                        items.append({"text": line})
+
+            if items:
+                reader = SharedDatasetReader.from_items(items, task_logger)
+                environment.dataset_queue = DatasetQueueAdapter(reader)
+                task_logger.info(
+                    f"Using SharedDatasetReader ({len(reader)} items) "
+                    f"for multiprocess HTTP mode"
+                )
+                return
+            else:
+                environment.dataset_queue = None
+                task_logger.warning(
+                    f"Dataset file {dataset_file} contained no valid records."
+                )
+                return
+
+        # Single-process fallback: standard queue
         dq: queue.Queue = queue.Queue()
         with open(dataset_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -638,6 +678,11 @@ def on_test_stop(environment, **kwargs):
                 _write_result_file(task_id, locust_stats)
             except Exception as e:  # pragma: no cover - defensive
                 task_logger.error(f"Failed to write result file: {e}", exc_info=True)
+
+        # Release shared dataset mmap resources if applicable
+        dataset_queue = getattr(environment, "dataset_queue", None)
+        if dataset_queue and hasattr(dataset_queue, "close"):
+            dataset_queue.close()
 
 
 # ---------------------------------------------------------------------------

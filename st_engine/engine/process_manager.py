@@ -268,11 +268,10 @@ class MultiprocessManager:
         for process in processes:
             try:
                 if not process.is_running():
-                    terminated_count += 1
                     continue
                 process.terminate()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
-                terminated_count += 1
+                pass
 
         for process in processes:
             try:

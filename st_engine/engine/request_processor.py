@@ -21,7 +21,7 @@ from engine.core import (
     StreamMetrics,
 )
 from utils.common import encode_image, safe_int_convert
-from utils.error_handler import ErrorResponse
+from utils.error_handler import ErrorResponse, _safe_repr_truncate
 from utils.event_handler import EventManager
 
 global_state = GlobalStateManager()
@@ -983,9 +983,7 @@ class APIClient:
         self, req_id: str, error_msg: str, payload_data: Any
     ) -> None:
         """Log an error message with truncated payload and req_id."""
-        payload_str = repr(payload_data) if payload_data else ""
-        if len(payload_str) > 500:
-            payload_str = payload_str[:500] + "... (truncated)"
+        payload_str = _safe_repr_truncate(payload_data, 500) if payload_data else ""
         self.task_logger.error(f"[{req_id}] {error_msg} | Payload: {payload_str}")
 
     def _iter_stream_lines(self, response) -> Any:
@@ -1103,13 +1101,7 @@ class APIClient:
                             self.task_logger.opt(lazy=True).debug(
                                 "[{req_id}] Request Payload: {payload}",
                                 req_id=lambda: req_id,
-                                payload=lambda: (
-                                    lambda s: (
-                                        s[:500] + "... (truncated)"
-                                        if len(s) > 500
-                                        else s
-                                    )
-                                )(repr(payload_data)),
+                                payload=lambda: _safe_repr_truncate(payload_data, 500),
                             )
                         self.task_logger.opt(lazy=True).debug(
                             "[{req_id}] Stream Response Content: reasoning_content={r_content}, content={content}",
@@ -1383,11 +1375,7 @@ class APIClient:
                     self.task_logger.opt(lazy=True).debug(
                         "[{req_id}] Request Payload: {payload}",
                         req_id=lambda: req_id,
-                        payload=lambda: (
-                            lambda s: (
-                                s[:500] + "... (truncated)" if len(s) > 500 else s
-                            )
-                        )(repr(payload_data)),
+                        payload=lambda: _safe_repr_truncate(payload_data, 500),
                     )
                 return reasoning_content, content, usage
 

@@ -27,6 +27,8 @@ _SERVICE_TOKEN_ALLOWED_PATHS: frozenset[str] = frozenset(
         "/api/skills/analyze-url",
         "/api/http-tasks/test",
         "/api/http-tasks",
+        "/api/llm-tasks/test",
+        "/api/llm-tasks",
     }
 )
 

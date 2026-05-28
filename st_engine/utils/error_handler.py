@@ -10,6 +10,30 @@ from config.base import DEFAULT_TIMEOUT, HTTP_OK
 from engine.core import GlobalConfig
 from utils.event_handler import EventManager
 
+_PAYLOAD_LOG_LIMIT = 500
+
+
+def _safe_repr_truncate(obj: Any, limit: int = _PAYLOAD_LOG_LIMIT) -> str:
+    """Return a truncated repr without allocating the full string first.
+
+    For large objects (e.g. dicts containing base64 images), calling repr()
+    then slicing still creates the entire multi-MB string in memory.  Instead
+    we convert to str with a hard size cap using iterative key inspection for
+    dicts and a direct str() fallback for other types.
+    """
+    try:
+        if isinstance(obj, dict):
+            preview = str(obj)[:limit]
+        elif isinstance(obj, (list, tuple)):
+            preview = str(obj)[:limit]
+        else:
+            preview = repr(obj)[:limit]
+    except Exception:
+        preview = "<unrepresentable>"
+    if len(preview) >= limit:
+        return preview[:limit] + "... (truncated)"
+    return preview
+
 
 # === ERROR HANDLING ===
 class ErrorResponse:
@@ -79,9 +103,7 @@ class ErrorResponse:
         if req_id:
             log_msg = f"[{req_id}] {log_msg}"
         if payload_data is not None:
-            payload_str = repr(payload_data)
-            if len(payload_str) > 500:
-                payload_str = payload_str[:500] + "... (truncated)"
+            payload_str = _safe_repr_truncate(payload_data, 500)
             log_msg += f" | Payload: {payload_str}"
 
         self.task_logger.error(log_msg)

@@ -30,7 +30,7 @@ LMETERX_BASE_URL: str = os.getenv("LMETERX_BASE_URL", "http://localhost:8080").r
 )
 
 # Prioritize getting Service Token from environment variables; if not configured, use the built-in default value "localhost_lmeterx".
-LMETERX_AUTH_TOKEN: str = os.getenv("LMETERX_AUTH_TOKEN") or "localhost_lmeterx"
+LMETERX_AUTH_TOKEN: str = os.getenv("LMETERX_AUTH_TOKEN") or "<YOUR_AUTH_TOKEN>"
 
 # Only allow calling the following 3 whitelisted interface paths
 _ALLOWED_PATHS = frozenset(

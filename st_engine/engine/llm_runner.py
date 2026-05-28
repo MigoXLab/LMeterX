@@ -278,10 +278,10 @@ class LlmLocustRunner:
         env = os.environ.copy()
         env["TASK_ID"] = warmup_task_id
         env["LOCUST_CONCURRENT_USERS"] = str(warmup_users)
-        # Force the child process to output DEBUG logs so we can capture payloads
-        # for the detailed task log.
-        if "LOG_LEVEL" not in env or env["LOG_LEVEL"] == "INFO":
-            env["LOG_LEVEL"] = "DEBUG"
+        # Warmup uses INFO level to avoid OOM from large payloads (e.g. base64
+        # images) being repr'd into DEBUG log lines in each worker process.
+        if "LOG_LEVEL" not in env:
+            env["LOG_LEVEL"] = "INFO"
 
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (

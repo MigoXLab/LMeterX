@@ -21,6 +21,7 @@ from config.base import (
     HTTP_OUTCOME_LATENCY_BUCKET_MS,
     MAX_QUEUE_SIZE,
 )
+from utils.error_handler import _safe_repr_truncate
 from utils.logger import logger, setup_clean_log_format
 from utils.realtime_metrics import realtime_metrics_greenlet
 
@@ -767,13 +768,7 @@ class CommonApiUser(HttpUser):
                             self.task_logger.opt(lazy=True).debug(
                                 "[{req_id}] Request Payload: {payload}",
                                 req_id=lambda: req_id,
-                                payload=lambda: (
-                                    lambda s: (
-                                        s[:500] + "... (truncated)"
-                                        if len(s) > 500
-                                        else s
-                                    )
-                                )(repr(payload_data)),
+                                payload=lambda: _safe_repr_truncate(payload_data, 500),
                             )
                     else:
                         resp.failure(reason)
@@ -793,11 +788,7 @@ class CommonApiUser(HttpUser):
                         self.task_logger.opt(lazy=True).debug(
                             "[{req_id}] Request Payload: {payload}",
                             req_id=lambda: req_id,
-                            payload=lambda: (
-                                lambda s: (
-                                    s[:500] + "... (truncated)" if len(s) > 500 else s
-                                )
-                            )(repr(payload_data)),
+                            payload=lambda: _safe_repr_truncate(payload_data, 500),
                         )
         except Exception as e:  # pragma: no cover - network dependent
             # Log failure with request context

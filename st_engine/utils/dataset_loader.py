@@ -631,8 +631,6 @@ def init_shared_dataset(
             items = load_dataset_string(test_data, api_type, task_logger)
         else:
             items = load_dataset_file(test_data, api_type, task_logger)
-            if not items and os.path.exists(test_data):
-                items = load_dataset_file(test_data, api_type, task_logger)
 
         if not items:
             return None

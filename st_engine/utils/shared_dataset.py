@@ -93,6 +93,8 @@ class SharedDatasetReader:
 
     def next(self) -> Dict[str, Any]:
         """Get next item in round-robin order."""
+        if self._total == 0:
+            raise IndexError("Cannot get next item from empty dataset")
         idx = self._index % self._total
         self._index += 1
         return self._read_item(idx)

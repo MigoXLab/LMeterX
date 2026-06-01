@@ -11,12 +11,16 @@ import subprocess  # nosec B404
 import tempfile
 import threading
 import time
-from queue import Queue
+from collections import deque
 from typing import Dict, List, Tuple
 
 import psutil
 
-from config.base import LOCUST_STOP_TIMEOUT, LOCUST_WAIT_TIMEOUT_BUFFER
+from config.base import (
+    LOCUST_STOP_TIMEOUT,
+    LOCUST_WAIT_TIMEOUT_BUFFER,
+    MAX_CAPTURED_OUTPUT_BYTES,
+)
 from config.multiprocess import (
     get_cpu_count,
     get_process_count,
@@ -33,6 +37,45 @@ from utils.common import mask_sensitive_command
 from utils.logger import logger
 
 
+class _OutputTailBuffer:
+    """Bound retained subprocess output while preserving recent diagnostics."""
+
+    def __init__(self, max_bytes: int) -> None:
+        self.max_bytes = max(0, int(max_bytes or 0))
+        self._lines: deque[str] = deque()
+        self._bytes = 0
+        self.truncated = False
+
+    @staticmethod
+    def _line_size(line: str) -> int:
+        return len(line.encode("utf-8", errors="replace"))
+
+    def append(self, line: str) -> None:
+        if self.max_bytes <= 0:
+            self.truncated = True
+            return
+
+        size = self._line_size(line)
+        if size > self.max_bytes:
+            encoded = line.encode("utf-8", errors="replace")[-self.max_bytes :]
+            line = encoded.decode("utf-8", errors="ignore")
+            size = self._line_size(line)
+            self._lines.clear()
+            self._bytes = 0
+            self.truncated = True
+
+        self._lines.append(line)
+        self._bytes += size
+
+        while self._bytes > self.max_bytes and self._lines:
+            dropped = self._lines.popleft()
+            self._bytes -= self._line_size(dropped)
+            self.truncated = True
+
+    def text(self) -> str:
+        return "".join(self._lines)
+
+
 class LlmLocustRunner:
     """
     Enhanced Locust runner with robust multiprocess management.
@@ -42,6 +85,7 @@ class LlmLocustRunner:
     _stopped_task_ids: set[str] = (
         set()
     )  # Track task IDs that have been requested to stop
+    _STOPPED_IDS_HARD_CAP = 500
     _WARMUP_DURATION_SECONDS = 120
     _WARMUP_COOLDOWN_SECONDS = 3
     _WARMUP_STOP_TIMEOUT_SECONDS = 10
@@ -52,6 +96,23 @@ class LlmLocustRunner:
         self._locustfile_path = os.path.join(
             self.base_dir, "engine", "llm_locustfile.py"
         )
+
+    def _cleanup_stale_stopped_ids(self) -> int:
+        """Remove stopped task IDs that have no corresponding active process.
+
+        Returns the number of entries removed.
+        """
+        if len(self._stopped_task_ids) > self._STOPPED_IDS_HARD_CAP:
+            logger.warning(
+                f"_stopped_task_ids exceeded hard cap ({len(self._stopped_task_ids)}). "
+                f"Force clearing to prevent memory leak."
+            )
+            self._stopped_task_ids.clear()
+            return 0
+        stale_ids = self._stopped_task_ids - set(self._process_dict.keys())
+        for task_id in stale_ids:
+            self._stopped_task_ids.discard(task_id)
+        return len(stale_ids)
 
     # --- Shared stepped load helpers ---
 
@@ -115,6 +176,11 @@ class LlmLocustRunner:
         """
         task_logger = logger.bind(task_id=task.id)
 
+        # Opportunistic cleanup of stale stopped IDs to prevent memory leak
+        cleaned = self._cleanup_stale_stopped_ids()
+        if cleaned:
+            task_logger.debug(f"Cleaned {cleaned} stale stopped task IDs")
+
         try:
             # Step 1: Prepare environment
             self._prepare_task(task, task_logger)
@@ -153,22 +219,15 @@ class LlmLocustRunner:
                 "locust_result": {},
             }
         finally:
-            # Ensure cleanup is attempted even if an exception occurs
-            # This is a safety net. `_finalize_task` should handle normal cleanup.
+            # Always discard from stopped set to prevent memory leak
+            self._stopped_task_ids.discard(task.id)
+
+            # Emergency cleanup if process still tracked (abnormal exit)
             if task.id in self._process_dict:
                 task_logger.warning(
                     f"Task {task.id} exited abnormally. Triggering emergency cleanup."
                 )
-                # We create a dummy process object just to satisfy the _cleanup_task signature.
-                # The actual PID might be invalid, but _cleanup_task will handle it gracefully.
-                dummy_true = shutil.which("true") or "/bin/true"
-                dummy_process = subprocess.Popen(
-                    [dummy_true],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )  # nosec B607,B603 - absolute path; no untrusted input
-                dummy_process.pid = -1  # Mark it as invalid
-                self._cleanup_task(task, dummy_process, task_logger)
+                self._cleanup_task_resources(task, task_logger)
 
     def _prepare_task(self, task: Task, task_logger) -> None:
         """Prepare task environment: validate config and files."""
@@ -235,10 +294,10 @@ class LlmLocustRunner:
         env = os.environ.copy()
         env["TASK_ID"] = warmup_task_id
         env["LOCUST_CONCURRENT_USERS"] = str(warmup_users)
-        # Force the child process to output DEBUG logs so we can capture payloads
-        # for the detailed task log.
-        if "LOG_LEVEL" not in env or env["LOG_LEVEL"] == "INFO":
-            env["LOG_LEVEL"] = "DEBUG"
+        # Warmup uses INFO level to avoid OOM from large payloads (e.g. base64
+        # images) being repr'd into DEBUG log lines in each worker process.
+        if "LOG_LEVEL" not in env:
+            env["LOG_LEVEL"] = "INFO"
 
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
@@ -585,6 +644,15 @@ class LlmLocustRunner:
         env = os.environ.copy()
         env["TASK_ID"] = str(task.id)
         env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
+
+        # Expose process count so locustfiles can detect multiprocess mode
+        # and use shared memory for datasets instead of per-process copies.
+        try:
+            proc_idx = cmd.index("--processes")
+            env["LOCUST_PROCESSES"] = cmd[proc_idx + 1]
+        except (ValueError, IndexError):
+            env["LOCUST_PROCESSES"] = "1"
+
         # Ensure Locust subprocess can import project modules
         # Force the child process to output DEBUG logs so we can capture payloads
         # for the detailed task log.
@@ -642,14 +710,16 @@ class LlmLocustRunner:
         self, process: subprocess.Popen, task: Task, task_logger
     ) -> Tuple[str, str]:
         """Monitor process execution and capture real-time output."""
-        stdout_queue: Queue[str] = Queue()
-        stderr_queue: Queue[str] = Queue()
+        stdout_buffer = _OutputTailBuffer(MAX_CAPTURED_OUTPUT_BYTES)
+        stderr_buffer = _OutputTailBuffer(MAX_CAPTURED_OUTPUT_BYTES)
 
-        def read_stream(pipe, q, name):
+        def read_stream(pipe, output_buffer, name):
+            if pipe is None:
+                return
             try:
                 for line in iter(pipe.readline, ""):
                     if line.strip():
-                        q.put(line)
+                        output_buffer.append(line)
                         if " | DEBUG    | " in line or " | DEBUG | " in line:
                             task_logger.opt(raw=True).debug(line)
                         elif " | WARNING  | " in line or " | WARNING | " in line:
@@ -663,10 +733,10 @@ class LlmLocustRunner:
                 task_logger.error(f"Error reading {name}: {e}")
 
         stdout_thread = threading.Thread(
-            target=read_stream, args=(process.stdout, stdout_queue, "stdout")
+            target=read_stream, args=(process.stdout, stdout_buffer, "stdout")
         )
         stderr_thread = threading.Thread(
-            target=read_stream, args=(process.stderr, stderr_queue, "stderr")
+            target=read_stream, args=(process.stderr, stderr_buffer, "stderr")
         )
 
         stdout_thread.daemon = True
@@ -708,9 +778,13 @@ class LlmLocustRunner:
         stdout_thread.join(timeout=10)
         stderr_thread.join(timeout=10)
 
-        # Drain queues
-        stdout = "".join(list(stdout_queue.queue))
-        stderr = "".join(list(stderr_queue.queue))
+        stdout = stdout_buffer.text()
+        stderr = stderr_buffer.text()
+        if stdout_buffer.truncated or stderr_buffer.truncated:
+            task_logger.warning(
+                "Subprocess output exceeded in-memory capture limit; "
+                f"retained last {MAX_CAPTURED_OUTPUT_BYTES} bytes per stream."
+            )
 
         return stdout, stderr
 
@@ -774,6 +848,10 @@ class LlmLocustRunner:
 
     def _cleanup_task(self, task: Task, process: subprocess.Popen, task_logger) -> None:
         """Perform comprehensive cleanup after task completion."""
+        self._cleanup_task_resources(task, task_logger)
+
+    def _cleanup_task_resources(self, task, task_logger) -> None:
+        """Core cleanup logic that does not require a process object."""
         task_id = task.id
         task_logger.info(f"Starting cleanup for task {task_id}")
 

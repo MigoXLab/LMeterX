@@ -148,7 +148,7 @@ def test_pipeline_runs_non_deleted_task(task_service):
     mock_start_task.assert_called_once_with(mock_task)
 
 
-def test_reconcile_keeps_running_when_pgrep_missing(task_service):
+def test_reconcile_marks_running_failed_when_process_missing(task_service):
     mock_session = Mock()
     mock_task = Mock()
     mock_task.id = "task-owned-engine"
@@ -164,10 +164,13 @@ def test_reconcile_keeps_running_when_pgrep_missing(task_service):
         patch("service.llm_task_service.remove_task_log_sink"),
         patch.object(task_service, "update_task_status") as mock_update_status,
         patch(
-            "service.llm_task_service.subprocess.check_output",
-            side_effect=FileNotFoundError("pgrep"),
+            "service.llm_task_service.find_locust_processes_by_task_id",
+            return_value=[],
         ),
     ):
         task_service.reconcile_tasks_on_startup(mock_session)
 
-    mock_update_status.assert_not_called()
+    mock_update_status.assert_called_once()
+    call_args = mock_update_status.call_args
+    assert call_args[0][2] == TASK_STATUS_FAILED
+    assert "not found" in call_args[0][3].lower()

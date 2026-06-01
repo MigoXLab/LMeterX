@@ -117,6 +117,7 @@ def _ensure_prompt_queue(environment, options, task_logger):
     Ensure the Locust environment carries a prompt_queue.
     Returns the queue instance for chaining.
     In warmup mode, skip dataset loading - use default prompt only.
+    In multiprocess mode, uses SharedDatasetReader for memory efficiency.
     """
     if hasattr(environment, "prompt_queue"):
         return environment.prompt_queue
@@ -127,11 +128,34 @@ def _ensure_prompt_queue(environment, options, task_logger):
         return environment.prompt_queue
 
     try:
+        # In multiprocess mode, use mmap-backed shared dataset to avoid
+        # duplicating the entire dataset in each worker process.
+        is_multiprocess = os.environ.get("LOCUST_PROCESSES", "1") != "1"
+
+        if is_multiprocess:
+            from utils.dataset_loader import init_shared_dataset
+            from utils.shared_dataset import DatasetQueueAdapter
+
+            reader = init_shared_dataset(
+                chat_type=int(getattr(options, "chat_type", 0)),
+                test_data=getattr(options, "test_data", "") or "",
+                api_type=getattr(options, "api_type", ""),
+                task_logger=task_logger,
+            )
+            if reader is not None:
+                environment.prompt_queue = DatasetQueueAdapter(reader)
+                task_logger.info(
+                    f"Using SharedDatasetReader ({len(reader)} items) for multiprocess mode"
+                )
+                return environment.prompt_queue
+
+        # Fallback: standard queue (single-process or shared dataset failed)
         from utils.dataset_loader import init_prompt_queue
 
         environment.prompt_queue = init_prompt_queue(
             chat_type=int(getattr(options, "chat_type", 0)),
             test_data=getattr(options, "test_data", "") or "",
+            api_type=getattr(options, "api_type", ""),
             task_logger=task_logger,
         )
     except Exception as exc:
@@ -480,6 +504,11 @@ def on_test_stop(environment, **kwargs):
 
     except Exception as e:
         task_logger.error(f"Error in on_test_stop: {e}", exc_info=True)
+    finally:
+        # Release shared dataset mmap resources if applicable
+        prompt_queue = getattr(environment, "prompt_queue", None)
+        if prompt_queue and hasattr(prompt_queue, "close"):
+            prompt_queue.close()
 
 
 # ---------------------------------------------------------------------------

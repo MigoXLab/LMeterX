@@ -17,6 +17,7 @@ from engine.http_locustfile import (
     _build_stat_row,
     _check_success_assert,
     _format_context,
+    _OutcomeStats,
     _parse_kv,
     _parse_request_body,
     _preload_dataset,
@@ -309,6 +310,31 @@ class TestBuildStatRow:
         assert row["num_failures"] == 5
         assert row["p95_latency"] == 180.0
         stat.get_response_time_percentile.assert_called_with(0.95)
+
+    def test_builds_success_failure_split_rows(self):
+        outcome_stats = _OutcomeStats()
+        outcome_stats.record("GET /api/users", 10.0, 100, failed=False)
+        outcome_stats.record("GET /api/users", 20.0, 200, failed=False)
+        outcome_stats.record("GET /api/users", 30.0, 300, failed=False)
+        outcome_stats.record("GET /api/users", 200.0, 40, failed=True)
+
+        rows = outcome_stats.build_rows("task-001", "GET /api/users", 8.0)
+        rows_by_type = {row["metric_type"]: row for row in rows}
+
+        success_row = rows_by_type["GET /api/users::success"]
+        failure_row = rows_by_type["GET /api/users::failure"]
+        assert success_row["num_requests"] == 3
+        assert success_row["num_failures"] == 0
+        assert success_row["avg_latency"] == 20.0
+        assert success_row["p95_latency"] == 30.0
+        assert success_row["rps"] == 6.0
+        assert success_row["avg_content_length"] == 200.0
+        assert failure_row["num_requests"] == 1
+        assert failure_row["num_failures"] == 1
+        assert failure_row["avg_latency"] == 200.0
+        assert failure_row["p95_latency"] == 200.0
+        assert failure_row["rps"] == 2.0
+        assert failure_row["avg_content_length"] == 40.0
 
     def test_exception_returns_empty(self):
         stat = Mock(

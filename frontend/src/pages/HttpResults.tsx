@@ -265,8 +265,20 @@ const HttpResults: React.FC = () => {
     () => results.find(r => r.metric_type === 'total') || results[0],
     [results]
   );
+  const totalSuccessRow = useMemo(
+    () => results.find(r => r.metric_type === 'total::success'),
+    [results]
+  );
+  const totalFailureRow = useMemo(
+    () => results.find(r => r.metric_type === 'total::failure'),
+    [results]
+  );
   const totalRequests = totalRow?.request_count ?? 0;
   const failureCount = totalRow?.failure_count ?? 0;
+  const hasOutcomeSplit = Boolean(totalSuccessRow || totalFailureRow);
+  const failureRequests = hasOutcomeSplit
+    ? (totalFailureRow?.request_count ?? 0)
+    : failureCount;
 
   // Smart format success rate: if close to 100% but not 100%, show more decimal places
   const calculateSuccessRate = (total: number, failures: number): number => {
@@ -287,7 +299,12 @@ const HttpResults: React.FC = () => {
     totalRow?.rps != null && totalRow.rps !== undefined
       ? Number(totalRow.rps)
       : 0;
-  const qpm = Number((rawRps * 60).toFixed(2));
+  const successRps = hasOutcomeSplit
+    ? Number(totalSuccessRow?.rps ?? 0)
+    : failureCount === 0
+      ? rawRps
+      : 0;
+  const successQpm = Number((successRps * 60).toFixed(2));
   const avgTimeSec =
     totalRow?.avg_response_time != null
       ? Number((totalRow.avg_response_time / 1000).toFixed(3))
@@ -296,6 +313,50 @@ const HttpResults: React.FC = () => {
     totalRow?.percentile_95_response_time != null
       ? Number((totalRow.percentile_95_response_time / 1000).toFixed(3))
       : 0;
+  const successAvgTimeSec = hasOutcomeSplit
+    ? Number(((totalSuccessRow?.avg_response_time ?? 0) / 1000).toFixed(3))
+    : failureCount === 0
+      ? avgTimeSec
+      : 0;
+  const successP95TimeSec = hasOutcomeSplit
+    ? Number(
+        ((totalSuccessRow?.percentile_95_response_time ?? 0) / 1000).toFixed(3)
+      )
+    : failureCount === 0
+      ? p95TimeSec
+      : 0;
+
+  const metricsDetailRows = useMemo(() => {
+    const baseNames = new Set<string>();
+    results.forEach(r => {
+      const mt = r.metric_type as string | undefined;
+      if (
+        !mt ||
+        mt === 'total' ||
+        mt === 'total::success' ||
+        mt === 'total::failure'
+      ) {
+        return;
+      }
+      if (mt.endsWith('::success')) {
+        baseNames.add(mt.replace('::success', ''));
+      } else if (mt.endsWith('::failure')) {
+        baseNames.add(mt.replace('::failure', ''));
+      } else {
+        baseNames.add(mt);
+      }
+    });
+
+    const orderedMetricTypes: string[] = [];
+    Array.from(baseNames).forEach(name => {
+      orderedMetricTypes.push(`${name}::success`, `${name}::failure`);
+    });
+    orderedMetricTypes.push('total');
+
+    return orderedMetricTypes
+      .map(metricType => results.find(r => r.metric_type === metricType))
+      .filter(Boolean);
+  }, [results]);
 
   // Whether the task is currently in a stoppable state
   const isTaskRunning =
@@ -650,7 +711,21 @@ const HttpResults: React.FC = () => {
         key: 'metric_type',
         width: 140,
         ellipsis: true,
-        render: (text: string) => text,
+        render: (text: string) => {
+          if (text.endsWith('::success')) {
+            return `${text.replace('::success', '')} (${t(
+              'common.success',
+              'Success'
+            )})`;
+          }
+          if (text.endsWith('::failure')) {
+            return `${text.replace('::failure', '')} (${t(
+              'common.error',
+              'Failure'
+            )})`;
+          }
+          return text;
+        },
       },
       {
         title: t('pages.results.totalRequests', 'Requests'),
@@ -1059,8 +1134,8 @@ const HttpResults: React.FC = () => {
             </span>
           </div>
           <div className='section-content'>
-            <Row gutter={16} style={{ justifyContent: 'flex-start' }}>
-              <Col span={6}>
+            <Row gutter={[16, 16]} style={{ justifyContent: 'flex-start' }}>
+              <Col span={8}>
                 <Statistic
                   title={t('pages.results.totalRequests')}
                   value={totalRequests}
@@ -1068,7 +1143,7 @@ const HttpResults: React.FC = () => {
                   valueStyle={statisticValueStyle}
                 />
               </Col>
-              <Col span={6}>
+              <Col span={8}>
                 <Statistic
                   title={t('pages.results.successRate')}
                   value={successRate}
@@ -1080,36 +1155,46 @@ const HttpResults: React.FC = () => {
                   valueStyle={statisticValueStyle}
                 />
               </Col>
-              <Col span={6}>
+              <Col span={8}>
+                <Statistic
+                  title={t('pages.results.failureCount')}
+                  value={failureRequests}
+                  style={statisticWrapperStyle}
+                  valueStyle={{
+                    ...statisticValueStyle,
+                    color:
+                      failureRequests > 0 ? 'var(--color-error)' : undefined,
+                  }}
+                />
+              </Col>
+              <Col span={8}>
                 <Statistic
                   title='QPM'
-                  value={qpm}
+                  value={successQpm}
                   style={statisticWrapperStyle}
                   valueStyle={statisticValueStyle}
                 />
               </Col>
-              <Col span={6}>
+              <Col span={8}>
                 <Statistic
                   title={t('pages.results.avgResponseTime')}
-                  value={avgTimeSec}
+                  value={successAvgTimeSec}
                   suffix='s'
                   precision={3}
                   style={statisticWrapperStyle}
                   valueStyle={statisticValueStyle}
                 />
               </Col>
-              {p95TimeSec > 0 && (
-                <Col span={6}>
-                  <Statistic
-                    title={t('pages.results.p95ResponseTime')}
-                    value={p95TimeSec}
-                    suffix='s'
-                    precision={3}
-                    style={statisticWrapperStyle}
-                    valueStyle={statisticValueStyle}
-                  />
-                </Col>
-              )}
+              <Col span={8}>
+                <Statistic
+                  title={t('pages.results.p95ResponseTime')}
+                  value={successP95TimeSec}
+                  suffix='s'
+                  precision={3}
+                  style={statisticWrapperStyle}
+                  valueStyle={statisticValueStyle}
+                />
+              </Col>
             </Row>
           </div>
         </div>
@@ -1124,7 +1209,7 @@ const HttpResults: React.FC = () => {
           <div className='section-content'>
             <Table
               rowKey='metric_type'
-              dataSource={results}
+              dataSource={metricsDetailRows}
               pagination={false}
               scroll={{ x: 1100 }}
               className='modern-table'

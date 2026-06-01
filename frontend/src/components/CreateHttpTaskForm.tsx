@@ -258,13 +258,6 @@ const CreateHttpTaskForm: React.FC<Props> = ({
   }, [methodValue]);
 
   const buildPayload = (values: any, includeTempId: boolean = false) => {
-    const curlCommand = (values.curl_command || '').trim();
-    const maxCurlLength = 8000;
-    const isCurlTooLong = curlCommand.length > maxCurlLength;
-    const safeCurlCommand = isCurlTooLong
-      ? curlCommand.slice(0, maxCurlLength)
-      : curlCommand;
-
     const hasBody = METHODS_WITH_BODY.has((values.method || '').toUpperCase());
     const datasetFile =
       hasBody && values.dataset_source === 'upload'
@@ -311,7 +304,6 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       request_body: hasBody ? values.request_body || '' : '',
       dataset_file: datasetFile,
       dataset_source: hasBody ? values.dataset_source || 'none' : 'none',
-      curl_command: safeCurlCommand,
       success_assert: successAssert || null,
       headers: (values.headers || '').trim()
         ? values.headers
@@ -331,6 +323,8 @@ const CreateHttpTaskForm: React.FC<Props> = ({
     delete payload.success_assert_field;
     delete payload.success_assert_operator;
     delete payload.success_assert_value;
+    // Raw curl text can trip upstream WAF rules; parsed fields above are sufficient.
+    delete payload.curl_command;
 
     if (mode === 'fixed') {
       // Clear stepped fields for fixed mode

@@ -166,8 +166,8 @@ class TestLdapDisabledNoToken:
         assert resp.status_code == 200
         assert resp.json()["username"] == "anonymous"
 
-    def test_non_whitelist_llm_tasks_no_auth(self):
-        """非白名单接口 /api/llm-tasks 无需 Token。"""
+    def test_whitelist_llm_tasks_no_auth(self):
+        """白名单接口 /api/llm-tasks 无需 Token。"""
         resp = self.client.get("/api/llm-tasks")
         assert resp.status_code == 200
 
@@ -227,10 +227,10 @@ class TestLdapEnabledNoToken:
         resp = self.client.get("/api/auth/profile")
         assert resp.status_code == 403
 
-    def test_non_whitelist_llm_tasks_returns_403(self):
-        """非白名单接口无 Token → 403。"""
+    def test_whitelist_llm_tasks_returns_401(self):
+        """白名单接口无 Token → 401。"""
         resp = self.client.get("/api/llm-tasks")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -288,10 +288,11 @@ class TestLdapEnabledMatchingToken:
         resp = self.client.get("/api/auth/profile", headers=self.auth_header)
         assert resp.status_code == 403
 
-    def test_non_whitelist_llm_tasks_returns_403(self):
-        """Service Token + 非白名单接口 /api/llm-tasks → 403 Forbidden。"""
+    def test_whitelist_llm_tasks_success(self):
+        """白名单接口 /api/llm-tasks + 正确 Token → 200。"""
         resp = self.client.get("/api/llm-tasks", headers=self.auth_header)
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        assert resp.json()["user"]["sub"] == "agent"
 
     def test_non_whitelist_response_body(self):
         """403 响应体应包含明确的错误信息。"""
@@ -347,10 +348,10 @@ class TestLdapEnabledWrongToken:
         resp = self.client.get("/api/system", headers=self.wrong_header)
         assert resp.status_code == 403
 
-    def test_non_whitelist_llm_tasks_wrong_token_returns_403(self):
-        """非白名单接口 + 错误 Token → 403。"""
+    def test_whitelist_llm_tasks_wrong_token_401(self):
+        """白名单接口 /api/llm-tasks + 错误 Token → 401。"""
         resp = self.client.get("/api/llm-tasks", headers=self.wrong_header)
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     # ── 白名单路径 + 无 Token: 仍然 401 ──
 
@@ -392,6 +393,8 @@ class TestSkillClientWhitelist:
                 "/api/skills/analyze-url",
                 "/api/http-tasks/test",
                 "/api/http-tasks",
+                "/api/llm-tasks/test",
+                "/api/llm-tasks",
             }
         )
         for path in allowed:
@@ -404,11 +407,12 @@ class TestSkillClientWhitelist:
                 "/api/skills/analyze-url",
                 "/api/http-tasks/test",
                 "/api/http-tasks",
+                "/api/llm-tasks/test",
+                "/api/llm-tasks",
             }
         )
         blocked_paths = [
             "/api/system",
-            "/api/llm-tasks",
             "/api/auth/profile",
             "/api/auth/login",
             "/api/analyze",
@@ -427,6 +431,8 @@ class TestSkillClientWhitelist:
                 "/api/skills/analyze-url",
                 "/api/http-tasks/test",
                 "/api/http-tasks",
+                "/api/llm-tasks/test",
+                "/api/llm-tasks",
             }
         )
 
@@ -444,6 +450,8 @@ class TestSkillClientWhitelist:
                 "/api/skills/analyze-url",
                 "/api/http-tasks/test",
                 "/api/http-tasks",
+                "/api/llm-tasks/test",
+                "/api/llm-tasks",
             }
         )
 

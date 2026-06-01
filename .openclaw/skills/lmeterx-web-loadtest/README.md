@@ -10,8 +10,8 @@ The script comes with the following built-in default values ​​and can be run
 
 | Variable | Default Value | Description |
 |------|--------|------|
-| `LMETERX_BASE_URL` | `http://localhost:8080` | LMeterX Backend Address |
-| `LMETERX_AUTH_TOKEN` | `localhost_lmeterx` | Service Token: Binds to an Agent User |
+| `LMETERX_BASE_URL` | `<YOUR_LMETERX_BASE_URL>` | LMeterX Backend Address |
+| `LMETERX_AUTH_TOKEN` | `<YOUR_AUTH_TOKEN>` | Service Token: Binds to an Agent User |
 
 
 ### 2. Run

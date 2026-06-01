@@ -5,6 +5,7 @@ Copyright (c) 2025, All Rights Reserved.
 
 import json
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -119,7 +120,8 @@ class GlobalStateManager:
         self._config: Optional[GlobalConfig] = None
         self._start_time: Optional[float] = None
         self._token_stats = TokenStats()
-        self._logger_cache: Dict[str, Any] = {}
+        self._logger_cache: OrderedDict[str, Any] = OrderedDict()
+        self._logger_cache_maxsize: int = 128
         self._ssl_context: Optional[Any] = None
         self._task_queue: Optional[Dict[str, queue.Queue]] = None
         self._gevent_lock: Optional[Semaphore] = None
@@ -178,20 +180,34 @@ class GlobalStateManager:
         self._concurrent_users = value
 
     def get_task_logger(self, task_id: str = ""):
-        """Get task logger."""
+        """Get task logger with LRU eviction to prevent unbounded memory growth."""
         if not task_id:
             return logger
 
         if self._gevent_lock is not None:
             with self._gevent_lock:
-                if task_id not in self._logger_cache:
-                    self._logger_cache[task_id] = logger.bind(task_id=task_id)
-                return self._logger_cache[task_id]
+                return self._get_or_create_logger(task_id)
         else:
-            # Fallback when lock is None
-            if task_id not in self._logger_cache:
-                self._logger_cache[task_id] = logger.bind(task_id=task_id)
+            return self._get_or_create_logger(task_id)
+
+    def _get_or_create_logger(self, task_id: str):
+        """Get existing logger (promoting to MRU) or create new one with LRU eviction."""
+        if task_id in self._logger_cache:
+            self._logger_cache.move_to_end(task_id)
             return self._logger_cache[task_id]
+        bound_logger = logger.bind(task_id=task_id)
+        self._logger_cache[task_id] = bound_logger
+        while len(self._logger_cache) > self._logger_cache_maxsize:
+            self._logger_cache.popitem(last=False)
+        return bound_logger
+
+    def evict_task_logger(self, task_id: str) -> None:
+        """Remove a specific task_id from the logger cache."""
+        if self._gevent_lock is not None:
+            with self._gevent_lock:
+                self._logger_cache.pop(task_id, None)
+        else:
+            self._logger_cache.pop(task_id, None)
 
 
 class SimpleLock:
@@ -566,9 +582,10 @@ class ValidationManager:
             task_logger.error("Task ID is required but not provided")
             return False
 
-        if not config.model_name:
-            task_logger.error("Model name is required")
-            return False
+        if getattr(config, "api_type", "") in ("openai-chat", "claude-chat"):
+            if not config.model_name:
+                task_logger.error("Model name is required for this API type")
+                return False
 
         if not config.request_payload:
             task_logger.error("Request payload is required for all API endpoints")

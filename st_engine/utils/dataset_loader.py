@@ -38,6 +38,7 @@ class PromptData:
         image_url: str = "",
         image_path: str = "",
         messages: Optional[List[Dict[str, Any]]] = None,
+        raw_data: Optional[Dict[str, Any]] = None,
     ):
         """Initialize PromptData with prompt information and optional image data.
 
@@ -48,6 +49,7 @@ class PromptData:
             image_url: URL to image (optional)
             image_path: Local file path for lazy encoding (optional, memory-efficient)
             messages: Optional list of messages for chat formats
+            raw_data: The full original JSON object (optional)
         """
         self.id = prompt_id
         self.prompt = prompt
@@ -55,6 +57,7 @@ class PromptData:
         self.image_url = image_url
         self.image_path = image_path
         self.messages = messages or []
+        self.raw_data = raw_data or {}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
@@ -67,6 +70,8 @@ class PromptData:
             result["image_path"] = self.image_path
         if self.messages:
             result["messages"] = self.messages
+        if self.raw_data:
+            result["raw_data"] = self.raw_data
         return result
 
     @classmethod
@@ -79,6 +84,7 @@ class PromptData:
             image_url=data.get("image_url", ""),
             image_path=data.get("image_path", ""),
             messages=data.get("messages", []),
+            raw_data=data.get("raw_data", {}),
         )
 
 
@@ -174,7 +180,9 @@ def extract_prompt_from_messages(messages: List[Dict[str, str]]) -> str:
 
 
 # === LINE PARSING ===
-def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[PromptData]:
+def parse_data_line(
+    line: str, line_num: int, api_type: str = "", task_logger=None
+) -> Optional[PromptData]:
     """Parse a single data line (JSONL or JSON object) into PromptData.
 
     Supports both standard JSONL format and ShareGPT format.
@@ -220,8 +228,14 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
             prompt = extract_prompt_from_messages(messages_list)
 
         if not prompt and not messages_list:
-            # Skip silently without error for missing prompt and messages
-            return None
+            # For embeddings and custom-chat, the prompt might be in another field (e.g. "input").
+            # We shouldn't skip it if the json object has data.
+            if api_type in ("embeddings", "custom-chat"):
+                if not json_obj:
+                    return None
+            else:
+                # For chat APIs, skip silently without error for missing prompt and messages
+                return None
 
         # Handle images - unified image field processing
         # Support both "image" and "image_path" fields
@@ -229,30 +243,38 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
         image_url = ""
         image_path = ""
 
-        # Try "image" field first, then "image_path" as fallback
-        image_field_value = json_obj.get("image") or json_obj.get("image_path")
+        # Skip image parsing for embeddings and custom-chat
+        if api_type not in ("embeddings", "custom-chat"):
+            # Try "image" field first, then "image_path" as fallback
+            image_field_value = json_obj.get("image") or json_obj.get("image_path")
 
-        if image_field_value:
-            # Extract image value (string or list)
-            image_value = normalize_image_path(image_field_value)
+            if image_field_value:
+                # Extract image value (string or list)
+                image_value = normalize_image_path(image_field_value)
 
-            if image_value:
-                # Check if it's a URL
-                if is_url(image_value):
-                    image_url = image_value
-                else:
-                    # Store file path for lazy encoding at request time
-                    # This avoids loading large base64 image data into the prompt queue,
-                    # which is critical for memory efficiency in multiprocess mode.
-                    if os.path.exists(image_value):
-                        image_path = image_value
+                if image_value:
+                    # Check if it's a URL
+                    if is_url(image_value):
+                        image_url = image_value
                     else:
-                        effective_logger.warning(
-                            f"Image file not found in dataset: {image_value}"
-                        )
+                        # Store file path for lazy encoding at request time
+                        # This avoids loading large base64 image data into the prompt queue,
+                        # which is critical for memory efficiency in multiprocess mode.
+                        if os.path.exists(image_value):
+                            image_path = image_value
+                        else:
+                            effective_logger.warning(
+                                f"Image file not found in dataset: {image_value}"
+                            )
 
         return PromptData(
-            prompt_id, prompt, image_base64, image_url, image_path, messages_list
+            prompt_id,
+            prompt,
+            image_base64,
+            image_url,
+            image_path,
+            messages_list,
+            json_obj,
         )
 
     except json.JSONDecodeError as e:
@@ -266,7 +288,9 @@ def parse_data_line(line: str, line_num: int, task_logger=None) -> Optional[Prom
 
 
 # === FILE LOADING ===
-def load_dataset_file(data_file: str, task_logger=None) -> List[Dict[str, Any]]:
+def load_dataset_file(
+    data_file: str, api_type: str = "", task_logger=None
+) -> List[Dict[str, Any]]:
     """Load all stress test data from file.
 
     Supports both JSONL format (one JSON object per line) and JSON array format (ShareGPT).
@@ -313,7 +337,7 @@ def load_dataset_file(data_file: str, task_logger=None) -> List[Dict[str, Any]]:
 
                     # Convert dict to JSON string for parse_data_line
                     line = json.dumps(json_obj, ensure_ascii=False)
-                    prompt_data = parse_data_line(line, idx, task_logger)
+                    prompt_data = parse_data_line(line, idx, api_type, task_logger)
                     if prompt_data:
                         prompts.append(prompt_data.to_dict())
 
@@ -329,7 +353,7 @@ def load_dataset_file(data_file: str, task_logger=None) -> List[Dict[str, Any]]:
                 if not line.strip():
                     continue
 
-                prompt_data = parse_data_line(line, line_num, task_logger)
+                prompt_data = parse_data_line(line, line_num, api_type, task_logger)
                 if prompt_data:
                     prompts.append(prompt_data.to_dict())
 
@@ -341,7 +365,9 @@ def load_dataset_file(data_file: str, task_logger=None) -> List[Dict[str, Any]]:
     return prompts
 
 
-def load_dataset_string(content: str, task_logger=None) -> List[Dict[str, Any]]:
+def load_dataset_string(
+    content: str, api_type: str = "", task_logger=None
+) -> List[Dict[str, Any]]:
     """Load dataset from string content.
 
     Supports both JSONL format and JSON array format (ShareGPT).
@@ -382,7 +408,7 @@ def load_dataset_string(content: str, task_logger=None) -> List[Dict[str, Any]]:
 
                     # Convert dict to JSON string for parse_data_line
                     line = json.dumps(json_obj, ensure_ascii=False)
-                    prompt_data = parse_data_line(line, idx, task_logger)
+                    prompt_data = parse_data_line(line, idx, api_type, task_logger)
                     if prompt_data:
                         prompts.append(prompt_data.to_dict())
 
@@ -396,7 +422,7 @@ def load_dataset_string(content: str, task_logger=None) -> List[Dict[str, Any]]:
                 if not line.strip():
                     continue
 
-                prompt_data = parse_data_line(line, line_num, task_logger)
+                prompt_data = parse_data_line(line, line_num, api_type, task_logger)
                 if prompt_data:
                     prompts.append(prompt_data.to_dict())
 
@@ -407,7 +433,9 @@ def load_dataset_string(content: str, task_logger=None) -> List[Dict[str, Any]]:
 
 
 # === QUEUE INITIALIZATION ===
-def init_prompt_queue_from_string(content: str, task_logger=None) -> queue.Queue:
+def init_prompt_queue_from_string(
+    content: str, api_type: str = "", task_logger=None
+) -> queue.Queue:
     """Initializes the test data queue from JSONL or JSON array string content.
 
     Supports both JSONL format (one JSON object per line) and JSON array format (ShareGPT).
@@ -429,7 +457,7 @@ def init_prompt_queue_from_string(content: str, task_logger=None) -> queue.Queue
         raise ValueError("Empty content provided")
 
     try:
-        prompts = load_dataset_string(content, task_logger)
+        prompts = load_dataset_string(content, api_type, task_logger)
 
         if not prompts:
             raise ValueError("No valid prompts were parsed from the content")
@@ -451,7 +479,9 @@ def init_prompt_queue_from_string(content: str, task_logger=None) -> queue.Queue
         raise RuntimeError(f"Failed to initialize prompt queue from content: {e}")
 
 
-def init_prompt_queue_from_file(file_path: str, task_logger=None) -> queue.Queue:
+def init_prompt_queue_from_file(
+    file_path: str, api_type: str = "", task_logger=None
+) -> queue.Queue:
     """Initializes the test data queue from a custom file.
 
     Supports both JSONL format and JSON array format (ShareGPT).
@@ -473,7 +503,7 @@ def init_prompt_queue_from_file(file_path: str, task_logger=None) -> queue.Queue
         raise ValueError(f"Custom data file not found: {file_path}")
 
     try:
-        prompts = load_dataset_file(file_path, task_logger)
+        prompts = load_dataset_file(file_path, api_type, task_logger)
         if not prompts:
             raise ValueError("No prompts were loaded from the custom data file")
 
@@ -495,6 +525,7 @@ def init_prompt_queue_from_file(file_path: str, task_logger=None) -> queue.Queue
 def init_prompt_queue(
     chat_type: int = 0,
     test_data: str = "",
+    api_type: str = "",
     task_logger=None,
 ) -> queue.Queue:
     """Initializes the test data queue based on the chat type and custom test data.
@@ -542,25 +573,79 @@ def init_prompt_queue(
         if not os.path.exists(data_file):
             raise ValueError(f"Default data file not found: {data_file}")
 
-        return init_prompt_queue_from_file(data_file, task_logger)
+        return init_prompt_queue_from_file(data_file, api_type, task_logger)
 
     # Case 3: test_data is JSONL content string (starts with "{") or JSON array (starts with "[")
     if test_data.strip().startswith("{") or test_data.strip().startswith("["):
-        return init_prompt_queue_from_string(test_data, task_logger)
+        return init_prompt_queue_from_string(test_data, api_type, task_logger)
 
     # Case 4: test_data is a file path - handle both absolute and relative paths
     # Try to resolve the path using FilePathUtils for upload files
     try:
-        return init_prompt_queue_from_file(test_data, task_logger)
+        return init_prompt_queue_from_file(test_data, api_type, task_logger)
     except (ValueError, FileNotFoundError) as e:
         effective_logger.warning(f"Failed to resolve as upload file path: {e}")
 
         # Fallback: try as direct file path for backward compatibility
         if os.path.exists(test_data):
-            return init_prompt_queue_from_file(test_data, task_logger)
+            return init_prompt_queue_from_file(test_data, api_type, task_logger)
 
     # Invalid test_data provided
     raise ValueError(
         f"Invalid test_data provided: '{test_data}'. "
         f"Expected empty string, 'default', JSONL/JSON content string, or valid file path."
     )
+
+
+def init_shared_dataset(
+    chat_type: int = 0,
+    test_data: str = "",
+    api_type: str = "",
+    task_logger=None,
+):
+    """Initialize dataset as a shared mmap reader for multiprocess mode.
+
+    Returns a SharedDatasetReader instance, or None if no dataset is configured
+    or if creation fails (caller should use queue-based fallback).
+    """
+    from utils.shared_dataset import SharedDatasetReader
+
+    effective_logger = task_logger or logger
+
+    if not test_data or test_data.strip() == "":
+        return None
+
+    try:
+        if test_data.strip().lower() == "default":
+            dataset_index = DEFAULT_CHAT_TYPE
+            try:
+                dataset_index = int(chat_type)
+            except (TypeError, ValueError):
+                pass
+            dataset_filename = BUILTIN_DATASET_FILES.get(
+                dataset_index, BUILTIN_DATASET_FILES[DEFAULT_CHAT_TYPE]
+            )
+            data_file = os.path.join(DATA_DIR, dataset_filename)
+            items = load_dataset_file(data_file, api_type, task_logger)
+        elif test_data.strip().startswith("{") or test_data.strip().startswith("["):
+            items = load_dataset_string(test_data, api_type, task_logger)
+        else:
+            items = load_dataset_file(test_data, api_type, task_logger)
+            if not items and os.path.exists(test_data):
+                items = load_dataset_file(test_data, api_type, task_logger)
+
+        if not items:
+            return None
+
+        if len(items) > MAX_QUEUE_SIZE:
+            effective_logger.warning(
+                f"Dataset ({len(items)} items) exceeds MAX_QUEUE_SIZE={MAX_QUEUE_SIZE}; truncating."
+            )
+            items = items[:MAX_QUEUE_SIZE]
+
+        return SharedDatasetReader.from_items(items, task_logger)
+    except Exception as e:
+        effective_logger.warning(
+            f"Failed to create shared dataset reader: {e}. Falling back to queue."
+        )
+        return None

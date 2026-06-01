@@ -8,6 +8,7 @@ import os
 import queue
 import tempfile
 import uuid
+from collections import Counter
 from typing import Any, Dict, Optional
 
 import gevent
@@ -15,12 +16,193 @@ import urllib3
 from locust import HttpUser, events, task
 from urllib3.exceptions import InsecureRequestWarning
 
+from config.base import (
+    HTTP_OUTCOME_EXACT_LATENCY_MS,
+    HTTP_OUTCOME_LATENCY_BUCKET_MS,
+    MAX_QUEUE_SIZE,
+)
+from utils.error_handler import _safe_repr_truncate
 from utils.logger import logger, setup_clean_log_format
 from utils.realtime_metrics import realtime_metrics_greenlet
 
 # Disable the specific InsecureRequestWarning from urllib3
 # This warning appears when verify=False is used for SSL certificate verification
 urllib3.disable_warnings(InsecureRequestWarning)
+
+
+class _OutcomeBucket:
+    """Aggregate response-time stats without keeping one item per request."""
+
+    def __init__(self) -> None:
+        self.count = 0
+        self.total_latency = 0.0
+        self.total_content_length = 0
+        self.min_latency: Optional[float] = None
+        self.max_latency: Optional[float] = None
+        self.response_times: Counter[int] = Counter()
+
+    @staticmethod
+    def _bucket_latency(latency: float) -> int:
+        rounded_latency = int(round(max(0.0, latency)))
+        if rounded_latency <= HTTP_OUTCOME_EXACT_LATENCY_MS:
+            return rounded_latency
+        bucket_size = max(1, HTTP_OUTCOME_LATENCY_BUCKET_MS)
+        return int(round(rounded_latency / bucket_size) * bucket_size)
+
+    def record(
+        self,
+        response_time: Optional[float],
+        response_length: Optional[int] = None,
+    ) -> None:
+        latency = float(response_time or 0.0)
+        self.count += 1
+        self.total_latency += latency
+        self.total_content_length += int(response_length or 0)
+        self.min_latency = (
+            latency if self.min_latency is None else min(self.min_latency, latency)
+        )
+        self.max_latency = (
+            latency if self.max_latency is None else max(self.max_latency, latency)
+        )
+        self.response_times[self._bucket_latency(latency)] += 1
+
+    def merge(self, payload: Dict[str, Any]) -> None:
+        count = int(payload.get("count", 0) or 0)
+        self.count += count
+        self.total_latency += float(payload.get("total_latency", 0.0) or 0.0)
+        self.total_content_length += int(payload.get("total_content_length", 0) or 0)
+
+        min_latency = payload.get("min_latency")
+        if min_latency is not None:
+            min_latency = float(min_latency)
+            self.min_latency = (
+                min_latency
+                if self.min_latency is None
+                else min(self.min_latency, min_latency)
+            )
+
+        max_latency = payload.get("max_latency")
+        if max_latency is not None:
+            max_latency = float(max_latency)
+            self.max_latency = (
+                max_latency
+                if self.max_latency is None
+                else max(self.max_latency, max_latency)
+            )
+
+        for latency, latency_count in (payload.get("response_times") or {}).items():
+            self.response_times[self._bucket_latency(float(latency))] += int(
+                latency_count
+            )
+
+    def avg(self) -> float:
+        return self.total_latency / self.count if self.count else 0.0
+
+    def avg_content_length(self) -> float:
+        return self.total_content_length / self.count if self.count else 0.0
+
+    def percentile(self, percentile: float) -> float:
+        if not self.count:
+            return 0.0
+        threshold = self.count * percentile
+        seen = 0
+        for latency in sorted(self.response_times):
+            seen += self.response_times[latency]
+            if seen >= threshold:
+                return float(latency)
+        return float(max(self.response_times.keys(), default=0))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "count": self.count,
+            "total_latency": self.total_latency,
+            "total_content_length": self.total_content_length,
+            "min_latency": self.min_latency,
+            "max_latency": self.max_latency,
+            "response_times": dict(self.response_times),
+        }
+
+
+class _OutcomeStats:
+    """Track success/failure stats per request name and for the total row."""
+
+    def __init__(self) -> None:
+        self.rows: Dict[str, Dict[str, _OutcomeBucket]] = {}
+
+    def record(
+        self,
+        name: Optional[str],
+        response_time: Optional[float],
+        response_length: Optional[int],
+        failed: bool,
+    ) -> None:
+        metric_name = str(name or "unknown")
+        for row_name in (metric_name, "total"):
+            buckets = self.rows.setdefault(
+                row_name,
+                {"success": _OutcomeBucket(), "failure": _OutcomeBucket()},
+            )
+            buckets["failure" if failed else "success"].record(
+                response_time, response_length
+            )
+
+    def merge(self, payload: Dict[str, Any]) -> None:
+        for row_name, row_payload in (payload or {}).items():
+            buckets = self.rows.setdefault(
+                str(row_name),
+                {"success": _OutcomeBucket(), "failure": _OutcomeBucket()},
+            )
+            for outcome in ("success", "failure"):
+                if outcome in row_payload:
+                    buckets[outcome].merge(row_payload[outcome])
+
+    def build_rows(self, task_id: str, name: str, total_rps: float) -> list[Dict]:
+        buckets = self.rows.get(name)
+        if not buckets:
+            return []
+
+        success = buckets["success"]
+        failure = buckets["failure"]
+        total_requests = success.count + failure.count
+
+        def proportional_rps(count: int) -> float:
+            if total_requests <= 0:
+                return 0.0
+            return float(total_rps or 0.0) * count / total_requests
+
+        rows = []
+        for suffix, bucket in (("success", success), ("failure", failure)):
+            if bucket.count == 0:
+                continue
+            rows.append(
+                {
+                    "task_id": task_id,
+                    "metric_type": f"{name}::{suffix}",
+                    "num_requests": bucket.count,
+                    "num_failures": bucket.count if suffix == "failure" else 0,
+                    "avg_latency": bucket.avg(),
+                    "min_latency": bucket.min_latency or 0.0,
+                    "max_latency": bucket.max_latency or 0.0,
+                    "median_latency": bucket.percentile(0.5),
+                    "p95_latency": bucket.percentile(0.95),
+                    "rps": proportional_rps(bucket.count),
+                    "avg_content_length": bucket.avg_content_length(),
+                }
+            )
+        return rows
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            row_name: {
+                "success": buckets["success"].to_dict(),
+                "failure": buckets["failure"].to_dict(),
+            }
+            for row_name, buckets in self.rows.items()
+        }
+
+
+_OUTCOME_STATS = _OutcomeStats()
+_WORKER_OUTCOME_STATS: Dict[str, Dict[str, Any]] = {}
 
 
 def _parse_kv(json_str: str) -> Dict[str, str]:
@@ -250,11 +432,46 @@ def on_locust_init(environment, **kwargs):
     setup_clean_log_format()
 
 
+@events.request.add_listener
+def on_request(
+    request_type=None,
+    name=None,
+    response_time=None,
+    response_length=None,
+    response=None,
+    context=None,
+    exception=None,
+    start_time=None,
+    url=None,
+    **kwargs,
+):
+    """Collect success/failure split metrics for final HTTP results."""
+    _OUTCOME_STATS.record(
+        name,
+        response_time,
+        response_length,
+        exception is not None,
+    )
+
+
+@events.report_to_master.add_listener
+def on_report_to_master(client_id, data, **kwargs):
+    """Send worker-local success/failure split metrics to the master."""
+    data["http_outcome_stats"] = _OUTCOME_STATS.to_dict()
+
+
+@events.worker_report.add_listener
+def on_worker_report(client_id, data, **kwargs):
+    """Keep the latest cumulative split metrics received from each worker."""
+    _WORKER_OUTCOME_STATS[str(client_id)] = data.get("http_outcome_stats") or {}
+
+
 def _preload_dataset(environment) -> None:
     """Pre-load dataset file into a shared queue on the environment.
 
     Called once during ``test_start`` so that all users share the same queue
     without racing during ``on_start``.
+    In multiprocess mode, uses mmap-backed SharedDatasetReader for memory efficiency.
     """
     options = environment.parsed_options
     dataset_file = getattr(options, "dataset_file", "") or ""
@@ -264,10 +481,55 @@ def _preload_dataset(environment) -> None:
     task_id = options.task_id or os.environ.get("TASK_ID", "unknown")
     task_logger = logger.bind(task_id=task_id)
 
+    is_multiprocess = os.environ.get("LOCUST_PROCESSES", "1") != "1"
+
     try:
+        if is_multiprocess:
+            from utils.shared_dataset import DatasetQueueAdapter, SharedDatasetReader
+
+            items = []
+            with open(dataset_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if len(items) >= MAX_QUEUE_SIZE:
+                        task_logger.warning(
+                            f"Dataset file {dataset_file} exceeded "
+                            f"MAX_QUEUE_SIZE={MAX_QUEUE_SIZE}; remaining records skipped."
+                        )
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                        items.append({"json": payload})
+                    except Exception:
+                        items.append({"text": line})
+
+            if items:
+                reader = SharedDatasetReader.from_items(items, task_logger)
+                environment.dataset_queue = DatasetQueueAdapter(reader)
+                task_logger.info(
+                    f"Using SharedDatasetReader ({len(reader)} items) "
+                    f"for multiprocess HTTP mode"
+                )
+                return
+            else:
+                environment.dataset_queue = None
+                task_logger.warning(
+                    f"Dataset file {dataset_file} contained no valid records."
+                )
+                return
+
+        # Single-process fallback: standard queue
         dq: queue.Queue = queue.Queue()
         with open(dataset_file, "r", encoding="utf-8") as f:
             for line in f:
+                if dq.qsize() >= MAX_QUEUE_SIZE:
+                    task_logger.warning(
+                        f"Dataset file {dataset_file} exceeded "
+                        f"MAX_QUEUE_SIZE={MAX_QUEUE_SIZE}; remaining records skipped."
+                    )
+                    break
                 line = line.strip()
                 if not line:
                     continue
@@ -306,6 +568,10 @@ def on_test_start(environment, **kwargs):
     Dataset pre-loading runs on ALL processes (master, worker, local) because
     each process has its own address space and its own User instances.
     """
+    global _OUTCOME_STATS, _WORKER_OUTCOME_STATS
+    _OUTCOME_STATS = _OutcomeStats()
+    _WORKER_OUTCOME_STATS = {}
+
     task_id = environment.parsed_options.task_id or os.environ.get("TASK_ID", "unknown")
     task_logger = logger.bind(task_id=task_id)
     load_mode = os.environ.get("LOAD_MODE", "fixed")
@@ -370,6 +636,11 @@ def on_test_stop(environment, **kwargs):
 
     locust_stats = []
     try:
+        outcome_stats = _OutcomeStats()
+        outcome_stats.merge(_OUTCOME_STATS.to_dict())
+        for worker_payload in _WORKER_OUTCOME_STATS.values():
+            outcome_stats.merge(worker_payload)
+
         # Locust `stats.entries` keys are (name, method) tuples.
         # Use `stat.name` for a clean string metric_type.
         for entry_key, stat in environment.stats.entries.items():
@@ -380,6 +651,9 @@ def on_test_stop(environment, **kwargs):
                 row = _build_stat_row(task_id, stat_name, stat)
                 if row:
                     locust_stats.append(row)
+                    locust_stats.extend(
+                        outcome_stats.build_rows(task_id, stat_name, stat.total_rps)
+                    )
             except Exception as e:  # pragma: no cover - defensive
                 task_logger.warning(f"Failed to build stat row for '{stat_name}': {e}")
 
@@ -389,6 +663,9 @@ def on_test_stop(environment, **kwargs):
                 total_row = _build_stat_row(task_id, "total", total_stat)
                 if total_row:
                     locust_stats.append(total_row)
+                    locust_stats.extend(
+                        outcome_stats.build_rows(task_id, "total", total_stat.total_rps)
+                    )
             except Exception as e:  # pragma: no cover - defensive
                 task_logger.warning(f"Failed to build total stat row: {e}")
     except Exception as e:  # pragma: no cover - defensive
@@ -401,6 +678,11 @@ def on_test_stop(environment, **kwargs):
                 _write_result_file(task_id, locust_stats)
             except Exception as e:  # pragma: no cover - defensive
                 task_logger.error(f"Failed to write result file: {e}", exc_info=True)
+
+        # Release shared dataset mmap resources if applicable
+        dataset_queue = getattr(environment, "dataset_queue", None)
+        if dataset_queue and hasattr(dataset_queue, "close"):
+            dataset_queue.close()
 
 
 # ---------------------------------------------------------------------------
@@ -531,13 +813,7 @@ class CommonApiUser(HttpUser):
                             self.task_logger.opt(lazy=True).debug(
                                 "[{req_id}] Request Payload: {payload}",
                                 req_id=lambda: req_id,
-                                payload=lambda: (
-                                    lambda s: (
-                                        s[:500] + "... (truncated)"
-                                        if len(s) > 500
-                                        else s
-                                    )
-                                )(repr(payload_data)),
+                                payload=lambda: _safe_repr_truncate(payload_data, 500),
                             )
                     else:
                         resp.failure(reason)
@@ -557,11 +833,7 @@ class CommonApiUser(HttpUser):
                         self.task_logger.opt(lazy=True).debug(
                             "[{req_id}] Request Payload: {payload}",
                             req_id=lambda: req_id,
-                            payload=lambda: (
-                                lambda s: (
-                                    s[:500] + "... (truncated)" if len(s) > 500 else s
-                                )
-                            )(repr(payload_data)),
+                            payload=lambda: _safe_repr_truncate(payload_data, 500),
                         )
         except Exception as e:  # pragma: no cover - network dependent
             # Log failure with request context

@@ -21,7 +21,7 @@ from engine.core import (
     StreamMetrics,
 )
 from utils.common import encode_image, safe_int_convert
-from utils.error_handler import ErrorResponse
+from utils.error_handler import ErrorResponse, _safe_repr_truncate
 from utils.event_handler import EventManager
 
 global_state = GlobalStateManager()
@@ -29,6 +29,7 @@ global_state = GlobalStateManager()
 # Maximum accumulated content size per streaming response (10 MB)
 # Prevents OOM from malicious or buggy servers sending unbounded data
 MAX_STREAM_CONTENT_SIZE = 10 * 1024 * 1024  # 10 MB
+STOP_REASON_CHECK_API_TYPES = {"openai-chat", "claude-chat", "custom-chat"}
 
 
 # === LAZY IMAGE ENCODING ===
@@ -183,6 +184,29 @@ class StreamProcessor:
         return end_value == stop_flag
 
     @staticmethod
+    def iter_stop_reasons(data: Any):
+        """Yield every stop_reason value from a nested response object."""
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if key == "stop_reason":
+                    yield value
+                yield from StreamProcessor.iter_stop_reasons(value)
+        elif isinstance(data, list):
+            for item in data:
+                yield from StreamProcessor.iter_stop_reasons(item)
+
+    @staticmethod
+    def check_stop_reason_error(data: Any, api_type: str) -> Optional[str]:
+        """Return an error message when stop_reason explicitly reports an error."""
+        if api_type not in STOP_REASON_CHECK_API_TYPES:
+            return None
+
+        for stop_reason in StreamProcessor.iter_stop_reasons(data):
+            if isinstance(stop_reason, str) and stop_reason.strip().lower() == "error":
+                return f"Response stop_reason is error: {data}"
+        return None
+
+    @staticmethod
     def extract_metrics_from_chunk(
         chunk_data: Dict[str, Any],
         field_mapping: FieldMapping,
@@ -309,6 +333,7 @@ class StreamProcessor:
         start_time: float,
         metrics: StreamMetrics,
         task_logger,
+        api_type: str = "",
     ) -> Tuple[bool, Optional[str], StreamMetrics]:
         """
         Process a single stream chunk according to the specified logic.
@@ -364,6 +389,12 @@ class StreamProcessor:
             error_msg = ErrorResponse._handle_json_error(chunk_data)
             if error_msg:
                 return True, error_msg, metrics  # Error occurred
+
+            stop_reason_error = StreamProcessor.check_stop_reason_error(
+                chunk_data, api_type
+            )
+            if stop_reason_error:
+                return True, stop_reason_error, metrics
 
             # Extract and update metrics BEFORE checking end_field,
             # because the final chunk may carry both the end signal
@@ -473,6 +504,17 @@ class PayloadBuilder:
                 # Unified payload handling for all APIs
                 self._update_payload_with_prompt_data(payload, prompt_data)
 
+                # For embeddings and custom-chat, if the payload was completely replaced by raw_data,
+                # the original user_prompt (extracted by dataset_loader) might be empty or incorrect.
+                # We re-extract it from the newly replaced payload using field mapping.
+                api_type = getattr(self.config, "api_type", "")
+                if api_type in ("embeddings", "custom-chat") and prompt_data.get(
+                    "raw_data"
+                ):
+                    extracted_prompt = self._extract_prompt_from_payload(payload)
+                    if extracted_prompt:
+                        user_prompt = extracted_prompt
+
             # Set request name based on API path
             request_name = self.config.api_path
 
@@ -527,17 +569,22 @@ class PayloadBuilder:
             image_base64 = prompt_data.get("image_base64", "")
             image_path = prompt_data.get("image_path", "")
 
+            # Get API type
+            api_type = getattr(self.config, "api_type", "")
+
             # Lazy encode: if we have a file path but no pre-encoded base64,
             # encode on-demand with LRU cache to minimize memory usage.
-            if image_path and not image_base64:
+            # Skip this for embeddings and custom-chat as they use raw_data directly.
+            if (
+                image_path
+                and not image_base64
+                and api_type not in ("embeddings", "custom-chat")
+            ):
                 image_base64 = _encode_image_cached(image_path)
                 if not image_base64:
                     self.task_logger.warning(
                         f"Failed to lazy-encode image: {image_path}"
                     )
-
-            # Get API type
-            api_type = getattr(self.config, "api_type", "")
 
             # Route to appropriate updater based on API type
             if api_type == "openai-chat":
@@ -548,23 +595,34 @@ class PayloadBuilder:
                 self._update_claude_chat_payload(
                     payload, user_prompt, image_url, image_base64, prompt_data
                 )
-            elif api_type == "embeddings":
-                self._update_embeddings_payload(payload, user_prompt)
-            elif api_type == "custom-chat":
-                # For custom-chat, rely on explicit field mapping without auto defaults
-                field_mapping = ConfigManager.resolve_field_mapping(
-                    self.config,
-                    required_fields=("prompt", "image"),
-                    fallback_to_api_defaults=False,
-                )
-                if field_mapping.prompt or field_mapping.image:
-                    self._update_payload_by_field_mapping(
-                        payload, user_prompt, image_url, image_base64, field_mapping
-                    )
+            elif api_type in ("embeddings", "custom-chat"):
+                raw_data = prompt_data.get("raw_data")
+                if raw_data:
+                    # Completely replace the payload with the JSON object from the dataset line
+                    payload.clear()
+                    payload.update(raw_data)
                 else:
-                    self.task_logger.warning(
-                        "The field_mapping configuration is empty, the original payload will be used for the request."
-                    )
+                    # Fallback if raw_data is somehow missing
+                    if api_type == "embeddings":
+                        self._update_embeddings_payload(payload, user_prompt)
+                    else:
+                        field_mapping = ConfigManager.resolve_field_mapping(
+                            self.config,
+                            required_fields=("prompt", "image"),
+                            fallback_to_api_defaults=False,
+                        )
+                        if field_mapping.prompt or field_mapping.image:
+                            self._update_payload_by_field_mapping(
+                                payload,
+                                user_prompt,
+                                image_url,
+                                image_base64,
+                                field_mapping,
+                            )
+                        else:
+                            self.task_logger.warning(
+                                "The field_mapping configuration is empty, the original payload will be used for the request."
+                            )
             else:
                 # Fallback: No dataset integration for unknown types
                 self.task_logger.debug(
@@ -925,9 +983,7 @@ class APIClient:
         self, req_id: str, error_msg: str, payload_data: Any
     ) -> None:
         """Log an error message with truncated payload and req_id."""
-        payload_str = repr(payload_data) if payload_data else ""
-        if len(payload_str) > 500:
-            payload_str = payload_str[:500] + "... (truncated)"
+        payload_str = _safe_repr_truncate(payload_data, 500) if payload_data else ""
         self.task_logger.error(f"[{req_id}] {error_msg} | Payload: {payload_str}")
 
     def _iter_stream_lines(self, response) -> Any:
@@ -991,6 +1047,7 @@ class APIClient:
                                 actual_start_time,
                                 metrics,
                                 self.task_logger,
+                                getattr(self.config, "api_type", ""),
                             )
                         )
 
@@ -1044,13 +1101,7 @@ class APIClient:
                             self.task_logger.opt(lazy=True).debug(
                                 "[{req_id}] Request Payload: {payload}",
                                 req_id=lambda: req_id,
-                                payload=lambda: (
-                                    lambda s: (
-                                        s[:500] + "... (truncated)"
-                                        if len(s) > 500
-                                        else s
-                                    )
-                                )(repr(payload_data)),
+                                payload=lambda: _safe_repr_truncate(payload_data, 500),
                             )
                         self.task_logger.opt(lazy=True).debug(
                             "[{req_id}] Stream Response Content: reasoning_content={r_content}, content={content}",
@@ -1271,6 +1322,22 @@ class APIClient:
                     )
                     return "", "", usage
 
+                stop_reason_error = StreamProcessor.check_stop_reason_error(
+                    resp_json, getattr(self.config, "api_type", "")
+                )
+                if stop_reason_error:
+                    self.error_handler._handle_general_exception_event(
+                        error_msg=stop_reason_error,
+                        response=response,
+                        response_time=total_time,
+                        additional_context={
+                            "api_path": self.config.api_path,
+                        },
+                        req_id=req_id,
+                        payload_data=payload_data,
+                    )
+                    return "", "", usage
+
                 EventManager.fire_metric_event(
                     METRIC_TTT,
                     total_time,
@@ -1308,11 +1375,7 @@ class APIClient:
                     self.task_logger.opt(lazy=True).debug(
                         "[{req_id}] Request Payload: {payload}",
                         req_id=lambda: req_id,
-                        payload=lambda: (
-                            lambda s: (
-                                s[:500] + "... (truncated)" if len(s) > 500 else s
-                            )
-                        )(repr(payload_data)),
+                        payload=lambda: _safe_repr_truncate(payload_data, 500),
                     )
                 return reasoning_content, content, usage
 

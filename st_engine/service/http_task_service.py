@@ -25,8 +25,10 @@ from config.business import (
 from engine.http_runner import HttpLocustRunner
 from engine.process_manager import (
     cleanup_task_resources,
+    find_locust_processes_by_task_id,
     get_task_process_status,
     terminate_locust_process_group,
+    terminate_locust_processes_by_task_id,
 )
 from model.http_task import HttpTask
 from service.http_result_service import HttpResultService
@@ -250,41 +252,30 @@ class HttpTaskService:
                     task_logger.warning(
                         f" Task {task.id} was {task.status} during restart. Checking for orphaned process and failing it."
                     )
-                    try:
-                        cmd = ["pgrep", "-f", f"locust .*--task-id {task.id}"]
-                        subprocess.check_output(
-                            cmd, stderr=subprocess.DEVNULL
-                        )  # nosec B603
-
+                    task_id = str(task.id)
+                    orphaned_processes = find_locust_processes_by_task_id(task_id)
+                    if orphaned_processes:
                         task_logger.warning(
-                            " Orphaned Locust process detected after engine restart. Terminating and marking task as FAILED."
+                            " Orphaned Locust process detected after engine restart. "
+                            "Terminating and marking task as FAILED."
                         )
-                        try:
-                            kill_cmd = ["pkill", "-f", f"locust .*--task-id {task.id}"]
-                            subprocess.run(kill_cmd, check=True)  # nosec B603
+                        terminated_count = terminate_locust_processes_by_task_id(
+                            task_id
+                        )
+                        if terminated_count:
                             task_logger.info(
-                                " Successfully terminated orphaned process."
+                                f" Successfully terminated {terminated_count} orphaned Locust process(es)."
                             )
-                        except subprocess.CalledProcessError as e:
-                            if e.returncode > 1:
-                                task_logger.error(
-                                    f" Failed to kill orphaned process: {e}"
-                                )
-                            else:
-                                task_logger.warning(
-                                    f" Orphaned process cleanup interrupted or already gone (exit code {e.returncode})."
-                                )
-                        except Exception as kill_e:
-                            task_logger.error(
-                                f" Unexpected error while killing orphaned process: {kill_e}"
+                        else:
+                            task_logger.warning(
+                                " Orphaned process disappeared before cleanup completed."
                             )
 
                         error_message = "Task process was orphaned by an engine restart and has been terminated."
                         self.update_task_status(
                             session, task, TASK_STATUS_FAILED, error_message
                         )
-                    except subprocess.CalledProcessError:
-                        # pgrep did not find a process; mark failed with explanation
+                    else:
                         task_logger.warning(
                             " Task was running during restart, but no active process found. Marking as FAILED."
                         )
@@ -293,13 +284,6 @@ class HttpTaskService:
                         )
                         self.update_task_status(
                             session, task, TASK_STATUS_FAILED, error_message
-                        )
-                    except FileNotFoundError as e:
-                        # Minimal images may not include procps (pgrep/pkill).
-                        # Keep current status to avoid false negatives during scaling.
-                        task_logger.warning(
-                            f" Process inspection command is missing: {e}. "
-                            "Skipping startup reconciliation for this task and keeping current status."
                         )
                 finally:
                     if handler_id is not None:

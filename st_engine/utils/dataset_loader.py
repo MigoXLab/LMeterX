@@ -427,8 +427,9 @@ def _resolve_dataset_items(
     if os.path.exists(test_data):
         return load_dataset_file(test_data, api_type, task_logger)
 
+    preview = test_data[:200] + "..." if len(test_data) > 200 else test_data
     raise ValueError(
-        f"Invalid test_data provided: '{test_data}'. "
+        f"Invalid test_data provided: '{preview}'. "
         f"Expected empty string, 'default', JSONL/JSON content string, or valid file path."
     )
 

@@ -21,7 +21,7 @@ class MultiprocessingConfig:
                 "ENABLE_MULTIPROCESS", "auto"
             ).lower()
             self.cpu_cores = os.environ.get("LOCUST_CPU_CORES", "").strip()
-            self.processes = os.environ.get("LOCUST_PROCESSES", "").strip()
+            self.processes = os.environ.get("LMETERX_PROCESS_COUNT", "").strip()
             self.multiprocess_threshold = int(
                 os.environ.get("MULTIPROCESS_THRESHOLD", "1000")
             )
@@ -76,7 +76,7 @@ class MultiprocessingConfig:
         if cpu_cores and cpu_cores.replace(".", "").isdigit():
             return max(1, int(float(cpu_cores)))
 
-        # Priority 2: Legacy LOCUST_PROCESSES
+        # Priority 2: Legacy LMETERX_PROCESS_COUNT
         legacy_processes = self.config["processes"]
         if legacy_processes and legacy_processes.isdigit():
             return max(1, int(legacy_processes))
@@ -137,7 +137,7 @@ class MultiprocessingConfig:
             return cfg["enable_multiprocess"] in ("true", "1", "yes")
 
         # Single process mode
-        if os.environ.get("LOCUST_PROCESSES", "1") == "1":
+        if os.environ.get("LMETERX_PROCESS_COUNT", "1") == "1":
             return False
 
         # Resource check

@@ -173,6 +173,7 @@ class LlmTaskService:
                 select(Task)
                 .where(Task.status == "created")
                 .where(Task.is_deleted == 0)
+                .order_by(Task.created_at.asc(), Task.id.asc())
                 .with_for_update()
                 .limit(1)
             )

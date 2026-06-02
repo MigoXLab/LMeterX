@@ -226,6 +226,15 @@ class MultiprocessManager:
             self._monitor.unregister_process_group(f"locust_task_{task_id}")
             return success
 
+    def release_port(self, task_id: str) -> None:
+        """Release port allocated to a task, whether or not a group was registered."""
+        with self._lock:
+            ports_to_release = [
+                port for port, tid in self._port_usage.items() if tid == task_id
+            ]
+            for port in ports_to_release:
+                del self._port_usage[port]
+
     def cleanup_task(self, task_id: str) -> None:
         """Clean up all resources for a task."""
         with self._lock:
@@ -238,6 +247,14 @@ class MultiprocessManager:
 
                 # Remove from tracking
                 del self._process_groups[task_id]
+
+            # Always release any port allocated to this task even if no group
+            # was registered (e.g., when _capture_worker_pids found nothing).
+            ports_to_release = [
+                port for port, tid in self._port_usage.items() if tid == task_id
+            ]
+            for port in ports_to_release:
+                del self._port_usage[port]
 
     def find_locust_processes_by_task_id(self, task_id: str) -> List[psutil.Process]:
         """Find running Locust processes whose command line references task_id."""
@@ -497,3 +514,8 @@ def allocate_master_port(task_id: str) -> int:
 def force_cleanup_orphaned_processes() -> int:
     """Force cleanup of orphaned Locust processes."""
     return _multiprocess_manager.force_cleanup_orphaned_processes()
+
+
+def release_task_port(task_id: str) -> None:
+    """Release port allocated to a task (safe to call even if no port was allocated)."""
+    _multiprocess_manager.release_port(task_id)

@@ -196,7 +196,7 @@ async def get_http_tasks_svc(
         total_count_query = select(func.count()).select_from(query.subquery())
         total = await db.scalar(total_count_query)
 
-        query = query.order_by(HttpTask.created_at.desc())
+        query = query.order_by(HttpTask.created_at.desc(), HttpTask.id.desc())
         query = query.offset((page - 1) * page_size).limit(page_size)
 
         result = await db.execute(query)

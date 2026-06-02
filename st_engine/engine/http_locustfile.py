@@ -481,7 +481,7 @@ def _preload_dataset(environment) -> None:
     task_id = options.task_id or os.environ.get("TASK_ID", "unknown")
     task_logger = logger.bind(task_id=task_id)
 
-    is_multiprocess = os.environ.get("LOCUST_PROCESSES", "1") != "1"
+    is_multiprocess = os.environ.get("LMETERX_PROCESS_COUNT", "1") != "1"
 
     try:
         if is_multiprocess:

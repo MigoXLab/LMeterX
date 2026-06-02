@@ -130,7 +130,7 @@ def _ensure_prompt_queue(environment, options, task_logger):
     try:
         # In multiprocess mode, use mmap-backed shared dataset to avoid
         # duplicating the entire dataset in each worker process.
-        is_multiprocess = os.environ.get("LOCUST_PROCESSES", "1") != "1"
+        is_multiprocess = os.environ.get("LMETERX_PROCESS_COUNT", "1") != "1"
 
         if is_multiprocess:
             from utils.dataset_loader import init_shared_dataset

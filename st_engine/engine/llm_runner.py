@@ -30,6 +30,7 @@ from engine.process_manager import (
     allocate_master_port,
     cleanup_task_resources,
     register_locust_process_group,
+    release_task_port,
     terminate_locust_process_group,
 )
 from model.llm_task import Task
@@ -81,10 +82,6 @@ class LlmLocustRunner:
     Enhanced Locust runner with robust multiprocess management.
     """
 
-    _process_dict: dict[str, subprocess.Popen] = {}
-    _stopped_task_ids: set[str] = (
-        set()
-    )  # Track task IDs that have been requested to stop
     _STOPPED_IDS_HARD_CAP = 500
     _WARMUP_DURATION_SECONDS = 120
     _WARMUP_COOLDOWN_SECONDS = 3
@@ -96,6 +93,8 @@ class LlmLocustRunner:
         self._locustfile_path = os.path.join(
             self.base_dir, "engine", "llm_locustfile.py"
         )
+        self._process_dict: dict[str, subprocess.Popen] = {}
+        self._stopped_task_ids: set[str] = set()
 
     def _cleanup_stale_stopped_ids(self) -> int:
         """Remove stopped task IDs that have no corresponding active process.
@@ -228,6 +227,10 @@ class LlmLocustRunner:
                     f"Task {task.id} exited abnormally. Triggering emergency cleanup."
                 )
                 self._cleanup_task_resources(task, task_logger)
+            else:
+                # Even on normal exit, ensure port is released in case cleanup
+                # missed it (e.g., no process group was ever registered).
+                release_task_port(task.id)
 
     def _prepare_task(self, task: Task, task_logger) -> None:
         """Prepare task environment: validate config and files."""
@@ -306,6 +309,25 @@ class LlmLocustRunner:
             else self.base_dir
         )
 
+        # Allocate port BEFORE starting warmup process to avoid conflicts.
+        # Only allocate if --processes is in the command.
+        warmup_port = None
+        if "--processes" in warmup_cmd:
+            try:
+                warmup_port = allocate_master_port(warmup_task_id)
+                warmup_cmd.extend(["--master-bind-port", str(warmup_port)])
+                task_logger.info(f"Allocated master port {warmup_port} for warmup")
+            except Exception as e:
+                task_logger.warning(f"Failed to allocate warmup master port: {e}")
+
+        # Expose process count for locustfile (avoid LOCUST_PROCESSES which
+        # Locust interprets as --processes)
+        try:
+            proc_idx = warmup_cmd.index("--processes")
+            env["LMETERX_PROCESS_COUNT"] = warmup_cmd[proc_idx + 1]
+        except (ValueError, IndexError):
+            env["LMETERX_PROCESS_COUNT"] = "1"
+
         warmup_process = None
         try:
             warmup_process = subprocess.Popen(
@@ -324,11 +346,8 @@ class LlmLocustRunner:
             self._process_dict[warmup_task_id] = warmup_process
 
             # Handle multiprocess registration for warmup
-            cpu_count = get_cpu_count()
-            concurrent_users = int(warmup_users)
-            if should_enable_multiprocess(concurrent_users, cpu_count):
+            if warmup_port is not None:
                 try:
-                    warmup_port = allocate_master_port(warmup_task_id)
                     warmup_worker_pids = self._capture_worker_pids(
                         warmup_process.pid, warmup_task_id, task_logger
                     )
@@ -429,11 +448,9 @@ class LlmLocustRunner:
             self._process_dict.pop(warmup_task_id, None)
 
             # Terminate multiprocess group if applicable
-            cpu_count = get_cpu_count()
-            if should_enable_multiprocess(int(task.concurrent_users), cpu_count):
-                terminate_locust_process_group(warmup_task_id, timeout=10.0)
+            terminate_locust_process_group(warmup_task_id, timeout=10.0)
 
-            # Cleanup warmup task resources
+            # Cleanup warmup task resources (including port release)
             cleanup_task_resources(warmup_task_id)
 
             # Cleanup any remaining warmup processes
@@ -637,6 +654,19 @@ class LlmLocustRunner:
         else:
             self._extra_env["TASK_DURATION"] = str(task.duration)
 
+        # Allocate a unique master port BEFORE starting the process to avoid
+        # port conflicts when multiple tasks run concurrently.
+        # Only allocate if --processes is actually in the command (i.e., the
+        # build step decided multiprocess is needed AND process_count > 1).
+        master_port = None
+        if "--processes" in cmd:
+            try:
+                master_port = allocate_master_port(task.id)
+                cmd.extend(["--master-bind-port", str(master_port)])
+                task_logger.info(f"Allocated master port {master_port} for task")
+            except Exception as e:
+                task_logger.warning(f"Failed to allocate master port: {e}")
+
         self._validate_subprocess_command(cmd, "Locust")
         masked_cmd = mask_sensitive_command(cmd)
         task_logger.info(f"Executing: {' '.join(masked_cmd)}")
@@ -647,11 +677,13 @@ class LlmLocustRunner:
 
         # Expose process count so locustfiles can detect multiprocess mode
         # and use shared memory for datasets instead of per-process copies.
+        # Use LMETERX_PROCESS_COUNT (not LOCUST_PROCESSES) to avoid triggering
+        # Locust's built-in --processes env var parsing.
         try:
             proc_idx = cmd.index("--processes")
-            env["LOCUST_PROCESSES"] = cmd[proc_idx + 1]
+            env["LMETERX_PROCESS_COUNT"] = cmd[proc_idx + 1]
         except (ValueError, IndexError):
-            env["LOCUST_PROCESSES"] = "1"
+            env["LMETERX_PROCESS_COUNT"] = "1"
 
         # Ensure Locust subprocess can import project modules
         # Force the child process to output DEBUG logs so we can capture payloads
@@ -686,9 +718,8 @@ class LlmLocustRunner:
         task_logger.info(f"Started Locust process PID={process.pid}")
 
         # Handle multiprocess registration
-        if should_enable_multiprocess(int(task.concurrent_users)):
+        if master_port is not None:
             try:
-                master_port = allocate_master_port(task.id)
                 worker_pids = self._capture_worker_pids(
                     process.pid, task.id, task_logger
                 )
@@ -797,9 +828,15 @@ class LlmLocustRunner:
         task_logger,
     ) -> dict:
         """Load result and perform cleanup."""
-        # Check if task was manually stopped (killed by signal or marked as stopped)
-        was_stopped = task.id in self._stopped_task_ids or (
-            process.returncode is not None and process.returncode < 0
+        # Check if task was manually stopped (killed by signal or marked as stopped).
+        # In multi-worker/multi-replica deployments, the stop request may land on
+        # a different process than the one running the task, so _stopped_task_ids
+        # won't reflect the stop.  Fall back to detecting the Locust framework's
+        # SIGTERM log line (logged by locust.main at INFO level).
+        was_stopped = (
+            task.id in self._stopped_task_ids
+            or (process.returncode is not None and process.returncode < 0)
+            or "locust.main: Got SIGTERM signal" in stderr
         )
 
         result_file = os.path.join(
@@ -861,11 +898,13 @@ class LlmLocustRunner:
         # Remove from stopped task set to avoid memory leak
         self._stopped_task_ids.discard(task_id)
 
-        # Terminate multiprocess group if applicable
-        if should_enable_multiprocess(int(task.concurrent_users)):
-            terminate_locust_process_group(task_id, timeout=15.0)
+        # Unconditionally attempt to terminate multiprocess group and release port.
+        # terminate_locust_process_group safely handles the case where no group
+        # exists. This avoids relying on should_enable_multiprocess() which can
+        # give a different answer at cleanup time than at startup time.
+        terminate_locust_process_group(task_id, timeout=15.0)
 
-        # Cleanup resources (sockets, temp files, etc.)
+        # Cleanup resources (process group record, port allocation, etc.)
         cleanup_task_resources(task_id)
 
         # Find and kill any remaining locust processes associated with this task

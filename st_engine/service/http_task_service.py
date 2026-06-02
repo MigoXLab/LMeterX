@@ -132,6 +132,7 @@ class HttpTaskService:
                 select(HttpTask)
                 .where(HttpTask.status == "created")
                 .where(HttpTask.is_deleted == 0)
+                .order_by(HttpTask.created_at.asc(), HttpTask.id.asc())
                 .with_for_update()
                 .limit(1)
             )

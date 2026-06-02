@@ -500,7 +500,17 @@ class PayloadBuilder:
                     )
                     return None, None
 
-                user_prompt = prompt_data.get("prompt", DEFAULT_PROMPT)
+                user_prompt = prompt_data.get("prompt")
+                if not user_prompt and prompt_data.get("messages"):
+                    for msg in reversed(prompt_data.get("messages", [])):
+                        if msg.get("role") == "user" and isinstance(
+                            msg.get("content"), str
+                        ):
+                            user_prompt = msg.get("content", "")
+                            break
+                if not user_prompt:
+                    user_prompt = DEFAULT_PROMPT
+
                 # Unified payload handling for all APIs
                 self._update_payload_with_prompt_data(payload, prompt_data)
 
@@ -900,7 +910,43 @@ class PayloadBuilder:
                 prompt_value = StreamProcessor.get_field_value(
                     payload, field_mapping.prompt
                 )
-                return str(prompt_value) if prompt_value else ""
+                if prompt_value:
+                    return str(prompt_value)
+
+            # Fallbacks for standard structures
+            for path in [
+                "messages.-1.content",
+                "messages.0.content",
+                "prompt",
+                "input",
+            ]:
+                val = StreamProcessor.get_field_value(payload, path)
+                if val:
+                    if isinstance(val, str):
+                        return val
+                    elif isinstance(val, list):
+                        # Maybe it is a list of content blocks, e.g. [{"type": "text", "text": "..."}]
+                        for item in val:
+                            if isinstance(item, dict) and "text" in item:
+                                return str(item["text"])
+                            elif isinstance(item, str):
+                                return item
+
+            # Final fallback: serialize all message contents for token estimation
+            if "messages" in payload and isinstance(payload["messages"], list):
+                parts = []
+                for msg in payload["messages"]:
+                    content = msg.get("content", "") if isinstance(msg, dict) else ""
+                    if isinstance(content, str):
+                        parts.append(content)
+                    elif isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and "text" in item:
+                                parts.append(str(item["text"]))
+                            elif isinstance(item, str):
+                                parts.append(item)
+                if parts:
+                    return " ".join(parts)
             return ""
         except Exception:
             return ""

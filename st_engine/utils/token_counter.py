@@ -5,6 +5,7 @@ Copyright (c) 2025, All Rights Reserved.
 
 import logging
 import math
+import os
 import re
 from abc import ABC, abstractmethod
 from functools import lru_cache
@@ -397,13 +398,17 @@ class AsyncTokenCounter:
     performed synchronously and the callback is invoked immediately.
     """
 
-    _DEFAULT_POOL_SIZE = 2
+    # Dynamically scale the thread pool based on CPU cores.
+    # On low-spec machines, limit threads to avoid starving the main gevent loop.
+    # On high-spec machines, cap at 16 to prevent excessive context switching.
+    _DEFAULT_POOL_SIZE = min(16, max(4, os.cpu_count() or 4))
 
     def __init__(self, pool_size: int = _DEFAULT_POOL_SIZE) -> None:
         """Initialize the async token counter with the given pool size."""
         self._pool_size = pool_size
         self._pool = None  # lazily created
         self._pending = None  # lazily created
+        self._pending_inputs: Dict[int, Tuple[Callable, str, str, str]] = {}
 
     def _get_pool(self):
         """Get or lazily create the OS thread pool."""
@@ -501,6 +506,14 @@ class AsyncTokenCounter:
                         on_complete,
                         _log,
                     )
+                    gid = id(g)
+                    self._pending_inputs[gid] = (
+                        on_complete,
+                        user_prompt,
+                        reasoning_content,
+                        content,
+                    )
+                    g.link(lambda _g: self._pending_inputs.pop(id(_g), None))
                     pending.add(g)
                 else:
                     # gevent unavailable — synchronous fallback
@@ -568,6 +581,57 @@ class AsyncTokenCounter:
             return 0
         pending.join(timeout=timeout)
         return len(pending)
+
+    def drain_pending(self, idle_timeout: float = 5, max_timeout: float = 60) -> int:
+        """Wait for pending greenlets to finish with sync fallback.
+
+        Args:
+            idle_timeout: Ignored (kept for backward compatibility).
+            max_timeout: Hard cap on total wait time.
+
+        Returns:
+            Number of greenlets that did NOT complete (always 0 after fallback).
+        """
+        pending = self._get_pending()
+        if pending is None or len(pending) == 0:
+            return 0
+
+        pending.join(timeout=max_timeout)
+        remaining = len(pending)
+        if remaining > 0:
+            logger.warning(
+                "drain_pending: timeout %.1fs reached, %d greenlets remaining. "
+                "Using byte-estimation fallback.",
+                max_timeout,
+                remaining,
+            )
+            self._fallback_remaining()
+        return 0
+
+    def _fallback_remaining(self) -> None:
+        """Synchronously estimate tokens for any greenlets that didn't finish."""
+        stale = dict(self._pending_inputs)
+        self._pending_inputs.clear()
+        for _gid, (
+            on_complete,
+            user_prompt,
+            reasoning_content,
+            content,
+        ) in stale.items():
+            try:
+                input_tokens = (
+                    estimate_tokens_via_bytes(user_prompt) if user_prompt else 0
+                )
+                completion_tokens = 0
+                if reasoning_content:
+                    completion_tokens += estimate_tokens_via_bytes(reasoning_content)
+                if content:
+                    completion_tokens += estimate_tokens_via_bytes(content)
+                total_tokens = input_tokens + completion_tokens
+                if completion_tokens > 0 or total_tokens > 0:
+                    on_complete(input_tokens, completion_tokens, total_tokens)
+            except Exception as e:
+                logger.error("Fallback token estimation failed: %s", e)
 
 
 def estimate_tokens_via_bytes(text: str) -> int:

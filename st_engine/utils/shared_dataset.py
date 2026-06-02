@@ -12,6 +12,7 @@ Each process maintains its own read index for round-robin access.
 
 import mmap
 import os
+import queue
 import struct
 import tempfile
 from typing import Any, Dict, List
@@ -137,8 +138,11 @@ class DatasetQueueAdapter:
         self._reader = reader
 
     def get_nowait(self) -> Dict[str, Any]:
-        """Get next item (round-robin). Never raises Empty."""
-        return self._reader.next()
+        """Get next item (round-robin). Raises queue.Empty if dataset is empty."""
+        try:
+            return self._reader.next()
+        except IndexError:
+            raise queue.Empty()
 
     def put_nowait(self, item) -> None:
         """No-op: data is read-only in shared memory."""

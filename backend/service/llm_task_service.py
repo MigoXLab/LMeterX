@@ -333,7 +333,7 @@ async def get_tasks_svc(
         total = await db.scalar(total_count_query)
 
         # Apply ordering and pagination to the main query.
-        query = query.order_by(Task.created_at.desc())
+        query = query.order_by(Task.created_at.desc(), Task.id.desc())
         query = query.offset((page - 1) * page_size).limit(page_size)
 
         # Execute the query.

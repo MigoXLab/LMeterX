@@ -454,18 +454,14 @@ def on_test_stop(environment, **kwargs):
             return
 
         # Wait for pending async token counting greenlets to complete.
-        # This ensures all token stats (including those sent from Worker
-        # to Master) are fully reported before final aggregation.
+        # If any greenlets remain after timeout, drain_pending uses fast
+        # byte-estimation fallback so no token metrics are lost.
         pending_count = _async_token_counter.pending_count
         if pending_count > 0:
             task_logger.info(
                 f"Waiting for {pending_count} pending token calculations..."
             )
-            remaining = _async_token_counter.join_pending(timeout=5)
-            if remaining > 0:
-                task_logger.warning(
-                    f"{remaining} token calculations did not finish in time"
-                )
+            _async_token_counter.drain_pending(idle_timeout=5, max_timeout=30)
 
         # Only Master and LocalRunner need to output report
         if not isinstance(runner, (MasterRunner, LocalRunner)):

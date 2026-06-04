@@ -854,10 +854,26 @@ class LlmLocustRunner:
                 locust_result = {}
                 status = "STOPPED"
             else:
-                error_msg = f"Result file not found: {result_file}"
-                task_logger.error(error_msg)
-                locust_result = {}
-                status = "FAILED"
+                # Distinguish engine crash vs. requests-all-failed:
+                # If Locust completed its run-time normally but result.json is
+                # missing (e.g. on_test_stop interrupted by SIGTERM during
+                # shutdown), this is a request-level failure, not an engine failure.
+                run_time_completed = "--run-time limit reached" in stderr
+                locust_request_failure_exit = (
+                    process.returncode is not None and process.returncode == 1
+                )
+                if run_time_completed and locust_request_failure_exit:
+                    task_logger.warning(
+                        "Locust completed run-time but result.json missing "
+                        "(likely shutdown interrupted). Treating as FAILED_REQUESTS."
+                    )
+                    locust_result = {}
+                    status = "FAILED_REQUESTS"
+                else:
+                    error_msg = f"Result file not found: {result_file}"
+                    task_logger.error(error_msg)
+                    locust_result = {}
+                    status = "FAILED"
         else:
             locust_result = self._load_locust_result(result_file, task.id, task_logger)
             if was_stopped:

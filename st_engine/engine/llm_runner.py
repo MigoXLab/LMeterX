@@ -834,14 +834,25 @@ class LlmLocustRunner:
         # won't reflect the stop.  Fall back to detecting SIGTERM in stderr output.
         # Locust logs in native format ("locust.main: Got SIGTERM signal") while
         # LMeterX's custom handler uses loguru format ("Got SIGTERM signal").
-        _sigterm_in_stderr = (
-            "locust.main: Got SIGTERM signal" in stderr
-            or "Got SIGTERM signal" in stderr
+        # Guard against None and check both streams for robustness against log
+        # redirection in container environments.
+        _stdout = stdout or ""
+        _stderr = stderr or ""
+        _combined_output = _stdout + _stderr
+        _sigterm_detected = (
+            "locust.main: Got SIGTERM signal" in _combined_output
+            or "Got SIGTERM signal" in _combined_output
         )
         was_stopped = (
             task.id in self._stopped_task_ids
-            or (process.returncode is not None and process.returncode < 0)
-            or (_sigterm_in_stderr and "--run-time limit reached" not in stderr)
+            or (
+                process is not None
+                and process.returncode is not None
+                and process.returncode < 0
+            )
+            or (
+                _sigterm_detected and "--run-time limit reached" not in _combined_output
+            )
         )
 
         result_file = os.path.join(
@@ -863,9 +874,11 @@ class LlmLocustRunner:
                 # If Locust completed its run-time normally but result.json is
                 # missing (e.g. on_test_stop interrupted by SIGTERM during
                 # shutdown), this is a request-level failure, not an engine failure.
-                run_time_completed = "--run-time limit reached" in stderr
+                run_time_completed = "--run-time limit reached" in _combined_output
                 locust_request_failure_exit = (
-                    process.returncode is not None and process.returncode == 1
+                    process is not None
+                    and process.returncode is not None
+                    and process.returncode == 1
                 )
                 if run_time_completed and locust_request_failure_exit:
                     task_logger.warning(
@@ -884,7 +897,7 @@ class LlmLocustRunner:
             if was_stopped:
                 # Stopped but managed to write partial results
                 status = "STOPPED"
-            elif process.returncode == 0:
+            elif process is not None and process.returncode == 0:
                 status = "COMPLETED"
             else:
                 status = "FAILED_REQUESTS"

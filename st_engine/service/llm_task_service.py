@@ -33,6 +33,11 @@ from service.llm_result_service import LlmResultService
 from utils.logger import add_task_log_sink, logger, remove_task_log_sink
 from utils.vm_push import ENGINE_ID
 
+# Module-level singleton: all LlmTaskService instances (create poller, stop
+# poller, heartbeat, etc.) share the same runner so that _process_dict and
+# _stopped_task_ids are consistent across threads.
+_shared_llm_runner = LlmLocustRunner(ST_ENGINE_DIR)
+
 
 class LlmTaskService:
     """
@@ -41,8 +46,8 @@ class LlmTaskService:
     """
 
     def __init__(self):
-        """Initializes the TaskService with a LocustRunner instance."""
-        self.runner = LlmLocustRunner(ST_ENGINE_DIR)
+        """Initializes the TaskService with the shared LocustRunner instance."""
+        self.runner = _shared_llm_runner
         self.result_service = LlmResultService()
 
     # _cleanup_task_files removed along with its test cases (files are kept for reuse).
@@ -854,7 +859,7 @@ class LlmTaskService:
 
     def get_stopping_task_ids(self, session: Session) -> list[str]:
         """
-        Retrieves a list of task IDs with the 'stopping' status.
+        Retrieves a list of task IDs with the 'stopping' status that belong to this engine.
 
         Args:
             session (Session): The SQLAlchemy database session.
@@ -863,7 +868,11 @@ class LlmTaskService:
             list[str]: A list of task IDs to be stopped.
         """
         try:
-            query = select(Task.id).where(Task.status == TASK_STATUS_STOPPING)
+            query = (
+                select(Task.id)
+                .where(Task.status == TASK_STATUS_STOPPING)
+                .where(Task.engine_id == ENGINE_ID)
+            )
             stopping_task_ids = list(session.execute(query).scalars().all())
             if stopping_task_ids:
                 logger.info(f"Found stopping tasks: {stopping_task_ids}")

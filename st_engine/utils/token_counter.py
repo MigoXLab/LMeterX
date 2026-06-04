@@ -15,6 +15,21 @@ tiktoken: Optional[Any] = None
 
 try:
     import tiktoken
+    import tiktoken.load as _tiktoken_load
+
+    # Disable network downloads: tiktoken should only use pre-cached encoding
+    # files (baked into the Docker image via TIKTOKEN_CACHE_DIR).  If the file
+    # isn't cached, raise immediately instead of blocking on a network request.
+    _original_read_file = _tiktoken_load.read_file
+
+    def _read_file_local_only(blobpath: str) -> bytes:
+        if blobpath.startswith(("http://", "https://")):
+            raise OSError(
+                f"tiktoken network download disabled (offline mode): {blobpath}"
+            )
+        return _original_read_file(blobpath)
+
+    _tiktoken_load.read_file = _read_file_local_only
 except ImportError:
     pass
 
@@ -191,7 +206,6 @@ def get_token_counter(model_name: str) -> TokenCounter:
     Get the token counter for the corresponding model.
     """
     try:
-        # Use tiktoken
         if tiktoken:
             try:
                 logger.debug("Using tiktoken for model: %s", model_name)

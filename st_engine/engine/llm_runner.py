@@ -831,12 +831,17 @@ class LlmLocustRunner:
         # Check if task was manually stopped (killed by signal or marked as stopped).
         # In multi-worker/multi-replica deployments, the stop request may land on
         # a different process than the one running the task, so _stopped_task_ids
-        # won't reflect the stop.  Fall back to detecting the Locust framework's
-        # SIGTERM log line (logged by locust.main at INFO level).
+        # won't reflect the stop.  Fall back to detecting SIGTERM in stderr output.
+        # Locust logs in native format ("locust.main: Got SIGTERM signal") while
+        # LMeterX's custom handler uses loguru format ("Got SIGTERM signal").
+        _sigterm_in_stderr = (
+            "locust.main: Got SIGTERM signal" in stderr
+            or "Got SIGTERM signal" in stderr
+        )
         was_stopped = (
             task.id in self._stopped_task_ids
             or (process.returncode is not None and process.returncode < 0)
-            or "locust.main: Got SIGTERM signal" in stderr
+            or (_sigterm_in_stderr and "--run-time limit reached" not in stderr)
         )
 
         result_file = os.path.join(

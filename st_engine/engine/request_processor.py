@@ -243,6 +243,29 @@ class StreamProcessor:
             if total_tokens_value > 0:
                 metrics.usage["total_tokens"] = total_tokens_value
 
+        # Fallback: auto-detect usage dict in chunk when field_mapping is empty.
+        # Many APIs (OpenAI, Anthropic, etc.) include a "usage" object in the
+        # final streaming chunk regardless of the configured field paths.
+        if (
+            not metrics.usage.get("prompt_tokens")
+            and not metrics.usage.get("completion_tokens")
+            and not metrics.usage.get("total_tokens")
+        ):
+            chunk_usage = chunk_data.get("usage")
+            if isinstance(chunk_usage, dict):
+                for src_key, dest_key in (
+                    ("prompt_tokens", "prompt_tokens"),
+                    ("input_tokens", "prompt_tokens"),
+                    ("completion_tokens", "completion_tokens"),
+                    ("output_tokens", "completion_tokens"),
+                    ("total_tokens", "total_tokens"),
+                ):
+                    if metrics.usage.get(dest_key):
+                        continue
+                    val = safe_int_convert(chunk_usage.get(src_key))
+                    if val is not None and val > 0:
+                        metrics.usage[dest_key] = val
+
         # 2. Extract Reasoning Content (Chain of Thought)
         if field_mapping.reasoning_content:
             reasoning_chunk_raw = StreamProcessor.get_field_value(

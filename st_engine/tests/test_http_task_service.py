@@ -25,7 +25,7 @@ from service.http_task_service import HttpTaskService
 
 @pytest.fixture
 def task_service():
-    with patch("service.http_task_service.HttpLocustRunner"):
+    with patch("service.http_task_service._shared_http_runner", Mock()):
         with patch("service.http_task_service.HttpResultService"):
             return HttpTaskService()
 

@@ -39,13 +39,17 @@ from utils.logger import (  # type: ignore[attr-defined]
 )
 from utils.vm_push import ENGINE_ID
 
+# Module-level singleton: all HttpTaskService instances share the same runner
+# so that _process_dict and _stopped_task_ids are consistent across threads.
+_shared_http_runner = HttpLocustRunner(ST_ENGINE_DIR)
+
 
 class HttpTaskService:
     """Lifecycle management for HTTP API load test tasks."""
 
     def __init__(self):
-        """Initialize runner and result service for HTTP API tasks."""
-        self.runner = HttpLocustRunner(ST_ENGINE_DIR)
+        """Initialize with the shared runner instance for HTTP API tasks."""
+        self.runner = _shared_http_runner
         self.result_service = HttpResultService()
 
     def update_task_status(
@@ -171,9 +175,13 @@ class HttpTaskService:
             return None
 
     def get_stopping_task_ids(self, session: Session) -> List[str]:
-        """Return all task ids that are currently stopping."""
+        """Return task ids that are currently stopping and belong to this engine."""
         try:
-            query = select(HttpTask.id).where(HttpTask.status == TASK_STATUS_STOPPING)
+            query = (
+                select(HttpTask.id)
+                .where(HttpTask.status == TASK_STATUS_STOPPING)
+                .where(HttpTask.engine_id == ENGINE_ID)
+            )
             result = session.execute(query).scalars().all()
             return [str(task_id) for task_id in result]
         except (OperationalError, pymysql.err.OperationalError) as e:
@@ -543,8 +551,15 @@ class HttpTaskService:
             process = self.runner._process_dict.get(task_id)
             if not process:
                 task_logger.warning(
-                    "Process not found in runner's dictionary. It may have finished or not started."
+                    "Process not found in runner's dictionary. "
+                    "Attempting to find and kill orphaned locust processes."
                 )
+                terminated = terminate_locust_processes_by_task_id(task_id)
+                if terminated:
+                    task_logger.info(
+                        f"Killed {terminated} orphaned locust process(es) for task {task_id}."
+                    )
+                cleanup_task_resources(task_id)
                 return True
 
             if process.poll() is not None:

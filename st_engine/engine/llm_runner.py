@@ -686,10 +686,13 @@ class LlmLocustRunner:
             env["LMETERX_PROCESS_COUNT"] = "1"
 
         # Ensure Locust subprocess can import project modules
-        # Force the child process to output DEBUG logs so we can capture payloads
-        # for the detailed task log.
-        if "LOG_LEVEL" not in env or env["LOG_LEVEL"] == "INFO":
-            env["LOG_LEVEL"] = "DEBUG"
+        # Subprocess log level follows DETAIL_LOG_LEVEL (defaults to LOG_LEVEL).
+        # Users can set DETAIL_LOG_LEVEL=DEBUG to capture request payloads in
+        # the detailed task log without impacting normal operation.
+        if "LOG_LEVEL" not in env:
+            env["LOG_LEVEL"] = os.environ.get(
+                "DETAIL_LOG_LEVEL", os.environ.get("LOG_LEVEL", "INFO")
+            )
 
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
@@ -831,12 +834,45 @@ class LlmLocustRunner:
         # Check if task was manually stopped (killed by signal or marked as stopped).
         # In multi-worker/multi-replica deployments, the stop request may land on
         # a different process than the one running the task, so _stopped_task_ids
-        # won't reflect the stop.  Fall back to detecting the Locust framework's
-        # SIGTERM log line (logged by locust.main at INFO level).
+        # won't reflect the stop.  Fall back to detecting SIGTERM in stderr output.
+        # Locust logs in native format ("locust.main: Got SIGTERM signal") while
+        # LMeterX's custom handler uses loguru format ("Got SIGTERM signal").
+        # Guard against None and check both streams for robustness against log
+        # redirection in container environments.
+        _stdout = stdout or ""
+        _stderr = stderr or ""
+        _combined_output = _stdout + _stderr
+        _sigterm_detected = (
+            "locust.main: Got SIGTERM signal" in _combined_output
+            or "Got SIGTERM signal" in _combined_output
+        )
+        # Determine if the task was intentionally stopped vs. killed by external
+        # forces (OOM killer, cgroup limit, etc.).
+        # Only these indicate an intentional stop:
+        #   1. Explicit stop request recorded in _stopped_task_ids
+        #   2. SIGTERM (-15) — our stop logic always sends SIGTERM first
+        #   3. SIGTERM detected in Locust logs (multi-replica: stop landed elsewhere)
+        # SIGKILL (-9) without an explicit stop request means the process was
+        # forcefully killed by the kernel (OOM) or external system — treat as FAILED.
+        _explicitly_stopped = task.id in self._stopped_task_ids
+        _killed_by_sigterm = (
+            process is not None
+            and process.returncode is not None
+            and process.returncode == -15
+        )
         was_stopped = (
-            task.id in self._stopped_task_ids
-            or (process.returncode is not None and process.returncode < 0)
-            or "locust.main: Got SIGTERM signal" in stderr
+            _explicitly_stopped
+            or _killed_by_sigterm
+            or (
+                _sigterm_detected and "--run-time limit reached" not in _combined_output
+            )
+        )
+        # External kill (OOM, cgroup pressure, etc.) — not an intentional stop
+        was_killed_externally = (
+            not was_stopped
+            and process is not None
+            and process.returncode is not None
+            and process.returncode < 0
         )
 
         result_file = os.path.join(
@@ -853,17 +889,63 @@ class LlmLocustRunner:
                 )
                 locust_result = {}
                 status = "STOPPED"
-            else:
-                error_msg = f"Result file not found: {result_file}"
-                task_logger.error(error_msg)
+            elif was_killed_externally:
+                signal_num = -process.returncode
+                if signal_num == 9:
+                    error_msg = (
+                        f"Process was killed by SIGKILL (signal 9). "
+                        f"This is typically caused by the container OOM killer "
+                        f"(cgroup memory limit exceeded). "
+                        f"Please increase the engine Pod memory limit or reduce "
+                        f"test concurrency."
+                    )
+                    task_logger.error(
+                        f"[OOM] Task {task.id} was OOM-killed. "
+                        f"Exit code: -9 (SIGKILL). "
+                        f"The container memory limit may be insufficient for "
+                        f"the current workload."
+                    )
+                else:
+                    error_msg = (
+                        f"Process was killed by signal {signal_num}. "
+                        f"This indicates an abnormal engine termination."
+                    )
+                    task_logger.error(
+                        f"Task {task.id} process killed by signal {signal_num}."
+                    )
                 locust_result = {}
                 status = "FAILED"
+            else:
+                # Distinguish engine crash vs. requests-all-failed:
+                # If Locust completed its run-time normally but result.json is
+                # missing (e.g. on_test_stop interrupted by SIGTERM during
+                # shutdown), this is a request-level failure, not an engine failure.
+                run_time_completed = "--run-time limit reached" in _combined_output
+                locust_request_failure_exit = (
+                    process is not None
+                    and process.returncode is not None
+                    and process.returncode == 1
+                )
+                if run_time_completed and locust_request_failure_exit:
+                    task_logger.warning(
+                        "Locust completed run-time but result.json missing "
+                        "(likely shutdown interrupted). Treating as FAILED_REQUESTS."
+                    )
+                    locust_result = {}
+                    status = "FAILED_REQUESTS"
+                else:
+                    error_msg = f"Result file not found: {result_file}"
+                    task_logger.error(error_msg)
+                    locust_result = {}
+                    status = "FAILED"
         else:
             locust_result = self._load_locust_result(result_file, task.id, task_logger)
             if was_stopped:
                 # Stopped but managed to write partial results
                 status = "STOPPED"
-            elif process.returncode == 0:
+            elif was_killed_externally:
+                status = "FAILED"
+            elif process is not None and process.returncode == 0:
                 status = "COMPLETED"
             else:
                 status = "FAILED_REQUESTS"

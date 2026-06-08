@@ -1110,6 +1110,8 @@ class APIClient:
                 )
                 request_kwargs.pop("json", None)
                 request_kwargs.pop("data", None)
+                base_request_kwargs.pop("json", None)
+                base_request_kwargs.pop("data", None)
 
                 if self.error_handler._handle_status_code_error(
                     response, start_time, request_name, req_id, payload_data
@@ -1366,6 +1368,8 @@ class APIClient:
                 )
                 request_kwargs.pop("json", None)
                 request_kwargs.pop("data", None)
+                base_request_kwargs.pop("json", None)
+                base_request_kwargs.pop("data", None)
 
                 total_time = (time.perf_counter() - start_time) * 1000
 

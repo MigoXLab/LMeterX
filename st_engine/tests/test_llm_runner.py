@@ -215,27 +215,13 @@ class TestSteppedDurationConsistency:
 
 
 # =====================================================================
-# Fix 4: _extra_env initialized in __init__
+# Fix 4: _extra_env is local and thread-safe in _start_process
 # =====================================================================
 class TestExtraEnvInitialization:
-    """Verify _extra_env is accessible immediately after construction."""
+    """Verify extra environment variables are correctly constructed and passed without leakage."""
 
-    def test_extra_env_exists_after_init(self, llm_runner):
-        """_extra_env should be an empty dict right after construction."""
-        assert hasattr(llm_runner, "_extra_env")
-        assert llm_runner._extra_env == {}
-        assert isinstance(llm_runner._extra_env, dict)
-
-    def test_extra_env_exists_on_http_runner(self, http_runner):
-        """HttpLocustRunner inherits _extra_env initialization."""
-        assert hasattr(http_runner, "_extra_env")
-        assert http_runner._extra_env == {}
-
-    def test_extra_env_reset_in_start_process(self, llm_runner, mock_llm_task):
-        """_start_process should reset _extra_env (not accumulate from prior tasks)."""
-        # Pre-populate to simulate a prior task's residue
-        llm_runner._extra_env = {"STALE_KEY": "stale_value"}
-
+    def test_extra_env_not_leaked_between_runs(self, llm_runner, mock_llm_task):
+        """_start_process should use a local dict and not leak or accumulate state between runs."""
         # Mock out subprocess and port allocation to avoid actual process launch
         with (
             patch("engine.llm_runner.subprocess.Popen") as mock_popen,
@@ -256,11 +242,31 @@ class TestExtraEnvInitialization:
                 mock_logger,
             )
 
-            # Verify STALE_KEY is gone (reset happened)
-            assert "STALE_KEY" not in llm_runner._extra_env
-            # Verify stepped env vars are present
-            assert "LOAD_MODE" in llm_runner._extra_env
-            assert llm_runner._extra_env["LOAD_MODE"] == "stepped"
+            # Retrieve the env dictionary passed to Popen in the first run
+            assert mock_popen.called
+            call_env_1 = mock_popen.call_args[1]["env"]
+            assert "LOAD_MODE" in call_env_1
+            assert call_env_1["LOAD_MODE"] == "stepped"
+
+            # Run a second task (e.g. non-stepped/fixed) to ensure no accumulation
+            mock_llm_task_fixed = Mock()
+            mock_llm_task_fixed.id = "fixed-task"
+            mock_llm_task_fixed.concurrent_users = 10
+            mock_llm_task_fixed.duration = 60
+            mock_llm_task_fixed.load_mode = "fixed"
+
+            mock_popen.reset_mock()
+            llm_runner._start_process(
+                ["locust", "-f", "dummy.py"],
+                mock_llm_task_fixed,
+                mock_logger,
+            )
+
+            # Retrieve the env dictionary passed to Popen in the second run
+            assert mock_popen.called
+            call_env_2 = mock_popen.call_args[1]["env"]
+            assert "LOAD_MODE" not in call_env_2
+            assert call_env_2["TASK_DURATION"] == "60"
 
 
 # =====================================================================

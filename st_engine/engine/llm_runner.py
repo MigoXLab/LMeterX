@@ -95,7 +95,6 @@ class LlmLocustRunner:
         )
         self._process_dict: dict[str, subprocess.Popen] = {}
         self._stopped_task_ids: set[str] = set()
-        self._extra_env: dict[str, str] = {}
 
     def _cleanup_stale_stopped_ids(self) -> int:
         """Remove stopped task IDs that have no corresponding active process.
@@ -645,16 +644,12 @@ class LlmLocustRunner:
         """Start Locust subprocess and register multiprocess group if needed."""
         # Inject stepped load env vars and task duration
         load_mode = self._get_load_mode(task)
-        # Reset _extra_env each time to prevent stale env vars (e.g. LOAD_MODE)
-        # from a previous stepped task leaking into the current fixed task.
-        self._extra_env = {}
+        extra_env: dict[str, str] = {}
         if load_mode == "stepped":
-            self._extra_env.update(self._get_stepped_env(task))
-            self._extra_env["TASK_DURATION"] = str(
-                self._calc_stepped_total_duration(task)
-            )
+            extra_env.update(self._get_stepped_env(task))
+            extra_env["TASK_DURATION"] = str(self._calc_stepped_total_duration(task))
         else:
-            self._extra_env["TASK_DURATION"] = str(task.duration)
+            extra_env["TASK_DURATION"] = str(task.duration)
 
         # Allocate a unique master port BEFORE starting the process to avoid
         # port conflicts when multiple tasks run concurrently.
@@ -678,7 +673,7 @@ class LlmLocustRunner:
 
         # Use step_max_users in stepped mode, otherwise concurrent_users
         effective_users = (
-            getattr(task, "step_max_users", None) or task.concurrent_users
+            (getattr(task, "step_max_users", None) or task.concurrent_users)
             if load_mode == "stepped"
             else task.concurrent_users
         )
@@ -698,10 +693,9 @@ class LlmLocustRunner:
         # Subprocess log level follows DETAIL_LOG_LEVEL (defaults to LOG_LEVEL).
         # Users can set DETAIL_LOG_LEVEL=DEBUG to capture request payloads in
         # the detailed task log without impacting normal operation.
-        if "LOG_LEVEL" not in env:
-            env["LOG_LEVEL"] = os.environ.get(
-                "DETAIL_LOG_LEVEL", os.environ.get("LOG_LEVEL", "INFO")
-            )
+        env["LOG_LEVEL"] = os.environ.get(
+            "DETAIL_LOG_LEVEL", os.environ.get("LOG_LEVEL", "INFO")
+        )
 
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
@@ -710,7 +704,6 @@ class LlmLocustRunner:
             else self.base_dir
         )
         # Apply extra env vars (stepped load config, task duration, etc.)
-        extra_env = getattr(self, "_extra_env", {})
         if extra_env:
             env.update(extra_env)
             task_logger.debug(f"Applied extra env vars: {list(extra_env.keys())}")

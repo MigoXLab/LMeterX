@@ -3,10 +3,15 @@ Tests for HttpLocustRunner command building, multiprocess support,
 and warmup phase skipping.
 """
 
-from unittest.mock import Mock, patch
+import json
+import os
+import tempfile
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from config.base import LOCUST_STOP_TIMEOUT
 from engine.http_runner import HttpLocustRunner
 
 
@@ -49,6 +54,31 @@ def mock_task():
 @pytest.fixture
 def mock_logger():
     return Mock()
+
+
+@pytest.fixture
+def mock_http_task():
+    """Create a mock HttpTask with typical fixed-mode fields."""
+    task = Mock()
+    task.id = "task-fix-001"
+    task.target_host = "http://example.com"
+    task.api_path = "/api/test"
+    task.method = "POST"
+    task.headers = '{"Content-Type": "application/json"}'
+    task.cookies = "{}"
+    task.concurrent_users = 50
+    task.spawn_rate = 10
+    task.duration = 120
+    task.load_mode = "fixed"
+    task.request_body = '{"key": "value"}'
+    task.dataset_file = None
+    task.success_assert = None
+    task.step_start_users = None
+    task.step_increment = None
+    task.step_duration = None
+    task.step_max_users = None
+    task.step_sustain_duration = None
+    return task
 
 
 # =====================================================================
@@ -217,3 +247,149 @@ class TestHttpMethods:
         cmd = runner._build_locust_command(mock_task, mock_logger)
         idx = cmd.index("--method")
         assert cmd[idx + 1] == method
+
+
+# =====================================================================
+# Fix 1: HTTP Runner --stop-timeout
+# =====================================================================
+class TestHttpRunnerStopTimeout:
+    """Verify that HttpLocustRunner includes --stop-timeout in the command."""
+
+    def test_stop_timeout_present_in_fixed_mode(
+        self, runner, mock_http_task, mock_logger
+    ):
+        cmd = runner._build_locust_command(mock_http_task, mock_logger)
+        assert "--stop-timeout" in cmd
+        idx = cmd.index("--stop-timeout")
+        assert cmd[idx + 1] == f"{LOCUST_STOP_TIMEOUT}s"
+
+    def test_stop_timeout_present_in_stepped_mode(
+        self, runner, mock_http_task, mock_logger
+    ):
+        mock_http_task.load_mode = "stepped"
+        mock_http_task.step_start_users = 5
+        mock_http_task.step_increment = 10
+        mock_http_task.step_duration = 30
+        mock_http_task.step_max_users = 50
+        mock_http_task.step_sustain_duration = 60
+
+        cmd = runner._build_locust_command(mock_http_task, mock_logger)
+        assert "--stop-timeout" in cmd
+        idx = cmd.index("--stop-timeout")
+        assert cmd[idx + 1] == f"{LOCUST_STOP_TIMEOUT}s"
+
+    def test_stop_timeout_value_matches_config(
+        self, runner, mock_http_task, mock_logger
+    ):
+        """Ensure the value is derived from the LOCUST_STOP_TIMEOUT config constant."""
+        cmd = runner._build_locust_command(mock_http_task, mock_logger)
+        idx = cmd.index("--stop-timeout")
+        expected_value = f"{LOCUST_STOP_TIMEOUT}s"
+        assert cmd[idx + 1] == expected_value
+        # Verify the constant is a positive integer
+        assert LOCUST_STOP_TIMEOUT > 0
+
+
+# =====================================================================
+# Fix 2: HTTP locustfile always writes result.json
+# =====================================================================
+class TestHttpLocustfileResultWrite:
+    """Verify that on_test_stop always writes result.json, even with empty stats."""
+
+    def test_write_result_file_with_empty_stats(self):
+        """_write_result_file should succeed with an empty stats list."""
+        from engine.http_locustfile import _write_result_file
+
+        task_id = "test-empty-stats"
+        result_file = _write_result_file(task_id, [])
+
+        assert os.path.exists(result_file)
+        with open(result_file, "r") as f:
+            data = json.load(f)
+        assert data == {"custom_metrics": {}, "locust_stats": []}
+
+        # Cleanup
+        import shutil
+
+        shutil.rmtree(os.path.dirname(result_file))
+
+    def test_write_result_file_with_populated_stats(self):
+        """_write_result_file should correctly serialize populated stats."""
+        from engine.http_locustfile import _write_result_file
+
+        task_id = "test-populated-stats"
+        stats = [
+            {
+                "task_id": task_id,
+                "metric_type": "POST /api",
+                "num_requests": 100,
+                "num_failures": 5,
+                "avg_latency": 50.0,
+                "min_latency": 10.0,
+                "max_latency": 200.0,
+                "median_latency": 45.0,
+                "p95_latency": 150.0,
+                "rps": 10.0,
+                "avg_content_length": 512.0,
+            }
+        ]
+        result_file = _write_result_file(task_id, stats)
+
+        assert os.path.exists(result_file)
+        with open(result_file, "r") as f:
+            data = json.load(f)
+        assert data["locust_stats"] == stats
+        assert data["custom_metrics"] == {}
+
+        # Cleanup
+        import shutil
+
+        shutil.rmtree(os.path.dirname(result_file))
+
+    def test_on_test_stop_writes_file_when_stats_empty(self):
+        """Integration: on_test_stop should write result.json even when
+        environment.stats has no entries (e.g., all requests failed during
+        aggregation).
+
+        We test this by directly calling on_test_stop with a mock environment
+        that simulates the LocalRunner path with empty stats.entries.
+        """
+        import shutil
+
+        from locust.runners import LocalRunner
+
+        from engine.http_locustfile import on_test_stop
+
+        # Create minimal mock environment
+        mock_env = MagicMock()
+        mock_env.parsed_options = SimpleNamespace(task_id="test-empty-on-stop")
+        mock_env.runner = MagicMock(spec=LocalRunner)
+        mock_env.runner.__class__ = LocalRunner
+        mock_env._realtime_greenlet = None
+
+        # Empty stats entries — simulates aggregation failure scenario
+        mock_env.stats.entries = {}
+        mock_env.stats.total = None
+
+        on_test_stop(mock_env)
+
+        # Verify result.json was written
+        result_file = os.path.join(
+            tempfile.gettempdir(),
+            "locust_result",
+            "test-empty-on-stop",
+            "result.json",
+        )
+        assert os.path.exists(
+            result_file
+        ), "result.json must be written even when locust_stats is empty"
+
+        with open(result_file, "r") as f:
+            data = json.load(f)
+        assert "locust_stats" in data
+        assert "custom_metrics" in data
+        # The stats list should be empty (no entries to aggregate)
+        assert data["locust_stats"] == []
+
+        # Cleanup
+        shutil.rmtree(os.path.dirname(result_file))

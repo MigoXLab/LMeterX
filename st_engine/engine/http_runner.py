@@ -7,6 +7,7 @@ import os
 import shutil
 from typing import List
 
+from config.base import LOCUST_STOP_TIMEOUT
 from config.multiprocess import (
     get_cpu_count,
     get_process_count,
@@ -37,6 +38,8 @@ class HttpLocustRunner(LlmLocustRunner):
             self._locustfile_path,
             "--host",
             task.target_host,
+            "--stop-timeout",
+            f"{LOCUST_STOP_TIMEOUT}s",
             "--headless",
             "--only-summary",
             "--api_path",
@@ -75,7 +78,11 @@ class HttpLocustRunner(LlmLocustRunner):
 
         # Multi-process support: automatically enable when concurrency is high
         cpu_count = get_cpu_count()
-        concurrent_users = int(task.concurrent_users)
+        concurrent_users = (
+            int(getattr(task, "step_max_users", None) or task.concurrent_users)
+            if load_mode == "stepped"
+            else int(task.concurrent_users)
+        )
         process_count = get_process_count(concurrent_users, cpu_count)
 
         if (

@@ -215,7 +215,13 @@ class HttpTaskService:
                 session.execute(
                     select(HttpTask)
                     .where(
-                        HttpTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
+                        HttpTask.status.in_(
+                            [
+                                TASK_STATUS_RUNNING,
+                                TASK_STATUS_LOCKED,
+                                TASK_STATUS_STOPPING,
+                            ]
+                        )
                     )
                     .where(HttpTask.is_deleted == 0)
                     .where(HttpTask.engine_id == ENGINE_ID)
@@ -339,7 +345,13 @@ class HttpTaskService:
                 session.execute(
                     select(HttpTask)
                     .where(
-                        HttpTask.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED])
+                        HttpTask.status.in_(
+                            [
+                                TASK_STATUS_RUNNING,
+                                TASK_STATUS_LOCKED,
+                                TASK_STATUS_STOPPING,
+                            ]
+                        )
                     )
                     .where(HttpTask.is_deleted == 0)
                     .where(HttpTask.engine_id.in_(stale_ids))
@@ -594,7 +606,7 @@ class HttpTaskService:
         process: subprocess.Popen,
         task_id: str,
         task_logger,
-        term_timeout: float = 10.0,
+        term_timeout: float = 30.0,
     ) -> bool:
         try:
             if process.poll() is not None:

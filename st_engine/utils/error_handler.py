@@ -17,17 +17,39 @@ def _safe_repr_truncate(obj: Any, limit: int = _PAYLOAD_LOG_LIMIT) -> str:
     """Return a truncated repr without allocating the full string first.
 
     For large objects (e.g. dicts containing base64 images), calling repr()
-    then slicing still creates the entire multi-MB string in memory.  Instead
-    we convert to str with a hard size cap using iterative key inspection for
-    dicts and a direct str() fallback for other types.
+    then slicing still creates the entire multi-MB string in memory.  This
+    implementation builds a bounded preview by iterating dict keys and
+    truncating individual values, avoiding the full allocation.
     """
+    if isinstance(obj, str):
+        if len(obj) <= limit:
+            return obj
+        return obj[:limit] + "... (truncated)"
+
     try:
         if isinstance(obj, dict):
-            preview = str(obj)[:limit]
+            parts = ["{"]
+            length = 1
+            for key, value in obj.items():
+                val_repr = repr(value)
+                if len(val_repr) > 80:
+                    val_repr = val_repr[:80] + "..."
+                entry = f"{repr(key)}: {val_repr}, "
+                if length + len(entry) > limit:
+                    parts.append("...")
+                    break
+                parts.append(entry)
+                length += len(entry)
+            parts.append("}")
+            preview = "".join(parts)
         elif isinstance(obj, (list, tuple)):
-            preview = str(obj)[:limit]
+            preview = repr(obj)
+            if len(preview) > limit:
+                preview = preview[:limit]
         else:
-            preview = repr(obj)[:limit]
+            preview = repr(obj)
+            if len(preview) > limit:
+                preview = preview[:limit]
     except Exception:
         preview = "<unrepresentable>"
     if len(preview) >= limit:

@@ -304,7 +304,7 @@ class LlmTaskService:
             self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
             return
 
-        # For tasks in 'running' state, check for an orphaned process.
+        # For tasks in 'running' or 'stopping' state, check for an orphaned process.
         self._reconcile_running_task(session, task, task_logger)
 
     def reconcile_tasks_on_startup(self, session: Session):
@@ -326,7 +326,15 @@ class LlmTaskService:
             stale_tasks = (
                 session.execute(
                     select(Task)
-                    .where(Task.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED]))
+                    .where(
+                        Task.status.in_(
+                            [
+                                TASK_STATUS_RUNNING,
+                                TASK_STATUS_LOCKED,
+                                TASK_STATUS_STOPPING,
+                            ]
+                        )
+                    )
                     .where(Task.is_deleted == 0)
                     .where(Task.engine_id == ENGINE_ID)
                 )
@@ -335,7 +343,7 @@ class LlmTaskService:
             )
 
             if not stale_tasks:
-                logger.info("No running or locked tasks found to reconcile.")
+                logger.info("No stale tasks found to reconcile.")
                 return
 
             logger.info(f"Found {len(stale_tasks)} potentially stale tasks to check")
@@ -391,7 +399,15 @@ class LlmTaskService:
             orphan_tasks = (
                 session.execute(
                     select(Task)
-                    .where(Task.status.in_([TASK_STATUS_RUNNING, TASK_STATUS_LOCKED]))
+                    .where(
+                        Task.status.in_(
+                            [
+                                TASK_STATUS_RUNNING,
+                                TASK_STATUS_LOCKED,
+                                TASK_STATUS_STOPPING,
+                            ]
+                        )
+                    )
                     .where(Task.is_deleted == 0)
                     .where(Task.engine_id.in_(stale_ids))
                 )
@@ -800,7 +816,7 @@ class LlmTaskService:
         process: subprocess.Popen,
         task_id: str,
         task_logger,
-        term_timeout: float = 10.0,
+        term_timeout: float = 30.0,
     ) -> bool:
         """
         Terminate a single Locust process with graceful fallback to SIGKILL.

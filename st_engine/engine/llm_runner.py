@@ -154,6 +154,7 @@ class LlmLocustRunner:
         """Calculate total duration for stepped load mode.
 
         Works with any task object that has step_* attributes.
+        Must match SteppedLoadShape's total_time calculation exactly.
         """
         start = self._safe_int(getattr(task, "step_start_users", None), 1)
         increment = self._safe_int(getattr(task, "step_increment", None), 10)
@@ -161,7 +162,7 @@ class LlmLocustRunner:
         max_users = self._safe_int(getattr(task, "step_max_users", None), 100)
         sustain = self._safe_int(getattr(task, "step_sustain_duration", None), 60)
 
-        num_steps = max(1, math.ceil((max_users - start) / max(increment, 1)) + 1)
+        num_steps = max(1, math.ceil((max_users - start) / max(increment, 1)))
         return num_steps * step_dur + sustain
 
     def _get_load_mode(self, task) -> str:
@@ -530,13 +531,9 @@ class LlmLocustRunner:
 
         # Handle multiprocess for high concurrency warmup
         cpu_count = get_cpu_count()
-        concurrent_users = int(task.concurrent_users)
-        process_count = get_process_count(concurrent_users, cpu_count)
+        process_count = get_process_count(warmup_users, cpu_count)
 
-        if (
-            should_enable_multiprocess(concurrent_users, cpu_count)
-            and process_count > 1
-        ):
+        if should_enable_multiprocess(warmup_users, cpu_count) and process_count > 1:
             cmd.extend(["--processes", str(process_count)])
             task_logger.info(f"Warmup multi-process enabled: {process_count} workers")
 
@@ -612,7 +609,11 @@ class LlmLocustRunner:
             )
 
         cpu_count = get_cpu_count()
-        concurrent_users = int(task.concurrent_users)
+        concurrent_users = (
+            int(getattr(task, "step_max_users", None) or task.concurrent_users)
+            if load_mode == "stepped"
+            else int(task.concurrent_users)
+        )
         process_count = get_process_count(concurrent_users, cpu_count)
 
         if (
@@ -643,16 +644,12 @@ class LlmLocustRunner:
         """Start Locust subprocess and register multiprocess group if needed."""
         # Inject stepped load env vars and task duration
         load_mode = self._get_load_mode(task)
-        # Reset _extra_env each time to prevent stale env vars (e.g. LOAD_MODE)
-        # from a previous stepped task leaking into the current fixed task.
-        self._extra_env = {}
+        extra_env: dict[str, str] = {}
         if load_mode == "stepped":
-            self._extra_env.update(self._get_stepped_env(task))
-            self._extra_env["TASK_DURATION"] = str(
-                self._calc_stepped_total_duration(task)
-            )
+            extra_env.update(self._get_stepped_env(task))
+            extra_env["TASK_DURATION"] = str(self._calc_stepped_total_duration(task))
         else:
-            self._extra_env["TASK_DURATION"] = str(task.duration)
+            extra_env["TASK_DURATION"] = str(task.duration)
 
         # Allocate a unique master port BEFORE starting the process to avoid
         # port conflicts when multiple tasks run concurrently.
@@ -673,7 +670,14 @@ class LlmLocustRunner:
 
         env = os.environ.copy()
         env["TASK_ID"] = str(task.id)
-        env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
+
+        # Use step_max_users in stepped mode, otherwise concurrent_users
+        effective_users = (
+            (getattr(task, "step_max_users", None) or task.concurrent_users)
+            if load_mode == "stepped"
+            else task.concurrent_users
+        )
+        env["LOCUST_CONCURRENT_USERS"] = str(effective_users)
 
         # Expose process count so locustfiles can detect multiprocess mode
         # and use shared memory for datasets instead of per-process copies.
@@ -689,10 +693,9 @@ class LlmLocustRunner:
         # Subprocess log level follows DETAIL_LOG_LEVEL (defaults to LOG_LEVEL).
         # Users can set DETAIL_LOG_LEVEL=DEBUG to capture request payloads in
         # the detailed task log without impacting normal operation.
-        if "LOG_LEVEL" not in env:
-            env["LOG_LEVEL"] = os.environ.get(
-                "DETAIL_LOG_LEVEL", os.environ.get("LOG_LEVEL", "INFO")
-            )
+        env["LOG_LEVEL"] = os.environ.get(
+            "DETAIL_LOG_LEVEL", os.environ.get("LOG_LEVEL", "INFO")
+        )
 
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
@@ -701,7 +704,6 @@ class LlmLocustRunner:
             else self.base_dir
         )
         # Apply extra env vars (stepped load config, task duration, etc.)
-        extra_env = getattr(self, "_extra_env", {})
         if extra_env:
             env.update(extra_env)
             task_logger.debug(f"Applied extra env vars: {list(extra_env.keys())}")

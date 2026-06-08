@@ -671,13 +671,13 @@ def on_test_stop(environment, **kwargs):
     except Exception as e:  # pragma: no cover - defensive
         task_logger.error(f"Failed to aggregate HTTP stats: {e}", exc_info=True)
     finally:
-        # Always attempt to write whatever stats were collected,
-        # even if some entries failed during aggregation.
-        if locust_stats:
-            try:
-                _write_result_file(task_id, locust_stats)
-            except Exception as e:  # pragma: no cover - defensive
-                task_logger.error(f"Failed to write result file: {e}", exc_info=True)
+        # Always write result file (even with empty stats) so the runner
+        # can distinguish "engine crash" (no file) from "all requests failed"
+        # (file exists with empty stats → FAILED_REQUESTS).
+        try:
+            _write_result_file(task_id, locust_stats)
+        except Exception as e:  # pragma: no cover - defensive
+            task_logger.error(f"Failed to write result file: {e}", exc_info=True)
 
         # Release shared dataset mmap resources if applicable
         dataset_queue = getattr(environment, "dataset_queue", None)

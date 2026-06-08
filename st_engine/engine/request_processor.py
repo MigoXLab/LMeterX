@@ -1101,6 +1101,16 @@ class APIClient:
             # Use perf_counter for high-precision monotonic timing
             actual_start_time = time.perf_counter()
             with client.post(self.config.api_path, **request_kwargs) as response:
+                # Release the full payload (may contain large base64 images) now
+                # that the request has been sent. Keep only a truncated snapshot
+                # for error/debug logging to avoid holding MBs per greenlet during
+                # the entire streaming duration.
+                payload_data = (
+                    _safe_repr_truncate(payload_data, 500) if payload_data else None
+                )
+                request_kwargs.pop("json", None)
+                request_kwargs.pop("data", None)
+
                 if self.error_handler._handle_status_code_error(
                     response, start_time, request_name, req_id, payload_data
                 ):
@@ -1170,7 +1180,7 @@ class APIClient:
                             self.task_logger.opt(lazy=True).debug(
                                 "[{req_id}] Request Payload: {payload}",
                                 req_id=lambda: req_id,
-                                payload=lambda: _safe_repr_truncate(payload_data, 500),
+                                payload=lambda: payload_data,
                             )
                         self.task_logger.opt(lazy=True).debug(
                             "[{req_id}] Stream Response Content: reasoning_content={r_content}, content={content}",
@@ -1350,6 +1360,13 @@ class APIClient:
 
         try:
             with client.post(self.config.api_path, **request_kwargs) as response:
+                # Release full payload after request is sent (same rationale as streaming)
+                payload_data = (
+                    _safe_repr_truncate(payload_data, 500) if payload_data else None
+                )
+                request_kwargs.pop("json", None)
+                request_kwargs.pop("data", None)
+
                 total_time = (time.perf_counter() - start_time) * 1000
 
                 if self.error_handler._handle_status_code_error(
@@ -1444,7 +1461,7 @@ class APIClient:
                     self.task_logger.opt(lazy=True).debug(
                         "[{req_id}] Request Payload: {payload}",
                         req_id=lambda: req_id,
-                        payload=lambda: _safe_repr_truncate(payload_data, 500),
+                        payload=lambda: payload_data,
                     )
                 return reasoning_content, content, usage
 

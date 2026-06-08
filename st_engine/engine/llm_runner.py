@@ -95,6 +95,7 @@ class LlmLocustRunner:
         )
         self._process_dict: dict[str, subprocess.Popen] = {}
         self._stopped_task_ids: set[str] = set()
+        self._extra_env: dict[str, str] = {}
 
     def _cleanup_stale_stopped_ids(self) -> int:
         """Remove stopped task IDs that have no corresponding active process.
@@ -154,6 +155,7 @@ class LlmLocustRunner:
         """Calculate total duration for stepped load mode.
 
         Works with any task object that has step_* attributes.
+        Must match SteppedLoadShape's total_time calculation exactly.
         """
         start = self._safe_int(getattr(task, "step_start_users", None), 1)
         increment = self._safe_int(getattr(task, "step_increment", None), 10)
@@ -161,7 +163,7 @@ class LlmLocustRunner:
         max_users = self._safe_int(getattr(task, "step_max_users", None), 100)
         sustain = self._safe_int(getattr(task, "step_sustain_duration", None), 60)
 
-        num_steps = max(1, math.ceil((max_users - start) / max(increment, 1)) + 1)
+        num_steps = max(1, math.ceil((max_users - start) / max(increment, 1)))
         return num_steps * step_dur + sustain
 
     def _get_load_mode(self, task) -> str:
@@ -530,13 +532,9 @@ class LlmLocustRunner:
 
         # Handle multiprocess for high concurrency warmup
         cpu_count = get_cpu_count()
-        concurrent_users = int(task.concurrent_users)
-        process_count = get_process_count(concurrent_users, cpu_count)
+        process_count = get_process_count(warmup_users, cpu_count)
 
-        if (
-            should_enable_multiprocess(concurrent_users, cpu_count)
-            and process_count > 1
-        ):
+        if should_enable_multiprocess(warmup_users, cpu_count) and process_count > 1:
             cmd.extend(["--processes", str(process_count)])
             task_logger.info(f"Warmup multi-process enabled: {process_count} workers")
 
@@ -612,7 +610,11 @@ class LlmLocustRunner:
             )
 
         cpu_count = get_cpu_count()
-        concurrent_users = int(task.concurrent_users)
+        concurrent_users = (
+            int(getattr(task, "step_max_users", None) or task.concurrent_users)
+            if load_mode == "stepped"
+            else int(task.concurrent_users)
+        )
         process_count = get_process_count(concurrent_users, cpu_count)
 
         if (
@@ -673,7 +675,14 @@ class LlmLocustRunner:
 
         env = os.environ.copy()
         env["TASK_ID"] = str(task.id)
-        env["LOCUST_CONCURRENT_USERS"] = str(task.concurrent_users)
+
+        # Use step_max_users in stepped mode, otherwise concurrent_users
+        effective_users = (
+            getattr(task, "step_max_users", None) or task.concurrent_users
+            if load_mode == "stepped"
+            else task.concurrent_users
+        )
+        env["LOCUST_CONCURRENT_USERS"] = str(effective_users)
 
         # Expose process count so locustfiles can detect multiprocess mode
         # and use shared memory for datasets instead of per-process copies.

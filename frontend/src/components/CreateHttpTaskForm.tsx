@@ -524,6 +524,11 @@ const CreateHttpTaskForm: React.FC<Props> = ({
               required: true,
               message: t('components.createHttpTaskForm.taskNameRequired'),
             },
+            {
+              min: 1,
+              max: 100,
+              message: t('components.createHttpTaskForm.taskNameLengthLimit'),
+            },
           ]}
         >
           <Input

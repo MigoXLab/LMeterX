@@ -58,16 +58,14 @@ export interface LlmTask {
   test_data?: string;
   engine_id?: string;
   status:
+    | 'created'
     | 'pending'
     | 'running'
-    | 'completed'
-    | 'failed'
-    | 'failed_requests'
+    | 'stopping'
     | 'stopped'
-    | 'created'
-    | 'idle'
-    | 'locked'
-    | 'stopping';
+    | 'successed'
+    | 'exception'
+    | 'failed_requests';
   created_at: string;
   updated_at: string;
   error_message?: string;
@@ -103,16 +101,14 @@ export interface HttpTask {
   created_by?: string;
   engine_id?: string;
   status:
+    | 'created'
     | 'pending'
     | 'running'
-    | 'completed'
-    | 'failed'
-    | 'failed_requests'
+    | 'stopping'
     | 'stopped'
-    | 'created'
-    | 'idle'
-    | 'locked'
-    | 'stopping';
+    | 'successed'
+    | 'exception'
+    | 'failed_requests';
   created_at: string;
   updated_at: string;
   error_message?: string;

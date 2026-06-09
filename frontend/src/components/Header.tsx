@@ -63,6 +63,10 @@ const Header: React.FC = () => {
 
   const menuItems = [
     {
+      key: '/dashboard',
+      label: t('sidebar.dashboard') || '仪表盘',
+    },
+    {
       key: '/jobs',
       label: t('sidebar.testTasks'),
     },
@@ -174,10 +178,10 @@ const Header: React.FC = () => {
         <div
           className='logo logo-gradient'
           style={logoStyle}
-          onClick={() => navigate('/jobs')}
+          onClick={() => navigate('/dashboard')}
           onKeyDown={e => {
             if (e.key === 'Enter' || e.key === ' ') {
-              navigate('/jobs');
+              navigate('/dashboard');
             }
           }}
           role='button'

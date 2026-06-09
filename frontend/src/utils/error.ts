@@ -77,6 +77,85 @@ export const getErrorTypeFromStatus = (status: number): ErrorType => {
 };
 
 /**
+ * Format validation error details (especially Pydantic 422 errors) into a user-friendly message
+ */
+export const formatValidationError = (errorData: any): string | null => {
+  if (!errorData) return null;
+
+  // If detail is in errorData (FastAPI standard)
+  const detail = errorData.detail !== undefined ? errorData.detail : errorData;
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (!item) return '';
+
+        const loc = Array.isArray(item.loc)
+          ? item.loc.join('.')
+          : item.loc || '';
+        const msg = item.msg || '';
+        const type = item.type || '';
+
+        // Custom user-friendly messages for common fields
+        if (loc.includes('name')) {
+          if (
+            type === 'string_too_long' ||
+            msg.includes('at most 100 characters')
+          ) {
+            return '任务名称长度不能超过100个字符';
+          }
+          if (
+            type === 'string_too_short' ||
+            msg.includes('at least 1 character')
+          ) {
+            return '任务名称不能为空';
+          }
+        }
+
+        if (loc.includes('target_url')) {
+          if (msg.includes('http:// or https://')) {
+            return 'API URL 需以 http:// 或 https:// 开头';
+          }
+          if (
+            type === 'string_too_long' ||
+            msg.includes('at most 2000 characters')
+          ) {
+            return 'API URL 长度不能超过2000个字符';
+          }
+        }
+
+        if (loc.includes('concurrent_users')) {
+          return '并发用户数需在1-5000之间';
+        }
+
+        if (loc.includes('duration')) {
+          return '持续时间需在1秒至48小时之间';
+        }
+
+        // Fallback to item msg or type
+        return msg || type || JSON.stringify(item);
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  if (typeof errorData.message === 'string') {
+    return errorData.message;
+  }
+
+  if (typeof errorData.error === 'string') {
+    return errorData.error;
+  }
+
+  return null;
+};
+
+/**
  * Parse error from API response
  */
 export const parseApiError = (error: any): AppError => {
@@ -86,12 +165,15 @@ export const parseApiError = (error: any): AppError => {
     const { data } = error.response;
     const type = getErrorTypeFromStatus(status);
 
-    return createError(
-      type,
-      data?.message || error.message || 'An error occurred',
-      data,
-      status
-    );
+    let errorMsg = data?.message || error.message || 'An error occurred';
+    if (status === 422) {
+      const validationMsg = formatValidationError(data);
+      if (validationMsg) {
+        errorMsg = validationMsg;
+      }
+    }
+
+    return createError(type, errorMsg, data, status);
   }
 
   if (error.request) {
@@ -279,6 +361,7 @@ export default {
   ErrorType,
   createError,
   parseApiError,
+  formatValidationError,
   showErrorMessage,
   showSuccessMessage,
   showWarningMessage,

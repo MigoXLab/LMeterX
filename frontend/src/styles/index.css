@@ -2708,3 +2708,32 @@ body {
   box-shadow: none !important;
   cursor: not-allowed;
 }
+
+/* ========================================
+   Dashboard 5-Column Stat Row Layout
+   ======================================== */
+.dashboard-stat-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+}
+
+@media (min-width: 992px) {
+  .dashboard-stat-col {
+    flex: 0 0 20% !important;
+    max-width: 20% !important;
+  }
+}
+
+@media (max-width: 991px) and (min-width: 576px) {
+  .dashboard-stat-col {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+  }
+}
+
+@media (max-width: 575px) {
+  .dashboard-stat-col {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+}

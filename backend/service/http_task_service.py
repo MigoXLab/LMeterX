@@ -68,10 +68,15 @@ def _split_url(target_url: str) -> tuple[str, str]:
 
 
 def _build_task_summary(task: HttpTask) -> Dict[str, Any]:
+    mapped_status = (
+        "successed"
+        if task.status == "completed"
+        else ("exception" if task.status == "failed" else task.status)
+    )
     summary: Dict[str, Any] = {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "method": task.method,
         "target_url": task.target_url,
@@ -175,10 +180,21 @@ async def get_http_tasks_svc(
 
         if status:
             status_list = [s.strip() for s in status.split(",") if s.strip()]
-            if len(status_list) == 1:
-                query = query.where(HttpTask.status == status_list[0])
+            mapped_status_list = []
+            for s in status_list:
+                if s == "successed":
+                    mapped_status_list.extend(["successed", "completed"])
+                elif s == "exception":
+                    mapped_status_list.extend(["exception", "failed"])
+                elif s == "pending":
+                    mapped_status_list.extend(["pending", "created"])
+                else:
+                    mapped_status_list.append(s)
+            mapped_status_list = list(set(mapped_status_list))
+            if len(mapped_status_list) == 1:
+                query = query.where(HttpTask.status == mapped_status_list[0])
             else:
-                query = query.where(HttpTask.status.in_(status_list))
+                query = query.where(HttpTask.status.in_(mapped_status_list))
 
         if creator:
             query = query.where(HttpTask.created_by == creator)
@@ -223,7 +239,13 @@ async def get_http_tasks_status_svc(
 ) -> HttpTaskStatusRsp:
     query = text(
         """
-        SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
+        SELECT id,
+               CASE status
+                   WHEN 'completed' THEN 'successed'
+                   WHEN 'failed' THEN 'exception'
+                   ELSE status
+               END AS status,
+               UNIX_TIMESTAMP(updated_at) as updated_timestamp
         FROM http_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
         AND is_deleted = 0
@@ -531,11 +553,20 @@ async def stop_http_task_svc(request: Request, task_id: str) -> HttpTaskCreateRs
                         ErrorMessages.INSUFFICIENT_PERMISSIONS
                     )
 
-        if task.status != "running":
+        if task.status not in ("running", "pending"):
             return HttpTaskCreateRsp(
                 status=task.status,
                 task_id=task_id,
-                message="Task is not currently running.",
+                message="Task is not currently running or queued.",
+            )
+
+        if task.status == "pending":
+            task.status = "stopped"
+            await db.commit()
+            return HttpTaskCreateRsp(
+                status="stopped",
+                task_id=task_id,
+                message="Queued task cancelled.",
             )
 
         task.status = "stopping"
@@ -648,7 +679,7 @@ async def get_http_tasks_for_comparison_svc(
                 HttpTask.created_at,
                 HttpTask.duration,
             )
-            .where(HttpTask.status.in_(["completed", "failed_requests"]))
+            .where(HttpTask.status.in_(["successed", "failed_requests"]))
             .where(HttpTask.is_deleted == 0)
             .join(HttpTaskResult, HttpTask.id == HttpTaskResult.task_id)
             .distinct()
@@ -796,7 +827,7 @@ async def compare_http_performance_svc(
         incomplete_tasks = [
             task_id
             for task_id, task in tasks.items()
-            if task.status not in ["completed", "failed_requests"]
+            if task.status not in ["successed", "failed_requests"]
         ]
         if incomplete_tasks:
             return HttpComparisonResponse(

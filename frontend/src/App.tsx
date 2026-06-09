@@ -27,6 +27,7 @@ import TaskLog from './pages/TaskLog';
 import TasksPage from './pages/Tasks';
 import Collections from './pages/Collections';
 import CollectionDetail from './pages/CollectionDetail';
+import Dashboard from './pages/Dashboard';
 import { isAuthenticated, getStoredUser } from './utils/auth';
 import { getLdapEnabled } from './utils/runtimeConfig';
 
@@ -59,7 +60,7 @@ const RequireAdmin: React.FC<{ children: React.ReactElement }> = ({
   }
   const user = getStoredUser();
   if (!user?.is_admin) {
-    return <Navigate to='/jobs' replace />;
+    return <Navigate to='/dashboard' replace />;
   }
   return children;
 };
@@ -68,7 +69,7 @@ const LegacyResultsRedirect: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   if (!id) {
-    return <Navigate to='/jobs' replace />;
+    return <Navigate to='/dashboard' replace />;
   }
   return (
     <Navigate
@@ -150,14 +151,26 @@ const App: React.FC = () => {
                   <Route
                     path='/login'
                     element={
-                      LDAP_ENABLED ? <Login /> : <Navigate to='/jobs' replace />
+                      LDAP_ENABLED ? (
+                        <Login />
+                      ) : (
+                        <Navigate to='/dashboard' replace />
+                      )
                     }
                   />
                   <Route
                     path='/'
                     element={
                       <RequireAuth>
-                        <Navigate to='/jobs' replace />
+                        <Navigate to='/dashboard' replace />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path='/dashboard'
+                    element={
+                      <RequireAuth>
+                        <Dashboard />
                       </RequireAuth>
                     }
                   />

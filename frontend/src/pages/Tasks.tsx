@@ -58,6 +58,7 @@ import { getStoredUser } from '../utils/auth';
 import { TASK_STATUS_MAP, UI_CONFIG } from '../utils/constants';
 import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
 import { formatDate, getTimestamp } from '../utils/date';
+import { formatValidationError } from '../utils/error';
 import { getLdapEnabled } from '../utils/runtimeConfig';
 
 const { Search } = Input;
@@ -387,10 +388,24 @@ const Tasks: React.FC = () => {
   const getRerunName = useCallback((name?: string): string => {
     const baseName = name || 'Task';
     const match = baseName.match(/^(.*)-(\d+)$/);
+    let newName = '';
     if (match) {
-      return `${match[1]}-${parseInt(match[2]) + 1}`;
+      newName = `${match[1]}-${parseInt(match[2]) + 1}`;
+    } else {
+      newName = `${baseName}-1`;
     }
-    return `${baseName}-1`;
+
+    // If the new name exceeds 100 characters, truncate the base name part
+    if (newName.length > 100) {
+      const suffix = match ? `-${parseInt(match[2]) + 1}` : '-1';
+      const maxBaseLength = 100 - suffix.length;
+      const truncatedBase = (match ? match[1] : baseName).slice(
+        0,
+        maxBaseLength
+      );
+      newName = `${truncatedBase}${suffix}`;
+    }
+    return newName;
   }, []);
 
   /**
@@ -461,9 +476,18 @@ const Tasks: React.FC = () => {
         } else {
           messageApi.error(t('pages.jobs.rerunFailed'));
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to rerun job:', error);
-        messageApi.error(t('pages.jobs.rerunFailed'));
+        let errorMsg = t('pages.jobs.rerunFailed');
+        if (error?.status === 422 && error?.data) {
+          const validationMsg = formatValidationError(error.data);
+          if (validationMsg) {
+            errorMsg = `${t('pages.jobs.rerunFailed')}: ${validationMsg}`;
+          }
+        } else if (error?.message) {
+          errorMsg = `${t('pages.jobs.rerunFailed')}: ${error.message}`;
+        }
+        messageApi.error(errorMsg);
       }
     },
     [canManage, getRerunName, manualRefresh, messageApi, t]
@@ -504,9 +528,18 @@ const Tasks: React.FC = () => {
         } else {
           messageApi.error(t('pages.jobs.rerunFailed'));
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to rerun HTTP task:', error);
-        messageApi.error(t('pages.jobs.rerunFailed'));
+        let errorMsg = t('pages.jobs.rerunFailed');
+        if (error?.status === 422 && error?.data) {
+          const validationMsg = formatValidationError(error.data);
+          if (validationMsg) {
+            errorMsg = `${t('pages.jobs.rerunFailed')}: ${validationMsg}`;
+          }
+        } else if (error?.message) {
+          errorMsg = `${t('pages.jobs.rerunFailed')}: ${error.message}`;
+        }
+        messageApi.error(errorMsg);
       }
     },
     [canManage, getRerunName, httpManualRefresh, messageApi, t]
@@ -869,10 +902,7 @@ const Tasks: React.FC = () => {
             });
           }
 
-          if (
-            canStopOrRename(record.created_by) &&
-            ['running', 'queued'].includes(statusLower)
-          ) {
+          if (canStopOrRename(record.created_by) && statusLower === 'running') {
             moreMenuItems.push({
               key: 'stop',
               icon: <StopOutlined />,
@@ -1155,10 +1185,7 @@ const Tasks: React.FC = () => {
             });
           }
 
-          if (
-            canStopOrRename(record.created_by) &&
-            ['running', 'queued'].includes(statusLower)
-          ) {
+          if (canStopOrRename(record.created_by) && statusLower === 'running') {
             moreMenuItems.push({
               key: 'stop',
               icon: <StopOutlined />,
@@ -1625,7 +1652,7 @@ const Tasks: React.FC = () => {
   }, [activeMode, messageApi, navigate, selectedRowKeys, t]);
 
   const COMPARABLE_STATUSES = useMemo(
-    () => ['completed', 'failed_requests'],
+    () => ['successed', 'failed_requests'],
     []
   );
 

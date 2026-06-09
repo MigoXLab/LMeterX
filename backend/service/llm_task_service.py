@@ -82,10 +82,15 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
     field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
+    mapped_status = (
+        "successed"
+        if task.status == "completed"
+        else ("exception" if task.status == "failed" else task.status)
+    )
     return {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "target_host": task.target_host,
         "api_path": task.api_path,
@@ -126,11 +131,16 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
     field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
+    mapped_status = (
+        "successed"
+        if task.status == "completed"
+        else ("exception" if task.status == "failed" else task.status)
+    )
 
     return {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "target_host": task.target_host,
         "model": task.model,
@@ -168,10 +178,15 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
 
 def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
     """Build a task-like payload for HTTP API tasks so shared pages work."""
+    mapped_status = (
+        "successed"
+        if task.status == "completed"
+        else ("exception" if task.status == "failed" else task.status)
+    )
     return {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": getattr(task, "created_by", None),
         "target_host": task.target_host,
         "model": task.method,  # reuse method label for display
@@ -308,10 +323,21 @@ async def get_tasks_svc(
         if status:
             # Handle multiple statuses separated by comma
             status_list = [s.strip() for s in status.split(",") if s.strip()]
-            if len(status_list) == 1:
-                query = query.where(Task.status == status_list[0])
+            mapped_status_list = []
+            for s in status_list:
+                if s == "successed":
+                    mapped_status_list.extend(["successed", "completed"])
+                elif s == "exception":
+                    mapped_status_list.extend(["exception", "failed"])
+                elif s == "pending":
+                    mapped_status_list.extend(["pending", "created"])
+                else:
+                    mapped_status_list.append(s)
+            mapped_status_list = list(set(mapped_status_list))
+            if len(mapped_status_list) == 1:
+                query = query.where(Task.status == mapped_status_list[0])
             else:
-                query = query.where(Task.status.in_(status_list))
+                query = query.where(Task.status.in_(mapped_status_list))
         if creator:
             query = query.where(Task.created_by == creator)
         if model:
@@ -372,7 +398,13 @@ async def get_tasks_status_svc(request: Request, page_size: int):
     """
     query = text(
         """
-        SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
+        SELECT id,
+               CASE status
+                   WHEN 'completed' THEN 'successed'
+                   WHEN 'failed' THEN 'exception'
+                   ELSE status
+               END AS status,
+               UNIX_TIMESTAMP(updated_at) as updated_timestamp
         FROM llm_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
         AND is_deleted = 0
@@ -421,12 +453,22 @@ async def stop_task_svc(request: Request, task_id: str):
                         ErrorMessages.INSUFFICIENT_PERMISSIONS
                     )
 
-        if task.status != "running":
+        if task.status not in ("running", "pending"):
             return TaskCreateRsp(
                 status=task.status,
                 task_id=task_id,
-                message="Task is not currently running.",
+                message="Task is not currently running or queued.",
             )
+
+        if task.status == "pending":
+            task.status = "stopped"
+            await db.commit()
+            return TaskCreateRsp(
+                status="stopped",
+                task_id=task_id,
+                message="Queued task cancelled.",
+            )
+
         task.status = "stopping"
         await db.commit()
         return TaskCreateRsp(
@@ -781,7 +823,7 @@ async def get_task_status_svc(request: Request, task_id: str):
 async def get_model_tasks_for_comparison_svc(request: Request):
     """
     Get available model tasks that can be used for performance comparison.
-    Only returns tasks with status 'completed' or 'failed_requests' that have results.
+    Only returns tasks with status 'successed' or 'failed_requests' that have results.
 
     Args:
         request: The FastAPI request object.
@@ -792,7 +834,7 @@ async def get_model_tasks_for_comparison_svc(request: Request):
     try:
         db = request.state.db
 
-        # Query for completed and failed_requests tasks that have results
+        # Query for successed and failed_requests tasks that have results
         query = (
             select(
                 Task.id,
@@ -802,7 +844,7 @@ async def get_model_tasks_for_comparison_svc(request: Request):
                 Task.created_at,
                 Task.duration,
             )
-            .where(Task.status.in_(["completed", "failed_requests"]))
+            .where(Task.status.in_(["successed", "failed_requests"]))
             .join(TaskResult, Task.id == TaskResult.task_id)
             .distinct()
             .order_by(Task.created_at.desc(), Task.model, Task.concurrent_users)
@@ -886,7 +928,7 @@ async def compare_performance_svc(
         incomplete_tasks = [
             task_id
             for task_id, task in tasks.items()
-            if task.status not in ["completed", "failed_requests"]
+            if task.status not in ["successed", "failed_requests"]
         ]
         if incomplete_tasks:
             return ComparisonResponse(

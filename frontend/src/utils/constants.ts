@@ -63,13 +63,13 @@ export const DEFAULT_HEADERS = [
 // Task status mapping - text will be handled by i18n
 export const TASK_STATUS_MAP = {
   created: { color: 'default', text: 'status.created' },
+  pending: { color: 'warning', text: 'status.pending' },
   running: { color: 'processing', text: 'status.running' },
-  completed: { color: 'success', text: 'status.completed' },
+  successed: { color: 'success', text: 'status.successed' },
+  failed_requests: { color: 'magenta', text: 'status.failed_requests' },
+  exception: { color: 'error', text: 'status.exception' },
   stopping: { color: 'gold', text: 'status.stopping' },
   stopped: { color: 'orange', text: 'status.stopped' },
-  locked: { color: 'warning', text: 'status.locked' },
-  failed: { color: 'error', text: 'status.failed' },
-  failed_requests: { color: 'magenta', text: 'status.failed_requests' },
 } as const;
 
 // File upload configuration

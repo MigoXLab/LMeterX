@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Pagination as ApiPagination, LlmTask } from '../types/job';
 import { getToken } from '../utils/auth';
 import { getApiBaseUrl } from '../utils/runtimeConfig';
+import { formatValidationError } from '../utils/error';
 
 interface AntdPagination {
   current: number;
@@ -32,7 +33,7 @@ const buildAuthHeaders = () => {
 };
 
 const isActiveStatus = (status?: string) =>
-  ['running', 'pending', 'created', 'queued'].includes(
+  ['running', 'created', 'pending', 'stopping'].includes(
     status?.toLowerCase() || ''
   );
 
@@ -349,8 +350,13 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
         messageApi.error(t('common.createFailed'));
         return false;
       } catch (error: any) {
-        const errorMsg =
-          error.response?.data?.error || t('common.createFailed');
+        let errorMsg = error.response?.data?.error || t('common.createFailed');
+        if (error?.response?.status === 422 && error?.response?.data) {
+          const validationMsg = formatValidationError(error.response.data);
+          if (validationMsg) {
+            errorMsg = validationMsg;
+          }
+        }
         messageApi.error(`${t('common.createFailed')}: ${errorMsg}`);
         return false;
       } finally {

@@ -7,11 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from config.business import (
-    TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED,
+    TASK_STATUS_EXCEPTION,
     TASK_STATUS_FAILED_REQUESTS,
+    TASK_STATUS_PENDING,
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
+    TASK_STATUS_SUCCESSED,
 )
 from service.llm_task_service import ENGINE_ID, LlmTaskService
 
@@ -48,7 +49,7 @@ def test_get_and_lock_task_locks_task(task_service):
     locked_task = task_service.get_and_lock_task(mock_session)
 
     assert locked_task is mock_task
-    assert mock_task.status == "locked"
+    assert mock_task.status == "pending"
     mock_session.commit.assert_called_once()
 
 
@@ -61,6 +62,60 @@ def test_get_and_lock_task_returns_none(task_service):
     locked_task = task_service.get_and_lock_task(mock_session)
 
     assert locked_task is None
+    mock_session.commit.assert_not_called()
+
+
+def test_enqueue_created_tasks(task_service):
+    mock_session = Mock()
+    mock_result = Mock()
+    mock_result.rowcount = 3
+    mock_session.execute.return_value = mock_result
+
+    count = task_service.enqueue_created_tasks(mock_session)
+
+    assert count == 3
+    mock_session.commit.assert_called_once()
+
+
+def test_enqueue_created_tasks_no_tasks(task_service):
+    mock_session = Mock()
+    mock_result = Mock()
+    mock_result.rowcount = 0
+    mock_session.execute.return_value = mock_result
+
+    count = task_service.enqueue_created_tasks(mock_session)
+
+    assert count == 0
+    mock_session.commit.assert_called_once()
+
+
+def test_claim_pending_task_claims_task(task_service):
+    mock_session = Mock()
+    mock_task = Mock()
+    mock_task.id = "task-pending-001"
+    mock_task.status = TASK_STATUS_PENDING
+
+    mock_result = Mock()
+    mock_result.scalar_one_or_none.return_value = mock_task
+    mock_session.execute.return_value = mock_result
+
+    claimed = task_service.claim_pending_task(mock_session)
+
+    assert claimed is mock_task
+    assert mock_task.status == TASK_STATUS_RUNNING
+    assert mock_task.engine_id == ENGINE_ID
+    mock_session.commit.assert_called_once()
+
+
+def test_claim_pending_task_returns_none_when_empty(task_service):
+    mock_session = Mock()
+    mock_result = Mock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    claimed = task_service.claim_pending_task(mock_session)
+
+    assert claimed is None
     mock_session.commit.assert_not_called()
 
 
@@ -121,7 +176,7 @@ def test_pipeline_skips_soft_deleted_task(task_service):
 
 
 def test_pipeline_runs_non_deleted_task(task_service):
-    """Normal (non-deleted) task should proceed through the pipeline."""
+    """Normal (non-deleted) task should proceed through the pipeline without setting running status."""
     mock_session = Mock()
     mock_task = Mock()
     mock_task.id = "task-normal"
@@ -131,7 +186,7 @@ def test_pipeline_runs_non_deleted_task(task_service):
     with (
         patch("service.llm_task_service.add_task_log_sink", return_value=1),
         patch("service.llm_task_service.remove_task_log_sink"),
-        patch.object(task_service, "update_task_status"),
+        patch.object(task_service, "update_task_status") as mock_update_status,
         patch.object(
             task_service,
             "start_task",
@@ -146,6 +201,9 @@ def test_pipeline_runs_non_deleted_task(task_service):
         task_service.process_task_pipeline(mock_task, mock_session)
 
     mock_start_task.assert_called_once_with(mock_task)
+    # Pipeline should NOT set task to RUNNING — it's already running from claim_pending_task
+    for call in mock_update_status.call_args_list:
+        assert call[0][2] != TASK_STATUS_RUNNING
 
 
 def test_reconcile_marks_running_failed_when_process_missing(task_service):
@@ -172,5 +230,5 @@ def test_reconcile_marks_running_failed_when_process_missing(task_service):
 
     mock_update_status.assert_called_once()
     call_args = mock_update_status.call_args
-    assert call_args[0][2] == TASK_STATUS_FAILED
+    assert call_args[0][2] == TASK_STATUS_EXCEPTION
     assert "not found" in call_args[0][3].lower()

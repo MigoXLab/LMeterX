@@ -18,6 +18,7 @@ from service.system_service import (
     create_system_config_svc,
     delete_system_config_svc,
     get_ai_service_config_svc,
+    get_dashboard_stats_svc,
     get_system_configs_internal_svc,
     get_system_configs_svc,
     update_system_config_svc,
@@ -133,3 +134,11 @@ async def get_ai_service_config(request: Request):
         AIServiceConfig: The AI service configuration.
     """
     return await get_ai_service_config_svc(request)
+
+
+@router.get("/dashboard-stats")
+async def get_dashboard_stats(request: Request):
+    """
+    Get statistics and charts for dashboard.
+    """
+    return await get_dashboard_stats_svc(request)

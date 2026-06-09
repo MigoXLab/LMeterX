@@ -4,7 +4,7 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from fastapi import Request
 from sqlalchemy import select
@@ -450,3 +450,369 @@ async def batch_upsert_system_configs_svc(
             status="error",
             error=ErrorMessages.DATABASE_ERROR,
         )
+
+
+def _get_username(request: Request, auth_settings) -> str:
+    from utils.auth import get_current_user
+
+    username = ""
+    try:
+        user = get_current_user(request)
+        if isinstance(user, dict):
+            username = str(user.get("username") or user.get("sub") or "").strip()
+    except Exception:
+        username = "-"
+
+    if not auth_settings.LDAP_ENABLED:
+        username = username or "-"
+    return username
+
+
+async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
+    from urllib.parse import urlsplit
+
+    from model.http_task import HttpTask
+    from model.llm_task import Task
+
+    # Total projects (distinct hosts/domains from target_host in both Task and HttpTask)
+    llm_hosts_query = (
+        select(Task.target_host)
+        .where(
+            Task.is_deleted == 0,
+            Task.target_host.isnot(None),
+            Task.target_host != "",
+        )
+        .distinct()
+    )
+    http_hosts_query = (
+        select(HttpTask.target_host)
+        .where(
+            HttpTask.is_deleted == 0,
+            HttpTask.target_host.isnot(None),
+            HttpTask.target_host != "",
+        )
+        .distinct()
+    )
+    llm_hosts_res = await db.execute(llm_hosts_query)
+    http_hosts_res = await db.execute(http_hosts_query)
+
+    all_hosts = set()
+    for h in llm_hosts_res.scalars().all():
+        if h:
+            h_clean = h.strip()
+            if h_clean:
+                parts = urlsplit(h_clean if "://" in h_clean else f"http://{h_clean}")
+                netloc = parts.netloc or parts.path
+                if netloc:
+                    host_part = netloc.split("/")[0].strip().lower()
+                    if host_part:
+                        all_hosts.add(host_part)
+
+    for h in http_hosts_res.scalars().all():
+        if h:
+            h_clean = h.strip()
+            if h_clean:
+                parts = urlsplit(h_clean if "://" in h_clean else f"http://{h_clean}")
+                netloc = parts.netloc or parts.path
+                if netloc:
+                    host_part = netloc.split("/")[0].strip().lower()
+                    if host_part:
+                        all_hosts.add(host_part)
+
+    total_projects = len(all_hosts)
+
+    # Total users (distinct created_by from both Task and HttpTask)
+    llm_users_query = (
+        select(Task.created_by)
+        .where(
+            Task.is_deleted == 0,
+            Task.created_by.isnot(None),
+            Task.created_by != "",
+            Task.created_by != "-",
+        )
+        .distinct()
+    )
+    http_users_query = (
+        select(HttpTask.created_by)
+        .where(
+            HttpTask.is_deleted == 0,
+            HttpTask.created_by.isnot(None),
+            HttpTask.created_by != "",
+            HttpTask.created_by != "-",
+        )
+        .distinct()
+    )
+    llm_users_res = await db.execute(llm_users_query)
+    http_users_res = await db.execute(http_users_query)
+
+    all_users = set()
+    for u in llm_users_res.scalars().all():
+        if u:
+            cleaned = u.strip()
+            if cleaned and cleaned != "-":
+                all_users.add(cleaned)
+    for u in http_users_res.scalars().all():
+        if u:
+            cleaned = u.strip()
+            if cleaned and cleaned != "-":
+                all_users.add(cleaned)
+    total_users = len(all_users)
+
+    return total_projects, total_users
+
+
+async def _get_task_stats(db: AsyncSession, username: str) -> Dict[str, Any]:
+    from sqlalchemy import and_, case, func
+
+    from model.http_task import HttpTask
+    from model.llm_task import Task
+
+    # LLM Task counts — single query with conditional aggregation
+    llm_stats_query = select(
+        func.count(Task.id).label("total"),
+        func.sum(case((Task.status.in_(["pending", "created"]), 1), else_=0)).label(
+            "pending"
+        ),
+        func.sum(case((Task.status == "running", 1), else_=0)).label("running"),
+        func.sum(case((Task.status.in_(["successed", "completed"]), 1), else_=0)).label(
+            "successed"
+        ),
+        func.sum(case((Task.status == "failed_requests", 1), else_=0)).label(
+            "partial_failed"
+        ),
+        func.sum(case((Task.status.in_(["exception", "failed"]), 1), else_=0)).label(
+            "exception"
+        ),
+        func.sum(case((Task.created_by == username, 1), else_=0)).label("my_count"),
+        func.count(
+            func.distinct(
+                case(
+                    (
+                        and_(Task.model.isnot(None), Task.model != ""),
+                        Task.model,
+                    ),
+                )
+            )
+        ).label("unique_models"),
+    ).where(Task.is_deleted == 0)
+
+    llm_row = (await db.execute(llm_stats_query)).one()
+    llm_total = llm_row.total or 0
+    llm_pending = llm_row.pending or 0
+    llm_running = llm_row.running or 0
+    llm_successed = llm_row.successed or 0
+    llm_partial_failed = llm_row.partial_failed or 0
+    llm_exception = llm_row.exception or 0
+    llm_my = (llm_row.my_count or 0) if (username and username != "-") else 0
+    total_models = llm_row.unique_models or 0
+
+    # HTTP Task counts — single query with conditional aggregation
+    http_stats_query = select(
+        func.count(HttpTask.id).label("total"),
+        func.sum(case((HttpTask.status.in_(["pending", "created"]), 1), else_=0)).label(
+            "pending"
+        ),
+        func.sum(case((HttpTask.status == "running", 1), else_=0)).label("running"),
+        func.sum(
+            case((HttpTask.status.in_(["successed", "completed"]), 1), else_=0)
+        ).label("successed"),
+        func.sum(case((HttpTask.status == "failed_requests", 1), else_=0)).label(
+            "partial_failed"
+        ),
+        func.sum(
+            case((HttpTask.status.in_(["exception", "failed"]), 1), else_=0)
+        ).label("exception"),
+        func.sum(case((HttpTask.created_by == username, 1), else_=0)).label("my_count"),
+    ).where(HttpTask.is_deleted == 0)
+
+    http_row = (await db.execute(http_stats_query)).one()
+    http_total = http_row.total or 0
+    http_pending = http_row.pending or 0
+    http_running = http_row.running or 0
+    http_successed = http_row.successed or 0
+    http_partial_failed = http_row.partial_failed or 0
+    http_exception = http_row.exception or 0
+    http_my = (http_row.my_count or 0) if (username and username != "-") else 0
+
+    return {
+        "llm_total": llm_total,
+        "llm_pending": llm_pending,
+        "llm_running": llm_running,
+        "llm_successed": llm_successed,
+        "llm_partial_failed": llm_partial_failed,
+        "llm_exception": llm_exception,
+        "total_models": total_models,
+        "http_total": http_total,
+        "http_pending": http_pending,
+        "http_running": http_running,
+        "http_successed": http_successed,
+        "http_partial_failed": http_partial_failed,
+        "http_exception": http_exception,
+        "my_tasks_count": llm_my + http_my,
+    }
+
+
+async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
+    from collections import defaultdict
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import func, literal_column
+
+    from model.http_task import HttpTask
+    from model.llm_task import Task
+
+    # Weekly task distribution (last 8 weeks) — DB-level grouping
+    today = datetime.now().date()
+    current_monday = today - timedelta(days=today.weekday())
+    eight_weeks_ago = current_monday - timedelta(weeks=7)
+
+    # MySQL: SUBDATE(DATE(created_at), WEEKDAY(created_at)) gives Monday
+    llm_monday_expr = func.subdate(
+        func.date(Task.created_at), func.weekday(Task.created_at)
+    )
+    llm_weekly_query = (
+        select(
+            llm_monday_expr.label("week_monday"),
+            func.count(Task.id).label("cnt"),
+        )
+        .where(Task.is_deleted == 0, Task.created_at >= eight_weeks_ago)
+        .group_by(literal_column("week_monday"))
+    )
+
+    http_monday_expr = func.subdate(
+        func.date(HttpTask.created_at), func.weekday(HttpTask.created_at)
+    )
+    http_weekly_query = (
+        select(
+            http_monday_expr.label("week_monday"),
+            func.count(HttpTask.id).label("cnt"),
+        )
+        .where(HttpTask.is_deleted == 0, HttpTask.created_at >= eight_weeks_ago)
+        .group_by(literal_column("week_monday"))
+    )
+
+    llm_weekly_rows = (await db.execute(llm_weekly_query)).all()
+    http_weekly_rows = (await db.execute(http_weekly_query)).all()
+
+    weeks_data: Dict[str, int] = defaultdict(int)
+    for i in range(8):
+        monday_of_week = current_monday - timedelta(weeks=i)
+        weeks_data[monday_of_week.strftime("%Y-%m-%d")] = 0
+
+    for row in llm_weekly_rows:
+        key = str(row.week_monday)
+        if key in weeks_data:
+            weeks_data[key] += row.cnt
+    for row in http_weekly_rows:
+        key = str(row.week_monday)
+        if key in weeks_data:
+            weeks_data[key] += row.cnt
+
+    return [
+        {"week": week, "count": count} for week, count in sorted(weeks_data.items())
+    ]
+
+
+async def _get_running_tasks(
+    db: AsyncSession,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    from model.http_task import HttpTask
+    from model.llm_task import Task
+
+    # Fetch active running tasks
+    running_llm_query = (
+        select(Task)
+        .where(Task.is_deleted == 0, Task.status == "running")
+        .order_by(Task.created_at.desc())
+    )
+    running_llm_res = await db.execute(running_llm_query)
+    running_llm_tasks = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "status": t.status,
+            "model": t.model,
+            "concurrent_users": t.concurrent_users,
+            "duration": t.duration,
+            "created_by": t.created_by or "-",
+            "created_at": t.created_at.isoformat() if t.created_at else "",
+        }
+        for t in running_llm_res.scalars().all()
+    ]
+
+    running_http_query = (
+        select(HttpTask)
+        .where(HttpTask.is_deleted == 0, HttpTask.status == "running")
+        .order_by(HttpTask.created_at.desc())
+    )
+    running_http_res = await db.execute(running_http_query)
+    running_http_tasks = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "status": t.status,
+            "method": t.method,
+            "target_url": t.target_url,
+            "concurrent_users": t.concurrent_users,
+            "duration": t.duration,
+            "created_by": t.created_by or "-",
+            "created_at": t.created_at.isoformat() if t.created_at else "",
+        }
+        for t in running_http_res.scalars().all()
+    ]
+
+    return running_llm_tasks, running_http_tasks
+
+
+async def get_dashboard_stats_svc(request: Request) -> Dict[str, Any]:
+    """
+    Get statistics, weekly task distribution, running and recent tasks for the dashboard.
+    """
+    from utils.auth_settings import get_auth_settings
+
+    auth_settings = get_auth_settings()
+    db: AsyncSession = request.state.db
+    try:
+        username = _get_username(request, auth_settings)
+
+        total_projects, total_users = await _get_total_projects_and_users(db)
+
+        stats = await _get_task_stats(db, username)
+
+        weekly_stats = await _get_weekly_stats(db)
+
+        running_llm_tasks, running_http_tasks = await _get_running_tasks(db)
+
+        return {
+            "status": "success",
+            "stats": {
+                "totalTasks": stats["llm_total"] + stats["http_total"],
+                "pendingTasks": stats["llm_pending"] + stats["http_pending"],
+                "runningTasks": stats["llm_running"] + stats["http_running"],
+                "completedTasks": stats["llm_successed"] + stats["http_successed"],
+                "partialFailedTasks": stats["llm_partial_failed"]
+                + stats["http_partial_failed"],
+                "exceptionTasks": stats["llm_exception"] + stats["http_exception"],
+                "failedTasks": stats["llm_exception"]
+                + stats["http_exception"]
+                + stats["llm_partial_failed"]
+                + stats["http_partial_failed"],
+                "totalCollections": total_projects,
+                "totalProjects": total_projects,
+                "totalModels": stats["total_models"],
+                "llmTasksCount": stats["llm_total"],
+                "httpTasksCount": stats["http_total"],
+                "myTasksCount": stats["my_tasks_count"],
+                "totalUsers": total_users,
+            },
+            "weeklyStats": weekly_stats,
+            "runningLlmTasks": running_llm_tasks,
+            "runningHttpTasks": running_http_tasks,
+        }
+
+    except Exception as e:
+        logger.exception("Failed to fetch dashboard stats: {}", e)
+        return {
+            "status": "error",
+            "error": str(e),
+        }

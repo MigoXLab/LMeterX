@@ -1,45 +1,27 @@
 /**
- * @file useLlmTasks.ts
- * @description Custom hook for managing LLM tasks
- */
+ * @file useBenchmarkJobs.ts
+ * @description Custom hook for managing benchmark jobs
+ * @author Charm
+ * @copyright 2025
+ * */
 import type { MessageInstance } from 'antd/es/message/interface';
 import axios from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pagination as ApiPagination, LlmTask } from '../types/job';
-import { getToken } from '../utils/auth';
-import { getApiBaseUrl } from '../utils/runtimeConfig';
-import { formatValidationError } from '../utils/error';
+import { Pagination as ApiPagination, BenchmarkJob } from '../types/benchmark';
 
+// Frontend pagination state uses Ant Design's format
 interface AntdPagination {
   current: number;
   pageSize: number;
   total: number;
 }
 
-const VITE_API_BASE_URL = getApiBaseUrl();
+const VITE_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-/** Polling interval when active tasks exist (ms) */
-const ACTIVE_POLLING_INTERVAL = 5000;
-
-const buildAuthHeaders = () => {
-  const token = getToken();
-  return token
-    ? {
-        // Use X-Authorization to avoid upstream filters blocking Authorization
-        'X-Authorization': `Bearer ${token}`,
-      }
-    : {};
-};
-
-const isActiveStatus = (status?: string) =>
-  ['running', 'created', 'queuing', 'stopping'].includes(
-    status?.toLowerCase() || ''
-  );
-
-export const useLlmTasks = (messageApi: MessageInstance) => {
+export const useBenchmarkJobs = (messageApi: MessageInstance) => {
   const { t } = useTranslation();
-  const [jobs, setJobs] = useState<LlmTask[]>([]);
+  const [jobs, setJobs] = useState<BenchmarkJob[]>([]);
   const [pagination, setPagination] = useState<AntdPagination>({
     current: 1,
     pageSize: 10,
@@ -50,22 +32,13 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [searchText, setSearchText] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // For input field display
   const [statusFilter, setStatusFilter] = useState('');
-  const [modelFilter, setModelFilter] = useState('');
-  const [creatorFilter, setCreatorFilter] = useState('');
-  const [allModels, setAllModels] = useState<string[]>([]);
 
   const pollingTimerRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const fetchingRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
-
-  // Use ref to always access the latest jobs in polling callbacks (avoid stale closure)
-  const jobsRef = useRef<LlmTask[]>(jobs);
-  useEffect(() => {
-    jobsRef.current = jobs;
-  }, [jobs]);
 
   const fetchJobs = useCallback(
     async (isManualRefresh = false) => {
@@ -77,24 +50,21 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
 
       try {
         const response = await axios.get<{
-          data: LlmTask[];
+          data: BenchmarkJob[];
           pagination?: ApiPagination;
           total?: number;
-        }>(`${VITE_API_BASE_URL}/llm-tasks`, {
+        }>(`${VITE_API_BASE_URL}/tasks`, {
           params: {
             page: pagination.current,
             pageSize: pagination.pageSize,
             ...(statusFilter && { status: statusFilter }),
             ...(searchText && { search: searchText }),
-            ...(modelFilter && { model: modelFilter }),
-            ...(creatorFilter && { creator: creatorFilter }),
             _t: Date.now(),
           },
           headers: {
             'Cache-Control': 'no-cache',
             Pragma: 'no-cache',
             Expires: '0',
-            ...buildAuthHeaders(),
           },
         });
 
@@ -111,11 +81,13 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
               pageSize: respPagination.page_size || prev.pageSize,
             }));
           } else if (response.data.total) {
+            // Fallback for other pagination formats
             setPagination(prev => ({
               ...prev,
               total: response.data.total || 0,
             }));
           } else if (response.headers['x-total-count']) {
+            // Fallback for older API
             setPagination(prev => ({
               ...prev,
               total: parseInt(response.headers['x-total-count'], 10) || 0,
@@ -124,6 +96,7 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
           setLastRefreshTime(new Date());
         }
       } catch (err) {
+        // Failed to fetch tasks
         setError(t('common.fetchTasksFailed'));
       } finally {
         setLoading(false);
@@ -133,24 +106,15 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
         }
       }
     },
-    [
-      pagination.current,
-      pagination.pageSize,
-      statusFilter,
-      searchText,
-      modelFilter,
-      creatorFilter,
-      t,
-    ]
+    [pagination.current, pagination.pageSize, statusFilter, searchText, t]
   );
 
-  /**
-   * Lightweight status-only poll.
-   * Reads jobs from ref so the callback never goes stale inside setInterval.
-   */
   const fetchJobStatuses = useCallback(async () => {
-    const currentJobs = jobsRef.current;
-    const hasRunningTasks = currentJobs.some(job => isActiveStatus(job.status));
+    const hasRunningTasks = jobs.some(job =>
+      ['running', 'created', 'queuing', 'stopping'].includes(
+        job.status?.toLowerCase() || ''
+      )
+    );
 
     if (!hasRunningTasks || fetchingRef.current) {
       return;
@@ -163,14 +127,10 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
     abortControllerRef.current = controller;
 
     try {
-      const response = await axios.get(
-        `${VITE_API_BASE_URL}/llm-tasks/status`,
-        {
-          signal: controller.signal,
-          timeout: 10000,
-          headers: buildAuthHeaders(),
-        }
-      );
+      const response = await axios.get(`${VITE_API_BASE_URL}/tasks/status`, {
+        signal: controller.signal,
+        timeout: 30000, // Increase to 30 seconds for status polling
+      });
 
       if (controller.signal.aborted) return;
 
@@ -182,7 +142,7 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
             : [];
         if (statusUpdates.length > 0) {
           const statusMap = statusUpdates.reduce(
-            (acc: Record<string, string>, update: any) => {
+            (acc, update) => {
               if (update && update.id) {
                 acc[update.id] = update.status.toLowerCase();
               }
@@ -191,30 +151,28 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
             {} as Record<string, string>
           );
 
-          setJobs(prevJobs => {
-            let hasChanges = false;
-            const updatedJobs = prevJobs.map(job => {
-              const newStatus = statusMap[job.id];
-              if (newStatus && newStatus !== job.status?.toLowerCase()) {
-                hasChanges = true;
-                return {
-                  ...job,
-                  status: newStatus,
-                  updated_at: new Date().toISOString(),
-                };
-              }
-              return job;
-            });
-            if (hasChanges) {
-              setLastRefreshTime(new Date());
-              return updatedJobs;
+          let hasChanges = false;
+          const updatedJobs = jobs.map(job => {
+            const newStatus = statusMap[job.id];
+            if (newStatus && newStatus !== job.status?.toLowerCase()) {
+              hasChanges = true;
+              return {
+                ...job,
+                status: newStatus,
+                updated_at: new Date().toISOString(),
+              };
             }
-            return prevJobs;
+            return job;
           });
+
+          if (hasChanges) {
+            setJobs(updatedJobs);
+            setLastRefreshTime(new Date());
+          }
         }
       }
-    } catch {
-      /* ignore polling errors */
+    } catch (error) {
+      // Status update request failed
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
@@ -222,17 +180,21 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
       fetchingRef.current = false;
       setRefreshing(false);
     }
-  }, []); // No deps – reads from jobsRef
+  }, [jobs]);
 
   const stopPolling = useCallback(() => {
     if (pollingTimerRef.current !== null) {
       clearInterval(pollingTimerRef.current);
       pollingTimerRef.current = null;
+      try {
+        localStorage.removeItem('benchmark_polling_active');
+      } catch (e) {
+        // localStorage error in stopPolling cleanup
+      }
     }
   }, []);
 
   const startPolling = useCallback(() => {
-    // Already polling or tab hidden → skip
     if (
       pollingTimerRef.current !== null ||
       document.visibilityState !== 'visible'
@@ -240,33 +202,61 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
       return;
     }
 
-    const hasRunningTasks = jobsRef.current.some(job =>
-      isActiveStatus(job.status)
+    const hasRunningTasks = jobs.some(job =>
+      ['running', 'created', 'queuing', 'stopping'].includes(
+        job.status?.toLowerCase() || ''
+      )
     );
 
     if (!hasRunningTasks) {
       return;
     }
 
+    try {
+      const now = Date.now();
+      const existingPollingTimestamp = parseInt(
+        localStorage.getItem('benchmark_polling_timestamp') || '0'
+      );
+      if (now - existingPollingTimestamp < 25000) {
+        // Slightly less than interval
+        return; // Another tab is polling
+      }
+      localStorage.setItem('benchmark_polling_timestamp', now.toString());
+      localStorage.setItem('benchmark_polling_active', 'true');
+    } catch (e) {
+      // Could not set localStorage for polling coordination
+    }
+
+    const pollingInterval = 30000;
     const intervalId = window.setInterval(() => {
       if (document.visibilityState !== 'visible') {
         stopPolling();
         return;
       }
+      try {
+        // Keep alive for this tab
+        localStorage.setItem(
+          'benchmark_polling_timestamp',
+          Date.now().toString()
+        );
+      } catch (e) {
+        /* ignore */
+      }
       fetchJobStatuses();
-    }, ACTIVE_POLLING_INTERVAL);
+    }, pollingInterval);
     pollingTimerRef.current = intervalId;
-  }, [fetchJobStatuses, stopPolling]);
+  }, [jobs, fetchJobStatuses, stopPolling]);
 
-  // Initial data fetch
+  // Main data fetching effect
   useEffect(() => {
+    // No dependency array, runs once on mount
     fetchJobs();
   }, []);
 
-  // Re-fetch when filters or pagination change
+  // Effect for re-fetching when filters or pagination change
   useEffect(() => {
     if (!initialLoadDoneRef.current) {
-      return;
+      return; // Don't fetch on initial mount, the above effect handles it
     }
     fetchJobs();
   }, [
@@ -274,33 +264,19 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
     pagination.pageSize,
     statusFilter,
     searchText,
-    modelFilter,
-    creatorFilter,
     fetchJobs,
   ]);
 
-  // Fetch all unique models for filter dropdown
-  useEffect(() => {
-    const fetchAllModels = async () => {
-      try {
-        const response = await axios.get<{ data: string[]; status: string }>(
-          `${VITE_API_BASE_URL}/llm-tasks/models`,
-          { headers: buildAuthHeaders() }
-        );
-        if (response.data?.data) {
-          setAllModels(response.data.data);
-        }
-      } catch (error) {
-        // Ignore errors, filter will just show current page models
-        console.error('Failed to fetch all models:', error);
-      }
-    };
-    fetchAllModels();
-  }, []);
+  // Only sync searchInput with searchText when searchText changes externally (not from user input)
+  // This prevents clearing the input while user is typing
 
-  // Start / stop polling based on whether active tasks exist
+  // Polling lifecycle management
   useEffect(() => {
-    const hasRunningTasks = jobs.some(job => isActiveStatus(job.status));
+    const hasRunningTasks = jobs.some(job =>
+      ['running', 'created', 'queuing', 'stopping'].includes(
+        job.status?.toLowerCase() || ''
+      )
+    );
 
     if (hasRunningTasks) {
       startPolling();
@@ -311,15 +287,16 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
     return () => stopPolling();
   }, [jobs, startPolling, stopPolling]);
 
-  // Visibility change handling – refresh immediately when tab becomes visible
+  // Page visibility handler
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const lastRefresh = lastRefreshTime?.getTime() || 0;
-        if (Date.now() - lastRefresh > 5000) {
-          fetchJobs(true);
+        if (Date.now() - lastRefresh > 30000) {
+          fetchJobs(true); // Force refresh
+        } else {
+          startPolling();
         }
-        startPolling();
       } else {
         stopPolling();
       }
@@ -333,30 +310,21 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
 
   const createJob = useCallback(
     async (
-      values: Omit<LlmTask, 'id' | 'status' | 'created_at' | 'updated_at'>
+      values: Omit<BenchmarkJob, 'id' | 'status' | 'created_at' | 'updated_at'>
     ) => {
       setLoading(true);
       try {
-        const response = await axios.post(
-          `${VITE_API_BASE_URL}/llm-tasks`,
-          values,
-          { headers: buildAuthHeaders() }
-        );
+        const response = await axios.post(`${VITE_API_BASE_URL}/tasks`, values);
         if (response.data?.task_id) {
           messageApi.success(t('common.createSuccess'));
-          await fetchJobs(true);
+          await fetchJobs(true); // Refresh list to show the new job
           return true;
         }
         messageApi.error(t('common.createFailed'));
         return false;
       } catch (error: any) {
-        let errorMsg = error.response?.data?.error || t('common.createFailed');
-        if (error?.response?.status === 422 && error?.response?.data) {
-          const validationMsg = formatValidationError(error.response.data);
-          if (validationMsg) {
-            errorMsg = validationMsg;
-          }
-        }
+        const errorMsg =
+          error.response?.data?.error || t('common.createFailed');
         messageApi.error(`${t('common.createFailed')}: ${errorMsg}`);
         return false;
       } finally {
@@ -370,11 +338,9 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
     async (jobId: string) => {
       messageApi.loading({ content: t('common.stoppingTask'), key: jobId });
       try {
-        await axios.post(`${VITE_API_BASE_URL}/llm-tasks/stop/${jobId}`, null, {
-          headers: buildAuthHeaders(),
-        });
+        await axios.post(`${VITE_API_BASE_URL}/tasks/stop/${jobId}`);
         messageApi.success({ content: t('common.taskStopping'), key: jobId });
-        setTimeout(() => fetchJobs(true), 1000);
+        setTimeout(() => fetchJobs(true), 1000); // Refresh list after a short delay
       } catch (error: any) {
         const errorMsg =
           error.response?.data?.message || t('common.stopTaskFailed');
@@ -384,61 +350,11 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
     [fetchJobs, messageApi, t]
   );
 
-  const updateJobName = useCallback(
-    async (taskId: string, name: string) => {
-      const trimmedName = name.trim();
-      if (!trimmedName) {
-        messageApi.error(t('pages.jobs.renameFailed'));
-        return false;
-      }
-      setLoading(true);
-      try {
-        await axios.put(
-          `${VITE_API_BASE_URL}/llm-tasks/${taskId}`,
-          { name: trimmedName },
-          { headers: buildAuthHeaders() }
-        );
-        messageApi.success(t('pages.jobs.renameSuccess'));
-        await fetchJobs(true);
-        return true;
-      } catch (error: any) {
-        messageApi.error(
-          error?.response?.data?.error || t('pages.jobs.renameFailed')
-        );
-        return false;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchJobs, messageApi, t]
-  );
-
-  const deleteJob = useCallback(
-    async (taskId: string) => {
-      setLoading(true);
-      try {
-        await axios.delete(`${VITE_API_BASE_URL}/llm-tasks/${taskId}`, {
-          headers: buildAuthHeaders(),
-        });
-        messageApi.success(t('pages.jobs.deleteSuccess'));
-        await fetchJobs(true);
-        return true;
-      } catch (error: any) {
-        messageApi.error(
-          error?.response?.data?.error || t('pages.jobs.deleteFailed')
-        );
-        return false;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchJobs, messageApi, t]
-  );
-
   const performSearch = useCallback(
     (text: string) => {
       setSearchText(text);
       setSearchInput(text);
+      // Reset pagination to first page when searching
       if (text !== searchText) {
         setPagination(prev => ({
           ...prev,
@@ -456,6 +372,7 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
   const setStatusFilterWithReset = useCallback(
     (status: string) => {
       setStatusFilter(status);
+      // Reset pagination to first page when filtering
       if (status !== statusFilter) {
         setPagination(prev => ({
           ...prev,
@@ -466,35 +383,22 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
     [statusFilter]
   );
 
-  const setModelFilterWithReset = useCallback(
-    (model: string) => {
-      setModelFilter(model);
-      if (model !== modelFilter) {
-        setPagination(prev => ({
-          ...prev,
-          current: 1,
-        }));
-      }
-    },
-    [modelFilter]
-  );
-
-  const setCreatorFilterWithReset = useCallback(
-    (creator: string) => {
-      setCreatorFilter(creator);
-      if (creator !== creatorFilter) {
-        setPagination(prev => ({
-          ...prev,
-          current: 1,
-        }));
-      }
-    },
-    [creatorFilter]
-  );
+  // Remove client-side filtering since server handles it
+  // const filteredJobs = useMemo(() => {
+  //   if (!searchText) return jobs;
+  //   return jobs.filter(job => {
+  //     const search = searchText.toLowerCase();
+  //     return (
+  //       (job.id || '').toLowerCase().includes(search) ||
+  //       (job.name || '').toLowerCase().includes(search) ||
+  //       (job.model || '').toLowerCase().includes(search)
+  //     );
+  //   });
+  // }, [jobs, searchText]);
 
   return {
     jobs,
-    filteredJobs: jobs,
+    filteredJobs: jobs, // Use jobs directly since server handles filtering
     pagination,
     setPagination,
     loading,
@@ -504,18 +408,11 @@ export const useLlmTasks = (messageApi: MessageInstance) => {
     searchText,
     searchInput,
     statusFilter,
-    modelFilter,
-    creatorFilter,
-    allModels,
     createJob,
     stopJob,
-    updateJobName,
-    deleteJob,
     manualRefresh: () => fetchJobs(true),
     performSearch,
     updateSearchInput,
     setStatusFilter: setStatusFilterWithReset,
-    setModelFilter: setModelFilterWithReset,
-    setCreatorFilter: setCreatorFilterWithReset,
   };
 };

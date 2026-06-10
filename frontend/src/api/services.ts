@@ -461,6 +461,9 @@ export const systemApi = {
 
   // Get AI service configuration
   getAIServiceConfig: () => api.get<any>('/system/ai-service'),
+
+  // Get dashboard statistics and charts
+  getDashboardStats: () => api.get<any>('/system/dashboard-stats'),
 } as const;
 
 // Monitoring API methods (Engine resource metrics from VictoriaMetrics)

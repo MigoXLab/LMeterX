@@ -10,6 +10,7 @@ import { getApiBaseUrl } from '../utils/runtimeConfig';
 
 import { Pagination as ApiPagination, HttpTask } from '../types/job';
 import { getToken } from '../utils/auth';
+import { formatValidationError } from '../utils/error';
 
 interface AntdPagination {
   current: number;
@@ -33,7 +34,7 @@ const buildAuthHeaders = () => {
 };
 
 const isActiveStatus = (status?: string) =>
-  ['running', 'pending', 'created', 'queued', 'locked'].includes(
+  ['running', 'created', 'queuing', 'stopping'].includes(
     status?.toLowerCase() || ''
   );
 
@@ -396,11 +397,17 @@ export const useHttpTasks = (messageApi: MessageInstance) => {
           return true;
         }
       } catch (error: any) {
-        messageApi.error(
+        let errorMsg =
           error?.response?.data?.message ||
-            error?.message ||
-            t('pages.jobs.createFailed')
-        );
+          error?.message ||
+          t('pages.jobs.createFailed');
+        if (error?.response?.status === 422 && error?.response?.data) {
+          const validationMsg = formatValidationError(error.response.data);
+          if (validationMsg) {
+            errorMsg = validationMsg;
+          }
+        }
+        messageApi.error(errorMsg);
       } finally {
         setLoading(false);
       }

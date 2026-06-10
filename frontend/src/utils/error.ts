@@ -6,6 +6,7 @@
  */
 
 import { message } from 'antd';
+import i18n from '../i18n';
 
 /**
  * Error types for better error handling
@@ -77,6 +78,103 @@ export const getErrorTypeFromStatus = (status: number): ErrorType => {
 };
 
 /**
+ * Format validation error details (especially Pydantic 422 errors) into a user-friendly message
+ */
+export const formatValidationError = (errorData: any): string | null => {
+  if (!errorData) return null;
+
+  // If detail is in errorData (FastAPI standard)
+  const detail = errorData.detail !== undefined ? errorData.detail : errorData;
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (!item) return '';
+
+        const loc = Array.isArray(item.loc)
+          ? item.loc.join('.')
+          : item.loc || '';
+        const msg = item.msg || '';
+        const type = item.type || '';
+
+        // Custom user-friendly messages for common fields
+        if (loc.includes('name')) {
+          if (
+            type === 'string_too_long' ||
+            msg.includes('at most 100 characters')
+          ) {
+            return i18n.t(
+              'validation.taskNameMaxLength',
+              'Task name must not exceed 100 characters'
+            );
+          }
+          if (
+            type === 'string_too_short' ||
+            msg.includes('at least 1 character')
+          ) {
+            return i18n.t(
+              'validation.taskNameRequired',
+              'Task name cannot be empty'
+            );
+          }
+        }
+
+        if (loc.includes('target_url')) {
+          if (msg.includes('http:// or https://')) {
+            return i18n.t(
+              'validation.apiUrlScheme',
+              'API URL must start with http:// or https://'
+            );
+          }
+          if (
+            type === 'string_too_long' ||
+            msg.includes('at most 2000 characters')
+          ) {
+            return i18n.t(
+              'validation.apiUrlMaxLength',
+              'API URL must not exceed 2000 characters'
+            );
+          }
+        }
+
+        if (loc.includes('concurrent_users')) {
+          return i18n.t(
+            'validation.concurrentUsersRange',
+            'Concurrent users must be between 1 and 5000'
+          );
+        }
+
+        if (loc.includes('duration')) {
+          return i18n.t(
+            'validation.durationRange',
+            'Duration must be between 1 second and 48 hours'
+          );
+        }
+
+        // Fallback to item msg or type
+        return msg || type || JSON.stringify(item);
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  if (typeof errorData.message === 'string') {
+    return errorData.message;
+  }
+
+  if (typeof errorData.error === 'string') {
+    return errorData.error;
+  }
+
+  return null;
+};
+
+/**
  * Parse error from API response
  */
 export const parseApiError = (error: any): AppError => {
@@ -86,12 +184,15 @@ export const parseApiError = (error: any): AppError => {
     const { data } = error.response;
     const type = getErrorTypeFromStatus(status);
 
-    return createError(
-      type,
-      data?.message || error.message || 'An error occurred',
-      data,
-      status
-    );
+    let errorMsg = data?.message || error.message || 'An error occurred';
+    if (status === 422) {
+      const validationMsg = formatValidationError(data);
+      if (validationMsg) {
+        errorMsg = validationMsg;
+      }
+    }
+
+    return createError(type, errorMsg, data, status);
   }
 
   if (error.request) {
@@ -279,6 +380,7 @@ export default {
   ErrorType,
   createError,
   parseApiError,
+  formatValidationError,
   showErrorMessage,
   showSuccessMessage,
   showWarningMessage,

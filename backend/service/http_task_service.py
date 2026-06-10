@@ -67,11 +67,18 @@ def _split_url(target_url: str) -> tuple[str, str]:
     return host, path
 
 
+def _map_status(status: Optional[str]) -> str:
+    if not status:
+        return "created"
+    return status.lower()
+
+
 def _build_task_summary(task: HttpTask) -> Dict[str, Any]:
+    mapped_status = _map_status(cast(Optional[str], task.status))
     summary: Dict[str, Any] = {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "method": task.method,
         "target_url": task.target_url,
@@ -175,6 +182,9 @@ async def get_http_tasks_svc(
 
         if status:
             status_list = [s.strip() for s in status.split(",") if s.strip()]
+            if "queuing" in status_list:
+                status_list.append("created")
+            status_list = list(set(status_list))
             if len(status_list) == 1:
                 query = query.where(HttpTask.status == status_list[0])
             else:
@@ -223,7 +233,9 @@ async def get_http_tasks_status_svc(
 ) -> HttpTaskStatusRsp:
     query = text(
         """
-        SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
+        SELECT id,
+               status,
+               UNIX_TIMESTAMP(updated_at) as updated_timestamp
         FROM http_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
         AND is_deleted = 0
@@ -531,11 +543,20 @@ async def stop_http_task_svc(request: Request, task_id: str) -> HttpTaskCreateRs
                         ErrorMessages.INSUFFICIENT_PERMISSIONS
                     )
 
-        if task.status != "running":
+        if task.status not in ("running", "queuing"):
             return HttpTaskCreateRsp(
                 status=task.status,
                 task_id=task_id,
-                message="Task is not currently running.",
+                message="Task is not currently running or queued.",
+            )
+
+        if task.status == "queuing":
+            task.status = "stopped"
+            await db.commit()
+            return HttpTaskCreateRsp(
+                status="stopped",
+                task_id=task_id,
+                message="Queued task cancelled.",
             )
 
         task.status = "stopping"
@@ -612,10 +633,11 @@ async def get_http_task_status_svc(request: Request, task_id: str) -> Dict[str, 
         task_data = result.first()
         if not task_data:
             raise ErrorResponse.not_found("Task not found")
+        mapped_status = _map_status(task_data.status)
         return {
             "id": task_data.id,
             "name": task_data.name,
-            "status": task_data.status,
+            "status": mapped_status,
             "error_message": task_data.error_message,
             "updated_at": safe_isoformat(task_data.updated_at),
         }

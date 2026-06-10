@@ -5,14 +5,12 @@ Copyright (c) 2025, All Rights Reserved.
 
 # === TASK STATUS CONSTANTS ===
 TASK_STATUS_CREATED = "created"
-TASK_STATUS_LOCKED = "locked"
+TASK_STATUS_QUEUING = "queuing"
 TASK_STATUS_RUNNING = "running"
 TASK_STATUS_STOPPING = "stopping"
 TASK_STATUS_STOPPED = "stopped"
 TASK_STATUS_COMPLETED = "completed"
-TASK_STATUS_FAILED = (
-    "failed"  # General execution failures (Locust exit code >1 or other errors)
-)
+TASK_STATUS_FAILED = "failed"
 TASK_STATUS_FAILED_REQUESTS = (
     "failed_requests"  # Test completed but had failed requests (Locust exit code 1)
 )
@@ -27,7 +25,7 @@ METRIC_TTT = "Total_time"
 __all__ = [
     # task status
     "TASK_STATUS_CREATED",
-    "TASK_STATUS_LOCKED",
+    "TASK_STATUS_QUEUING",
     "TASK_STATUS_RUNNING",
     "TASK_STATUS_STOPPING",
     "TASK_STATUS_STOPPED",

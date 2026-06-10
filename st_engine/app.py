@@ -18,8 +18,10 @@ from service.heartbeat import (
 )
 from service.poller import (
     http_task_create_poller,
+    http_task_enqueue_poller,
     http_task_stop_poller,
     llm_task_create_poller,
+    llm_task_enqueue_poller,
     llm_task_stop_poller,
 )
 from utils.logger import logger
@@ -29,11 +31,19 @@ from utils.resource_collector import start_resource_collector, stop_resource_col
 def start_polling():
     """Initializes and starts the background polling threads for task management."""
     logger.info("Starting polling threads...")
+    llm_task_enqueue_thread = threading.Thread(
+        target=llm_task_enqueue_poller, daemon=True, name="LlmTaskEnqueuePollerThread"
+    )
     llm_task_create_thread = threading.Thread(
         target=llm_task_create_poller, daemon=True, name="LlmTaskCreatePollerThread"
     )
     llm_task_stop_thread = threading.Thread(
         target=llm_task_stop_poller, daemon=True, name="LlmTaskStopPollerThread"
+    )
+    http_task_enqueue_thread = threading.Thread(
+        target=http_task_enqueue_poller,
+        daemon=True,
+        name="HttpTaskEnqueuePollerThread",
     )
     http_task_create_thread = threading.Thread(
         target=http_task_create_poller,
@@ -50,8 +60,10 @@ def start_polling():
         daemon=True,
         name="HeartbeatReconcileThread",
     )
+    llm_task_enqueue_thread.start()
     llm_task_create_thread.start()
     llm_task_stop_thread.start()
+    http_task_enqueue_thread.start()
     http_task_create_thread.start()
     http_task_stop_thread.start()
     heartbeat_thread.start()

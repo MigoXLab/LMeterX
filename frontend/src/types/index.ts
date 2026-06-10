@@ -19,7 +19,7 @@ export interface Dataset {
 
 // Job status/types (legacy)
 export enum JobStatus {
-  PENDING = 'pending',
+  QUEUING = 'queuing',
   RUNNING = 'running',
   COMPLETED = 'completed',
   FAILED = 'failed',

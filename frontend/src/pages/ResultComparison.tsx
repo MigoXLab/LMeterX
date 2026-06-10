@@ -1342,7 +1342,7 @@ const ResultComparison: React.FC = () => {
     <Space>
       <span>{title}</span>
       <Tooltip title={description} placement='topRight'>
-        <InfoCircleOutlined style={{ color: '#666', cursor: 'help' }} />
+        <InfoCircleOutlined style={{ color: '#666', cursor: 'pointer' }} />
       </Tooltip>
     </Space>
   );

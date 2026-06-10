@@ -8,7 +8,7 @@ import traceback
 from typing import List
 
 import pymysql.err  # type: ignore[import-untyped]
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from config.business import (
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
     TASK_STATUS_FAILED_REQUESTS,
-    TASK_STATUS_LOCKED,
+    TASK_STATUS_QUEUING,
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
@@ -51,6 +51,7 @@ class HttpTaskService:
         """Initialize with the shared runner instance for HTTP API tasks."""
         self.runner = _shared_http_runner
         self.result_service = HttpResultService()
+        self.model_cls = HttpTask
 
     def update_task_status(
         self,
@@ -144,7 +145,7 @@ class HttpTaskService:
             if task:
                 task_logger = logger.bind(task_id=task.id)
                 task_logger.info(f" Claimed and locked new task {task.id}.")
-                task.status = "locked"  # type: ignore
+                task.status = "queuing"  # type: ignore
                 task.engine_id = ENGINE_ID  # type: ignore # Bind engine instance
                 session.commit()
                 task_logger.info(f"Task {task.id} bound to engine_id={ENGINE_ID}")
@@ -172,6 +173,95 @@ class HttpTaskService:
                     "Failed to rollback session after get-and-lock error.",
                     exc_info=True,
                 )
+            return None
+
+    def enqueue_created_tasks(self, session: Session) -> int:
+        """
+        Bulk-move all 'created' HTTP tasks to 'queuing' without binding engine_id.
+
+        This is the "enqueue" phase — tasks become visible as "queuing" to users
+        almost immediately. Multiple engines may call this concurrently; the
+        operation is idempotent because the WHERE clause filters on status='created'.
+
+        Returns:
+            Number of tasks enqueued.
+        """
+        try:
+            result = session.execute(
+                update(HttpTask)
+                .where(HttpTask.status == "created")
+                .where(HttpTask.is_deleted == 0)
+                .values(status=TASK_STATUS_QUEUING)
+            )
+            session.commit()
+            count = result.rowcount  # type: ignore[union-attr]
+            if count > 0:
+                logger.info(f"[HTTP] Enqueued {count} task(s): created -> queuing.")
+            return count
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(f"[HTTP] Database error during enqueue_created_tasks: {e}")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug(
+                    "Failed to rollback after enqueue DB error.", exc_info=True
+                )
+            return 0
+        except Exception as e:
+            logger.exception(f"[HTTP] Error during enqueue_created_tasks: {e}")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug("Failed to rollback after enqueue error.", exc_info=True)
+            return 0
+
+    def claim_pending_task(self, session: Session) -> HttpTask | None:
+        """
+        Atomically claim one pending HTTP task for execution by this engine.
+
+        Sets status to 'running' and binds engine_id in one transaction.
+        Uses SELECT ... FOR UPDATE SKIP LOCKED to avoid blocking between engines.
+
+        Returns:
+            The claimed task ready for execution, or None.
+        """
+        try:
+            query = (
+                select(HttpTask)
+                .where(HttpTask.status == TASK_STATUS_QUEUING)
+                .where(HttpTask.is_deleted == 0)
+                .order_by(HttpTask.created_at.asc(), HttpTask.id.asc())
+                .with_for_update()
+                .limit(1)
+            )
+            task = session.execute(query).scalar_one_or_none()
+            if task:
+                task_logger = logger.bind(task_id=task.id)
+                task.status = TASK_STATUS_RUNNING  # type: ignore
+                task.engine_id = ENGINE_ID  # type: ignore
+                session.commit()
+                task_logger.info(
+                    f"[HTTP] Claimed pending task {task.id}. "
+                    f"Status -> running, engine_id={ENGINE_ID}"
+                )
+                return task
+            return None
+        except (OperationalError, pymysql.err.OperationalError) as e:
+            logger.warning(
+                f"[HTTP] Database connection error during claim_pending_task: {e}. "
+                "Returning None to allow retry."
+            )
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug("Failed to rollback after claim DB error.", exc_info=True)
+            return None
+        except Exception as e:
+            logger.exception(f"[HTTP] Error during claim_pending_task: {e}")
+            try:
+                session.rollback()
+            except Exception:
+                logger.debug("Failed to rollback after claim error.", exc_info=True)
             return None
 
     def get_stopping_task_ids(self, session: Session) -> List[str]:
@@ -218,7 +308,6 @@ class HttpTaskService:
                         HttpTask.status.in_(
                             [
                                 TASK_STATUS_RUNNING,
-                                TASK_STATUS_LOCKED,
                                 TASK_STATUS_STOPPING,
                             ]
                         )
@@ -251,18 +340,6 @@ class HttpTaskService:
                         )
                         continue
 
-                    if task.status == TASK_STATUS_LOCKED:
-                        task_logger.warning(
-                            f" Task {task.id} was locked during restart. Marking as FAILED (never started)."
-                        )
-                        self.update_task_status(
-                            session,
-                            task,
-                            TASK_STATUS_FAILED,
-                            "Task was aborted before execution due to an engine restart.",
-                        )
-                        continue
-
                     # For running tasks, try to detect and clean orphaned locust processes.
                     task_logger.warning(
                         f" Task {task.id} was {task.status} during restart. Checking for orphaned process and failing it."
@@ -272,7 +349,7 @@ class HttpTaskService:
                     if orphaned_processes:
                         task_logger.warning(
                             " Orphaned Locust process detected after engine restart. "
-                            "Terminating and marking task as FAILED."
+                            "Terminating and marking task as EXCEPTION."
                         )
                         terminated_count = terminate_locust_processes_by_task_id(
                             task_id
@@ -292,7 +369,7 @@ class HttpTaskService:
                         )
                     else:
                         task_logger.warning(
-                            " Task was running during restart, but no active process found. Marking as FAILED."
+                            " Task was running during restart, but no active process found. Marking as EXCEPTION."
                         )
                         error_message = (
                             "Task process was not found after an engine restart."
@@ -348,7 +425,6 @@ class HttpTaskService:
                         HttpTask.status.in_(
                             [
                                 TASK_STATUS_RUNNING,
-                                TASK_STATUS_LOCKED,
                                 TASK_STATUS_STOPPING,
                             ]
                         )
@@ -373,14 +449,14 @@ class HttpTaskService:
                     handler_id = add_task_log_sink(task.id)
                     task_logger = logger.bind(task_id=task.id)
                     task_logger.warning(
-                        f"Engine '{task.engine_id}' has been discontinued. Marking as FAILED."
+                        f"Engine '{task.engine_id}' has been discontinued. Marking as EXCEPTION."
                     )
                     self.update_task_status(
                         session,
                         task,
                         TASK_STATUS_FAILED,
                         f"Engine instance '{task.engine_id}' is no longer "
-                        "alive. Task has been marked as failed due to "
+                        "alive. Task has been marked as exception due to "
                         "engine shutdown.",
                     )
                 finally:
@@ -537,8 +613,8 @@ class HttpTaskService:
                 )
                 return
 
-            self.update_task_status(session, task, TASK_STATUS_RUNNING)
-
+            # Start execution (task is already in 'running' status after
+            # claim_pending_task set it)
             run_result = self.start_task(task)
 
             self._safe_refresh_task(session, task, task_logger)

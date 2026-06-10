@@ -53,6 +53,11 @@ const HttpResults: React.FC = () => {
   const getStoredActiveTab = useCallback(
     (jobId?: string) => {
       if (typeof window === 'undefined') return 'statistics';
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab');
+      if (tabParam === 'charts' || tabParam === 'statistics') {
+        return tabParam;
+      }
       const saved = window.localStorage.getItem(getTabStorageKey(jobId));
       return saved === 'charts' || saved === 'statistics'
         ? saved
@@ -177,8 +182,9 @@ const HttpResults: React.FC = () => {
   // Uses lightweight /status endpoint instead of full task info.
   useEffect(() => {
     if (!id || !taskInfo) return;
-    const isActive =
-      taskInfo.status === 'running' || taskInfo.status === 'pending';
+    const isActive = ['running', 'created', 'queuing', 'stopping'].includes(
+      taskInfo.status?.toLowerCase()
+    );
     if (!isActive) return;
 
     const interval = setInterval(async () => {
@@ -215,8 +221,11 @@ const HttpResults: React.FC = () => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = currentStatus;
 
-    const isActive = currentStatus === 'running' || currentStatus === 'pending';
-    const wasActive = prev === 'running' || prev === 'pending';
+    const activeStatuses = ['running', 'created', 'queuing', 'stopping'];
+    const isActive = activeStatuses.includes(
+      currentStatus?.toLowerCase() || ''
+    );
+    const wasActive = activeStatuses.includes(prev?.toLowerCase() || '');
 
     let completionTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -359,8 +368,7 @@ const HttpResults: React.FC = () => {
   }, [results]);
 
   // Whether the task is currently in a stoppable state
-  const isTaskRunning =
-    taskInfo?.status === 'running' || taskInfo?.status === 'pending';
+  const isTaskRunning = taskInfo?.status === 'running';
   const currentUsername = useMemo(() => getStoredUser()?.username || '', []);
   const canStopTask = useMemo(() => {
     const creator = taskInfo?.created_by;
@@ -830,8 +838,9 @@ const HttpResults: React.FC = () => {
   // Render the Charts tab content
   const renderChartsContent = () => {
     if (metricsData.length === 0) {
-      const isRunning =
-        taskInfo?.status === 'running' || taskInfo?.status === 'pending';
+      const isRunning = ['running', 'created', 'queuing', 'stopping'].includes(
+        taskInfo?.status?.toLowerCase()
+      );
       return (
         <div
           className='flex justify-center align-center'

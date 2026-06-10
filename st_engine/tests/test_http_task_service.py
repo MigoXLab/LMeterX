@@ -2,9 +2,10 @@
 Tests for HttpTaskService lifecycle management:
   - status updates & error message truncation
   - get_and_lock_task
+  - enqueue_created_tasks / claim_pending_task
   - stop_task (process not found / already finished)
   - pipeline: soft-delete check, status resolution, exception handling
-  - reconciliation on startup (owned, other-engine, locked, missing process)
+  - reconciliation on startup (owned, other-engine, missing process)
 """
 
 from unittest.mock import Mock, patch
@@ -15,12 +16,12 @@ from config.business import (
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
     TASK_STATUS_FAILED_REQUESTS,
-    TASK_STATUS_LOCKED,
+    TASK_STATUS_QUEUING,
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
 )
-from service.http_task_service import HttpTaskService
+from service.http_task_service import ENGINE_ID, HttpTaskService
 
 
 @pytest.fixture
@@ -80,7 +81,7 @@ class TestGetAndLockTask:
         locked = task_service.get_and_lock_task(session)
 
         assert locked is task
-        assert task.status == "locked"
+        assert task.status == "queuing"
         session.commit.assert_called_once()
 
     def test_returns_none_when_no_task(self, task_service):
@@ -101,6 +102,80 @@ class TestGetAndLockTask:
 
         locked = task_service.get_and_lock_task(session)
         assert locked is None
+        session.rollback.assert_called()
+
+
+# =====================================================================
+# enqueue_created_tasks / claim_pending_task
+# =====================================================================
+class TestEnqueueAndClaim:
+    def test_enqueue_created_tasks(self, task_service):
+        session = Mock()
+        mock_result = Mock()
+        mock_result.rowcount = 5
+        session.execute.return_value = mock_result
+
+        count = task_service.enqueue_created_tasks(session)
+
+        assert count == 5
+        session.commit.assert_called_once()
+
+    def test_enqueue_created_tasks_none_found(self, task_service):
+        session = Mock()
+        mock_result = Mock()
+        mock_result.rowcount = 0
+        session.execute.return_value = mock_result
+
+        count = task_service.enqueue_created_tasks(session)
+
+        assert count == 0
+        session.commit.assert_called_once()
+
+    def test_enqueue_handles_db_error(self, task_service):
+        from sqlalchemy.exc import OperationalError
+
+        session = Mock()
+        session.execute.side_effect = OperationalError("conn lost", {}, None)
+
+        count = task_service.enqueue_created_tasks(session)
+        assert count == 0
+        session.rollback.assert_called()
+
+    def test_claim_pending_task(self, task_service):
+        session = Mock()
+        task = Mock()
+        task.id = "task-claim-001"
+        task.status = TASK_STATUS_QUEUING
+
+        result = Mock()
+        result.scalar_one_or_none.return_value = task
+        session.execute.return_value = result
+
+        claimed = task_service.claim_pending_task(session)
+
+        assert claimed is task
+        assert task.status == TASK_STATUS_RUNNING
+        assert task.engine_id == ENGINE_ID
+        session.commit.assert_called_once()
+
+    def test_claim_pending_task_returns_none(self, task_service):
+        session = Mock()
+        result = Mock()
+        result.scalar_one_or_none.return_value = None
+        session.execute.return_value = result
+
+        claimed = task_service.claim_pending_task(session)
+        assert claimed is None
+        session.commit.assert_not_called()
+
+    def test_claim_handles_db_error(self, task_service):
+        from sqlalchemy.exc import OperationalError
+
+        session = Mock()
+        session.execute.side_effect = OperationalError("conn lost", {}, None)
+
+        claimed = task_service.claim_pending_task(session)
+        assert claimed is None
         session.rollback.assert_called()
 
 
@@ -351,34 +426,6 @@ class TestReconcileTasksOnStartup:
             task_service.reconcile_tasks_on_startup(session)
 
         mock_update.assert_not_called()
-
-    def test_locked_task_marked_failed(self, task_service):
-        session = Mock()
-        task = Mock()
-        task.id = "task-locked-restart"
-        task.status = TASK_STATUS_LOCKED
-
-        with patch("service.http_task_service.ENGINE_ID", "my-engine"):
-            task.engine_id = "my-engine"
-
-            result = Mock()
-            result.scalars.return_value.all.return_value = [task]
-            session.execute.return_value = result
-
-            with (
-                patch("service.http_task_service.add_task_log_sink", return_value=1),
-                patch("service.http_task_service.remove_task_log_sink"),
-                patch.object(task_service, "update_task_status") as mock_update,
-            ):
-                task_service.reconcile_tasks_on_startup(session)
-
-            mock_update.assert_called_once()
-            call_args = mock_update.call_args
-            assert call_args[0][2] == TASK_STATUS_FAILED
-            assert (
-                "aborted" in call_args[0][3].lower()
-                or "restart" in call_args[0][3].lower()
-            )
 
     def test_marks_running_failed_when_process_missing(self, task_service):
         session = Mock()

@@ -7,7 +7,7 @@ import math
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, validator
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text, func
 
 from db.mysql import Base
 
@@ -429,6 +429,10 @@ class HttpTask(Base):
     """SQLAlchemy model for HTTP API load test tasks."""
 
     __tablename__ = "http_tasks"
+    __table_args__ = (
+        Index("ix_http_tasks_deleted_status", "is_deleted", "status"),
+        Index("ix_http_tasks_deleted_created", "is_deleted", "created_at"),
+    )
 
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)

@@ -38,6 +38,7 @@ import { HttpTask, LlmTask } from '../types/job';
 import { getStoredUser } from '../utils/auth';
 import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
 import { formatDate } from '../utils/date';
+import { formatValidationError } from '../utils/error';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -145,10 +146,24 @@ const CollectionDetail: React.FC = () => {
   const getRerunName = useCallback((name?: string): string => {
     const baseName = name || 'Task';
     const match = baseName.match(/^(.*)-(\d+)$/);
+    let newName = '';
     if (match) {
-      return `${match[1]}-${parseInt(match[2]) + 1}`;
+      newName = `${match[1]}-${parseInt(match[2]) + 1}`;
+    } else {
+      newName = `${baseName}-1`;
     }
-    return `${baseName}-1`;
+
+    // If the new name exceeds 100 characters, truncate the base name part
+    if (newName.length > 100) {
+      const suffix = match ? `-${parseInt(match[2]) + 1}` : '-1';
+      const maxBaseLength = 100 - suffix.length;
+      const truncatedBase = (match ? match[1] : baseName).slice(
+        0,
+        maxBaseLength
+      );
+      newName = `${truncatedBase}${suffix}`;
+    }
+    return newName;
   }, []);
 
   const fetchCollection = async () => {
@@ -247,9 +262,18 @@ const CollectionDetail: React.FC = () => {
         } else {
           message.error(t('pages.jobs.rerunFailed'));
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to rerun job:', error);
-        message.error(t('pages.jobs.rerunFailed'));
+        let errorMsg = t('pages.jobs.rerunFailed');
+        if (error?.status === 422 && error?.data) {
+          const validationMsg = formatValidationError(error.data);
+          if (validationMsg) {
+            errorMsg = `${t('pages.jobs.rerunFailed')}: ${validationMsg}`;
+          }
+        } else if (error?.message) {
+          errorMsg = `${t('pages.jobs.rerunFailed')}: ${error.message}`;
+        }
+        message.error(errorMsg);
       }
     },
     [canEdit, getRerunName, id, t]
@@ -303,9 +327,18 @@ const CollectionDetail: React.FC = () => {
         } else {
           message.error(t('pages.jobs.rerunFailed'));
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to rerun http task:', error);
-        message.error(t('pages.jobs.rerunFailed'));
+        let errorMsg = t('pages.jobs.rerunFailed');
+        if (error?.status === 422 && error?.data) {
+          const validationMsg = formatValidationError(error.data);
+          if (validationMsg) {
+            errorMsg = `${t('pages.jobs.rerunFailed')}: ${validationMsg}`;
+          }
+        } else if (error?.message) {
+          errorMsg = `${t('pages.jobs.rerunFailed')}: ${error.message}`;
+        }
+        message.error(errorMsg);
       }
     },
     [canEdit, getRerunName, id, t]

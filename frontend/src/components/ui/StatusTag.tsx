@@ -5,6 +5,7 @@
  * @copyright 2025
  */
 
+import { Tooltip } from 'antd';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -33,9 +34,15 @@ interface PillStyle {
 
 const STATUS_PILL_STYLES: Record<string, PillStyle> = {
   created: {
-    bg: 'rgba(0, 0, 0, 0.04)',
+    bg: 'rgba(140, 140, 140, 0.05)',
     color: '#8c8c8c',
     dotColor: '#bfbfbf',
+  },
+  queuing: {
+    bg: 'rgba(250, 173, 20, 0.08)',
+    color: '#d48806',
+    dotColor: '#faad14',
+    pulse: true,
   },
   running: {
     bg: 'rgba(102, 126, 234, 0.08)',
@@ -55,14 +62,9 @@ const STATUS_PILL_STYLES: Record<string, PillStyle> = {
     pulse: true,
   },
   stopped: {
-    bg: 'rgba(250, 140, 22, 0.08)',
-    color: '#d46b08',
-    dotColor: '#fa8c16',
-  },
-  locked: {
-    bg: 'rgba(250, 173, 20, 0.08)',
-    color: '#d48806',
-    dotColor: '#faad14',
+    bg: 'rgba(89, 89, 89, 0.08)',
+    color: '#595959',
+    dotColor: '#8c8c8c',
   },
   failed: {
     bg: 'rgba(255, 77, 79, 0.08)',
@@ -100,9 +102,10 @@ export const StatusTag: React.FC<StatusTagProps> = ({
   }
 
   const translatedText = t(`status.${statusKey}`, status || 'Unknown');
+  const tooltipText = t(`status.desc.${statusKey}`, '');
   const pillStyle = STATUS_PILL_STYLES[statusKey] || DEFAULT_PILL_STYLE;
 
-  return (
+  const tagElement = (
     <span
       className={`status-pill ${className || ''}`}
       style={{
@@ -117,6 +120,7 @@ export const StatusTag: React.FC<StatusTagProps> = ({
         background: pillStyle.bg,
         color: pillStyle.color,
         whiteSpace: 'nowrap',
+        cursor: tooltipText ? 'pointer' : 'default',
       }}
     >
       <span
@@ -133,6 +137,12 @@ export const StatusTag: React.FC<StatusTagProps> = ({
       {translatedText}
     </span>
   );
+
+  if (tooltipText) {
+    return <Tooltip title={tooltipText}>{tagElement}</Tooltip>;
+  }
+
+  return tagElement;
 };
 
 export default StatusTag;

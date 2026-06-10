@@ -7,7 +7,7 @@ import math
 from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, validator
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text, func
 
 from db.mysql import Base
 
@@ -713,6 +713,11 @@ class Task(Base):
     """
 
     __tablename__ = "llm_tasks"
+    __table_args__ = (
+        Index("ix_llm_tasks_deleted_status", "is_deleted", "status"),
+        Index("ix_llm_tasks_deleted_created", "is_deleted", "created_at"),
+    )
+
     id = Column(String(40), primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     status = Column(String(32), nullable=False)

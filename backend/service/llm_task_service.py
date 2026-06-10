@@ -78,14 +78,21 @@ def _resolve_created_by(value: Optional[str]) -> Optional[str]:
     return value or "-"
 
 
+def _map_status(status: Optional[str]) -> str:
+    if not status:
+        return "created"
+    return status.lower()
+
+
 def _build_task_summary(task: Task) -> Dict[str, Any]:
     field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
+    mapped_status = _map_status(cast(Optional[str], task.status))
     return {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "target_host": task.target_host,
         "api_path": task.api_path,
@@ -126,11 +133,12 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
     field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
+    mapped_status = _map_status(cast(Optional[str], task.status))
 
     return {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": _resolve_created_by(cast(Optional[str], task.created_by)),
         "target_host": task.target_host,
         "model": task.model,
@@ -168,10 +176,11 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
 
 def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
     """Build a task-like payload for HTTP API tasks so shared pages work."""
+    mapped_status = _map_status(cast(Optional[str], task.status))
     return {
         "id": task.id,
         "name": task.name,
-        "status": task.status,
+        "status": mapped_status,
         "created_by": getattr(task, "created_by", None),
         "target_host": task.target_host,
         "model": task.method,  # reuse method label for display
@@ -306,8 +315,10 @@ async def get_tasks_svc(
 
         # Apply filters if provided.
         if status:
-            # Handle multiple statuses separated by comma
             status_list = [s.strip() for s in status.split(",") if s.strip()]
+            if "queuing" in status_list:
+                status_list.append("created")
+            status_list = list(set(status_list))
             if len(status_list) == 1:
                 query = query.where(Task.status == status_list[0])
             else:
@@ -372,7 +383,9 @@ async def get_tasks_status_svc(request: Request, page_size: int):
     """
     query = text(
         """
-        SELECT id, status, UNIX_TIMESTAMP(updated_at) as updated_timestamp
+        SELECT id,
+               status,
+               UNIX_TIMESTAMP(updated_at) as updated_timestamp
         FROM llm_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
         AND is_deleted = 0
@@ -421,12 +434,22 @@ async def stop_task_svc(request: Request, task_id: str):
                         ErrorMessages.INSUFFICIENT_PERMISSIONS
                     )
 
-        if task.status != "running":
+        if task.status not in ("running", "queuing"):
             return TaskCreateRsp(
                 status=task.status,
                 task_id=task_id,
-                message="Task is not currently running.",
+                message="Task is not currently running or queued.",
             )
+
+        if task.status == "queuing":
+            task.status = "stopped"
+            await db.commit()
+            return TaskCreateRsp(
+                status="stopped",
+                task_id=task_id,
+                message="Queued task cancelled.",
+            )
+
         task.status = "stopping"
         await db.commit()
         return TaskCreateRsp(
@@ -749,10 +772,11 @@ async def get_task_status_svc(request: Request, task_id: str):
             common_result = await db.execute(common_query)
             common_data = common_result.first()
             if common_data:
+                mapped_status = _map_status(common_data.status)
                 return {
                     "id": common_data.id,
                     "name": common_data.name,
-                    "status": common_data.status,
+                    "status": mapped_status,
                     "error_message": common_data.error_message,
                     "updated_at": safe_isoformat(common_data.updated_at),
                 }
@@ -761,10 +785,11 @@ async def get_task_status_svc(request: Request, task_id: str):
             raise ErrorResponse.not_found("Task not found")
 
         # Return lightweight status information
+        mapped_status = _map_status(task_data.status)
         status_dict = {
             "id": task_data.id,
             "name": task_data.name,
-            "status": task_data.status,
+            "status": mapped_status,
             "error_message": task_data.error_message,
             "updated_at": safe_isoformat(task_data.updated_at),
         }

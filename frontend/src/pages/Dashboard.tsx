@@ -282,13 +282,9 @@ const Dashboard: React.FC = () => {
   // Weekly new tasks bar chart option
   const weeklyNewTasksOption = useMemo(() => {
     const weeks = weeklyStats.map(item => {
-      try {
-        const parts = item.week.split('-');
-        if (parts.length === 3) {
-          return `${parts[1]}/${parts[2]}`;
-        }
-      } catch (e) {
-        return item.week;
+      const parts = item.week.split('-');
+      if (parts.length === 3) {
+        return `${parts[1]}/${parts[2]}`;
       }
       return item.week;
     });

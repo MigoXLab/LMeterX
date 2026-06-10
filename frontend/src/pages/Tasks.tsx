@@ -902,7 +902,10 @@ const Tasks: React.FC = () => {
             });
           }
 
-          if (canStopOrRename(record.created_by) && statusLower === 'running') {
+          if (
+            canStopOrRename(record.created_by) &&
+            ['running', 'queuing'].includes(statusLower)
+          ) {
             moreMenuItems.push({
               key: 'stop',
               icon: <StopOutlined />,
@@ -1185,7 +1188,10 @@ const Tasks: React.FC = () => {
             });
           }
 
-          if (canStopOrRename(record.created_by) && statusLower === 'running') {
+          if (
+            canStopOrRename(record.created_by) &&
+            ['running', 'queuing'].includes(statusLower)
+          ) {
             moreMenuItems.push({
               key: 'stop',
               icon: <StopOutlined />,

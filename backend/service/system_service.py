@@ -698,6 +698,8 @@ async def _get_running_tasks(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     from model.http_task import HttpTask
     from model.llm_task import Task
+    from service.http_task_service import _map_status as map_http_status
+    from service.llm_task_service import _map_status as map_llm_status
 
     # Fetch active running tasks
     running_llm_query = (
@@ -710,7 +712,7 @@ async def _get_running_tasks(
         {
             "id": t.id,
             "name": t.name,
-            "status": t.status,
+            "status": map_llm_status(t.status),
             "model": t.model,
             "concurrent_users": t.concurrent_users,
             "duration": t.duration,
@@ -730,7 +732,7 @@ async def _get_running_tasks(
         {
             "id": t.id,
             "name": t.name,
-            "status": t.status,
+            "status": map_http_status(t.status),
             "method": t.method,
             "target_url": t.target_url,
             "concurrent_users": t.concurrent_users,

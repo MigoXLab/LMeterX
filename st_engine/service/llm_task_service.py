@@ -12,13 +12,13 @@ from sqlalchemy.orm import Session
 
 from config.base import ST_ENGINE_DIR
 from config.business import (
-    TASK_STATUS_EXCEPTION,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_FAILED,
     TASK_STATUS_FAILED_REQUESTS,
-    TASK_STATUS_PENDING,
+    TASK_STATUS_QUEUING,
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
-    TASK_STATUS_SUCCESSED,
 )
 from engine.llm_runner import LlmLocustRunner
 from engine.process_manager import (
@@ -187,7 +187,7 @@ class LlmTaskService:
             if task:
                 task_logger = logger.bind(task_id=task.id)
                 task_logger.info(f"Claimed and locked new task {task.id}.")
-                task.status = "pending"  # type: ignore # Update status immediately
+                task.status = "queuing"  # type: ignore # Update status immediately
                 task.engine_id = ENGINE_ID  # type: ignore # Bind engine instance
                 session.commit()
                 task_logger.info(f"Task {task.id} bound to engine_id={ENGINE_ID}")
@@ -233,12 +233,12 @@ class LlmTaskService:
                 update(Task)
                 .where(Task.status == "created")
                 .where(Task.is_deleted == 0)
-                .values(status=TASK_STATUS_PENDING)
+                .values(status=TASK_STATUS_QUEUING)
             )
             session.commit()
             count = result.rowcount  # type: ignore[union-attr]
             if count > 0:
-                logger.info(f"[LLM] Enqueued {count} task(s): created -> pending.")
+                logger.info(f"[LLM] Enqueued {count} task(s): created -> queuing.")
             return count
         except (OperationalError, pymysql.err.OperationalError) as e:
             logger.warning(f"[LLM] Database error during enqueue_created_tasks: {e}")
@@ -270,7 +270,7 @@ class LlmTaskService:
         try:
             query = (
                 select(Task)
-                .where(Task.status == TASK_STATUS_PENDING)
+                .where(Task.status == TASK_STATUS_QUEUING)
                 .where(Task.is_deleted == 0)
                 .order_by(Task.created_at.asc(), Task.id.asc())
                 .with_for_update()
@@ -346,14 +346,14 @@ class LlmTaskService:
             self._kill_orphaned_process(task, task_logger)
 
             error_message = "Task process was orphaned by an engine restart and has been terminated."
-            self.update_task_status(session, task, TASK_STATUS_EXCEPTION, error_message)
+            self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
         else:
             task_logger.warning(
                 f"Task {task.id} was in '{task.status}' state, but no active process found. "
                 f"Marking as EXCEPTION. This likely occurred during an engine restart."
             )
             error_message = "Task process was not found after an engine restart."
-            self.update_task_status(session, task, TASK_STATUS_EXCEPTION, error_message)
+            self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
 
     def _reconcile_single_task(self, session: Session, task: Task):
         """
@@ -508,7 +508,7 @@ class LlmTaskService:
                     self.update_task_status(
                         session,
                         task,
-                        TASK_STATUS_EXCEPTION,
+                        TASK_STATUS_FAILED,
                         f"Engine instance '{task.engine_id}' is no longer "
                         "alive. Task has been marked as exception due to "
                         "engine shutdown.",
@@ -626,7 +626,7 @@ class LlmTaskService:
                 task_logger.info(
                     f"Runner completed successfully. Processing results..."
                 )
-                self.update_task_status(session, task, TASK_STATUS_SUCCESSED)
+                self.update_task_status(session, task, TASK_STATUS_COMPLETED)
                 if locust_result:
                     # Always insert results first, regardless of outcome
                     task_logger.info(f"Inserting locust results for task {task.id}")
@@ -642,7 +642,7 @@ class LlmTaskService:
                     )
                     task_logger.error(f"{error_message}")
                     self.update_task_status(
-                        session, task, TASK_STATUS_EXCEPTION, error_message
+                        session, task, TASK_STATUS_FAILED, error_message
                     )
             elif run_status == "FAILED_REQUESTS":
                 task_logger.warning(
@@ -663,7 +663,7 @@ class LlmTaskService:
                     error_message = f"Task {task.id} had request failures but no result file was generated."
                     task_logger.error(f"{error_message}")
                     self.update_task_status(
-                        session, task, TASK_STATUS_EXCEPTION, error_message
+                        session, task, TASK_STATUS_FAILED, error_message
                     )
             elif run_status == "FAILED":
                 return_code = run_result.get("return_code", "unknown")
@@ -673,7 +673,7 @@ class LlmTaskService:
                 task_logger.error(f"Return code: {return_code}")
                 task_logger.error(f"Stderr: {stderr_details}")
                 self.update_task_status(
-                    session, task, TASK_STATUS_EXCEPTION, error_message
+                    session, task, TASK_STATUS_FAILED, error_message
                 )
             else:
                 # Unexpected status from runner
@@ -684,7 +684,7 @@ class LlmTaskService:
                 task_logger.error(f"Return code: {return_code}")
                 task_logger.error(f"Stderr: {stderr_details}")
                 self.update_task_status(
-                    session, task, TASK_STATUS_EXCEPTION, error_message
+                    session, task, TASK_STATUS_FAILED, error_message
                 )
 
         except (OperationalError, pymysql.err.OperationalError) as e:
@@ -704,7 +704,7 @@ class LlmTaskService:
                 self.update_task_status(
                     session,
                     task,
-                    TASK_STATUS_EXCEPTION,
+                    TASK_STATUS_FAILED,
                     f"Pipeline error: Database connection issue - {str(e)}",
                 )
             except Exception as status_update_error:
@@ -722,7 +722,7 @@ class LlmTaskService:
             # Ensure the task status is updated even if there's an exception
             try:
                 self.update_task_status(
-                    session, task, TASK_STATUS_EXCEPTION, error_message
+                    session, task, TASK_STATUS_FAILED, error_message
                 )
                 task_logger.info(
                     f"Task {task.id} status updated to EXCEPTION after exception"

@@ -1028,20 +1028,20 @@
     "taskStopping": "Task is being stopped..."
   },
   "status": {
-    "pending": "Queuing",
+    "queuing": "Queuing",
     "running": "Running",
-    "successed": "Succeeded",
-    "exception": "Exception",
+    "completed": "Succeeded",
+    "failed": "Exception",
     "stopped": "Stopped",
     "created": "Created",
     "stopping": "Stopping",
     "failed_requests": "Partial Failed",
     "desc": {
       "created": "Task created, waiting for engine scheduling",
-      "pending": "Task is queuing for execution",
-      "successed": "All requests succeeded",
+      "queuing": "Task is queuing for execution",
+      "completed": "All requests succeeded",
       "failed_requests": "There were failed requests on the service side",
-      "exception": "The engine execution failed due to an exception (e.g. crashed, OOM, etc.)",
+      "failed": "The engine execution failed due to an exception (e.g. crashed, OOM, etc.)",
       "stopping": "Task is being stopped, waiting for the process to terminate",
       "stopped": "Task was stopped by user"
     }
@@ -1055,7 +1055,13 @@
     "number": "Please enter a valid number",
     "positive": "Please enter a positive number",
     "integer": "Please enter an integer",
-    "range": "Value should be between {{min}} and {{max}}"
+    "range": "Value should be between {{min}} and {{max}}",
+    "taskNameMaxLength": "Task name must not exceed 100 characters",
+    "taskNameRequired": "Task name cannot be empty",
+    "apiUrlScheme": "API URL must start with http:// or https://",
+    "apiUrlMaxLength": "API URL must not exceed 2000 characters",
+    "concurrentUsersRange": "Concurrent users must be between 1 and 5000",
+    "durationRange": "Duration must be between 1 second and 48 hours"
   },
   "time": {
     "seconds": "seconds",

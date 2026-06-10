@@ -38,13 +38,19 @@ const STATUS_PILL_STYLES: Record<string, PillStyle> = {
     color: '#8c8c8c',
     dotColor: '#bfbfbf',
   },
+  queuing: {
+    bg: 'rgba(250, 173, 20, 0.08)',
+    color: '#d48806',
+    dotColor: '#faad14',
+    pulse: true,
+  },
   running: {
     bg: 'rgba(102, 126, 234, 0.08)',
     color: '#667eea',
     dotColor: '#667eea',
     pulse: true,
   },
-  successed: {
+  completed: {
     bg: 'rgba(82, 196, 26, 0.08)',
     color: '#52c41a',
     dotColor: '#52c41a',
@@ -60,13 +66,7 @@ const STATUS_PILL_STYLES: Record<string, PillStyle> = {
     color: '#595959',
     dotColor: '#8c8c8c',
   },
-  pending: {
-    bg: 'rgba(250, 173, 20, 0.08)',
-    color: '#d48806',
-    dotColor: '#faad14',
-    pulse: true,
-  },
-  exception: {
+  failed: {
     bg: 'rgba(255, 77, 79, 0.08)',
     color: '#ff4d4f',
     dotColor: '#ff4d4f',
@@ -120,7 +120,7 @@ export const StatusTag: React.FC<StatusTagProps> = ({
         background: pillStyle.bg,
         color: pillStyle.color,
         whiteSpace: 'nowrap',
-        cursor: tooltipText ? 'help' : 'default',
+        cursor: tooltipText ? 'pointer' : 'default',
       }}
     >
       <span

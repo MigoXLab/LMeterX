@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 
 from config.base import LOCUST_STOP_TIMEOUT
-from config.business import TASK_STATUS_EXCEPTION, TASK_STATUS_STOPPED
+from config.business import TASK_STATUS_FAILED, TASK_STATUS_STOPPED
 from db.database import get_db_session
 from service.http_task_service import HttpTaskService
 from service.llm_task_service import LlmTaskService
@@ -24,8 +24,9 @@ def _is_stopping_timed_out(session, task_id: str, task_service) -> bool:
         if task and task.updated_at:
             updated_at = task.updated_at
             if updated_at.tzinfo is None:
-                updated_at = updated_at.replace(tzinfo=timezone.utc)
-            elapsed = (datetime.now(timezone.utc) - updated_at).total_seconds()
+                elapsed = (datetime.now() - updated_at).total_seconds()
+            else:
+                elapsed = (datetime.now(timezone.utc) - updated_at).total_seconds()
             return elapsed > STOPPING_TIMEOUT_SECONDS
     except Exception as e:
         logger.debug(f"Error checking stopping timeout for task {task_id}: {e}")
@@ -156,7 +157,7 @@ def llm_task_stop_poller():
                             task_service.update_task_status_by_id(
                                 session,
                                 task_id,
-                                TASK_STATUS_EXCEPTION,
+                                TASK_STATUS_FAILED,
                             )
                         except Exception as update_e:
                             logger.error(
@@ -272,7 +273,7 @@ def http_task_stop_poller():
                         )
                         try:
                             task_service.update_task_status_by_id(
-                                session, task_id, TASK_STATUS_EXCEPTION
+                                session, task_id, TASK_STATUS_FAILED
                             )
                         except Exception as update_e:
                             logger.error(

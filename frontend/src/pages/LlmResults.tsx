@@ -314,7 +314,7 @@ const LlmResults: React.FC = () => {
   // Poll task status while task is running/pending to detect completion
   useEffect(() => {
     if (!id || !taskInfo) return;
-    const isActive = ['running', 'created', 'pending', 'stopping'].includes(
+    const isActive = ['running', 'created', 'queuing', 'stopping'].includes(
       taskInfo.status?.toLowerCase()
     );
     if (!isActive) return;
@@ -333,7 +333,7 @@ const LlmResults: React.FC = () => {
           // Refresh results when task completes
           if (
             statusData.status !== 'running' &&
-            statusData.status !== 'pending'
+            statusData.status !== 'queuing'
           ) {
             try {
               const resultsResponse = await resultApi.getJobResult(id);
@@ -368,7 +368,7 @@ const LlmResults: React.FC = () => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = currentStatus;
 
-    const activeStatuses = ['running', 'created', 'pending', 'stopping'];
+    const activeStatuses = ['running', 'created', 'queuing', 'stopping'];
     const isActive = activeStatuses.includes(
       currentStatus?.toLowerCase() || ''
     );
@@ -760,7 +760,7 @@ const LlmResults: React.FC = () => {
   // Render the Charts tab content
   const renderChartsContent = () => {
     if (metricsData.length === 0) {
-      const isRunning = ['running', 'created', 'pending', 'stopping'].includes(
+      const isRunning = ['running', 'created', 'queuing', 'stopping'].includes(
         taskInfo?.status?.toLowerCase()
       );
       return (

@@ -14,13 +14,13 @@ from sqlalchemy.orm import Session
 
 from config.base import ST_ENGINE_DIR
 from config.business import (
-    TASK_STATUS_EXCEPTION,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_FAILED,
     TASK_STATUS_FAILED_REQUESTS,
-    TASK_STATUS_PENDING,
+    TASK_STATUS_QUEUING,
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
-    TASK_STATUS_SUCCESSED,
 )
 from engine.http_runner import HttpLocustRunner
 from engine.process_manager import (
@@ -145,7 +145,7 @@ class HttpTaskService:
             if task:
                 task_logger = logger.bind(task_id=task.id)
                 task_logger.info(f" Claimed and locked new task {task.id}.")
-                task.status = "pending"  # type: ignore
+                task.status = "queuing"  # type: ignore
                 task.engine_id = ENGINE_ID  # type: ignore # Bind engine instance
                 session.commit()
                 task_logger.info(f"Task {task.id} bound to engine_id={ENGINE_ID}")
@@ -177,7 +177,7 @@ class HttpTaskService:
 
     def enqueue_created_tasks(self, session: Session) -> int:
         """
-        Bulk-move all 'created' HTTP tasks to 'pending' without binding engine_id.
+        Bulk-move all 'created' HTTP tasks to 'queuing' without binding engine_id.
 
         This is the "enqueue" phase — tasks become visible as "queuing" to users
         almost immediately. Multiple engines may call this concurrently; the
@@ -191,12 +191,12 @@ class HttpTaskService:
                 update(HttpTask)
                 .where(HttpTask.status == "created")
                 .where(HttpTask.is_deleted == 0)
-                .values(status=TASK_STATUS_PENDING)
+                .values(status=TASK_STATUS_QUEUING)
             )
             session.commit()
             count = result.rowcount  # type: ignore[union-attr]
             if count > 0:
-                logger.info(f"[HTTP] Enqueued {count} task(s): created -> pending.")
+                logger.info(f"[HTTP] Enqueued {count} task(s): created -> queuing.")
             return count
         except (OperationalError, pymysql.err.OperationalError) as e:
             logger.warning(f"[HTTP] Database error during enqueue_created_tasks: {e}")
@@ -228,7 +228,7 @@ class HttpTaskService:
         try:
             query = (
                 select(HttpTask)
-                .where(HttpTask.status == TASK_STATUS_PENDING)
+                .where(HttpTask.status == TASK_STATUS_QUEUING)
                 .where(HttpTask.is_deleted == 0)
                 .order_by(HttpTask.created_at.asc(), HttpTask.id.asc())
                 .with_for_update()
@@ -365,7 +365,7 @@ class HttpTaskService:
 
                         error_message = "Task process was orphaned by an engine restart and has been terminated."
                         self.update_task_status(
-                            session, task, TASK_STATUS_EXCEPTION, error_message
+                            session, task, TASK_STATUS_FAILED, error_message
                         )
                     else:
                         task_logger.warning(
@@ -375,7 +375,7 @@ class HttpTaskService:
                             "Task process was not found after an engine restart."
                         )
                         self.update_task_status(
-                            session, task, TASK_STATUS_EXCEPTION, error_message
+                            session, task, TASK_STATUS_FAILED, error_message
                         )
                 finally:
                     if handler_id is not None:
@@ -454,7 +454,7 @@ class HttpTaskService:
                     self.update_task_status(
                         session,
                         task,
-                        TASK_STATUS_EXCEPTION,
+                        TASK_STATUS_FAILED,
                         f"Engine instance '{task.engine_id}' is no longer "
                         "alive. Task has been marked as exception due to "
                         "engine shutdown.",
@@ -535,18 +535,18 @@ class HttpTaskService:
             self.update_task_status(session, task, TASK_STATUS_FAILED_REQUESTS)
         else:
             error_message = run_result.get("stderr") or "Runner failed to start."
-            self.update_task_status(session, task, TASK_STATUS_EXCEPTION, error_message)
+            self.update_task_status(session, task, TASK_STATUS_FAILED, error_message)
 
     def _handle_completed(self, session: Session, task: HttpTask, locust_result: dict):
         """Handle a successfully completed run, persisting results or marking failed."""
-        self.update_task_status(session, task, TASK_STATUS_SUCCESSED)
+        self.update_task_status(session, task, TASK_STATUS_COMPLETED)
         if locust_result:
             self.result_service.insert_locust_results(session, locust_result, task.id)
         else:
             self.update_task_status(
                 session,
                 task,
-                TASK_STATUS_EXCEPTION,
+                TASK_STATUS_FAILED,
                 "Runner completed but no result file was generated.",
             )
 
@@ -569,7 +569,7 @@ class HttpTaskService:
             self.update_task_status(
                 session,
                 task,
-                TASK_STATUS_EXCEPTION,
+                TASK_STATUS_FAILED,
                 f"Pipeline error: Database connection issue - {str(error)}",
             )
         except Exception as status_update_error:
@@ -585,7 +585,7 @@ class HttpTaskService:
         task_logger.error(f" Full traceback: {traceback.format_exc()}")
         try:
             self.update_task_status(
-                session, task, TASK_STATUS_EXCEPTION, str(error) or "Pipeline error"
+                session, task, TASK_STATUS_FAILED, str(error) or "Pipeline error"
             )
         except (OperationalError, pymysql.err.OperationalError) as db_error:
             logger.warning(

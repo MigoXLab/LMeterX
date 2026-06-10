@@ -78,15 +78,17 @@ def _resolve_created_by(value: Optional[str]) -> Optional[str]:
     return value or "-"
 
 
+def _map_status(status: Optional[str]) -> str:
+    if not status:
+        return "created"
+    return status.lower()
+
+
 def _build_task_summary(task: Task) -> Dict[str, Any]:
     field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
-    mapped_status = (
-        "successed"
-        if task.status == "completed"
-        else ("exception" if task.status == "failed" else task.status)
-    )
+    mapped_status = _map_status(cast(Optional[str], task.status))
     return {
         "id": task.id,
         "name": task.name,
@@ -131,11 +133,7 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
     field_mapping_dict = safe_json_loads(
         task.field_mapping, f"field_mapping for task {task.id}", {}
     )
-    mapped_status = (
-        "successed"
-        if task.status == "completed"
-        else ("exception" if task.status == "failed" else task.status)
-    )
+    mapped_status = _map_status(cast(Optional[str], task.status))
 
     return {
         "id": task.id,
@@ -178,11 +176,7 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
 
 def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
     """Build a task-like payload for HTTP API tasks so shared pages work."""
-    mapped_status = (
-        "successed"
-        if task.status == "completed"
-        else ("exception" if task.status == "failed" else task.status)
-    )
+    mapped_status = _map_status(cast(Optional[str], task.status))
     return {
         "id": task.id,
         "name": task.name,
@@ -321,23 +315,14 @@ async def get_tasks_svc(
 
         # Apply filters if provided.
         if status:
-            # Handle multiple statuses separated by comma
             status_list = [s.strip() for s in status.split(",") if s.strip()]
-            mapped_status_list = []
-            for s in status_list:
-                if s == "successed":
-                    mapped_status_list.extend(["successed", "completed"])
-                elif s == "exception":
-                    mapped_status_list.extend(["exception", "failed"])
-                elif s == "pending":
-                    mapped_status_list.extend(["pending", "created"])
-                else:
-                    mapped_status_list.append(s)
-            mapped_status_list = list(set(mapped_status_list))
-            if len(mapped_status_list) == 1:
-                query = query.where(Task.status == mapped_status_list[0])
+            if "queuing" in status_list:
+                status_list.append("created")
+            status_list = list(set(status_list))
+            if len(status_list) == 1:
+                query = query.where(Task.status == status_list[0])
             else:
-                query = query.where(Task.status.in_(mapped_status_list))
+                query = query.where(Task.status.in_(status_list))
         if creator:
             query = query.where(Task.created_by == creator)
         if model:
@@ -399,11 +384,7 @@ async def get_tasks_status_svc(request: Request, page_size: int):
     query = text(
         """
         SELECT id,
-               CASE status
-                   WHEN 'completed' THEN 'successed'
-                   WHEN 'failed' THEN 'exception'
-                   ELSE status
-               END AS status,
+               status,
                UNIX_TIMESTAMP(updated_at) as updated_timestamp
         FROM llm_tasks
         WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
@@ -453,14 +434,14 @@ async def stop_task_svc(request: Request, task_id: str):
                         ErrorMessages.INSUFFICIENT_PERMISSIONS
                     )
 
-        if task.status not in ("running", "pending"):
+        if task.status not in ("running", "queuing"):
             return TaskCreateRsp(
                 status=task.status,
                 task_id=task_id,
                 message="Task is not currently running or queued.",
             )
 
-        if task.status == "pending":
+        if task.status == "queuing":
             task.status = "stopped"
             await db.commit()
             return TaskCreateRsp(
@@ -791,10 +772,11 @@ async def get_task_status_svc(request: Request, task_id: str):
             common_result = await db.execute(common_query)
             common_data = common_result.first()
             if common_data:
+                mapped_status = _map_status(common_data.status)
                 return {
                     "id": common_data.id,
                     "name": common_data.name,
-                    "status": common_data.status,
+                    "status": mapped_status,
                     "error_message": common_data.error_message,
                     "updated_at": safe_isoformat(common_data.updated_at),
                 }
@@ -803,10 +785,11 @@ async def get_task_status_svc(request: Request, task_id: str):
             raise ErrorResponse.not_found("Task not found")
 
         # Return lightweight status information
+        mapped_status = _map_status(task_data.status)
         status_dict = {
             "id": task_data.id,
             "name": task_data.name,
-            "status": task_data.status,
+            "status": mapped_status,
             "error_message": task_data.error_message,
             "updated_at": safe_isoformat(task_data.updated_at),
         }
@@ -823,7 +806,7 @@ async def get_task_status_svc(request: Request, task_id: str):
 async def get_model_tasks_for_comparison_svc(request: Request):
     """
     Get available model tasks that can be used for performance comparison.
-    Only returns tasks with status 'successed' or 'failed_requests' that have results.
+    Only returns tasks with status 'completed' or 'failed_requests' that have results.
 
     Args:
         request: The FastAPI request object.
@@ -834,7 +817,7 @@ async def get_model_tasks_for_comparison_svc(request: Request):
     try:
         db = request.state.db
 
-        # Query for successed and failed_requests tasks that have results
+        # Query for completed and failed_requests tasks that have results
         query = (
             select(
                 Task.id,
@@ -844,7 +827,7 @@ async def get_model_tasks_for_comparison_svc(request: Request):
                 Task.created_at,
                 Task.duration,
             )
-            .where(Task.status.in_(["successed", "failed_requests"]))
+            .where(Task.status.in_(["completed", "failed_requests"]))
             .join(TaskResult, Task.id == TaskResult.task_id)
             .distinct()
             .order_by(Task.created_at.desc(), Task.model, Task.concurrent_users)
@@ -928,7 +911,7 @@ async def compare_performance_svc(
         incomplete_tasks = [
             task_id
             for task_id, task in tasks.items()
-            if task.status not in ["successed", "failed_requests"]
+            if task.status not in ["completed", "failed_requests"]
         ]
         if incomplete_tasks:
             return ComparisonResponse(

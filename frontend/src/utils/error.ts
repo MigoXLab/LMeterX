@@ -6,6 +6,7 @@
  */
 
 import { message } from 'antd';
+import i18n from '../i18n';
 
 /**
  * Error types for better error handling
@@ -103,34 +104,52 @@ export const formatValidationError = (errorData: any): string | null => {
             type === 'string_too_long' ||
             msg.includes('at most 100 characters')
           ) {
-            return '任务名称长度不能超过100个字符';
+            return i18n.t(
+              'validation.taskNameMaxLength',
+              'Task name must not exceed 100 characters'
+            );
           }
           if (
             type === 'string_too_short' ||
             msg.includes('at least 1 character')
           ) {
-            return '任务名称不能为空';
+            return i18n.t(
+              'validation.taskNameRequired',
+              'Task name cannot be empty'
+            );
           }
         }
 
         if (loc.includes('target_url')) {
           if (msg.includes('http:// or https://')) {
-            return 'API URL 需以 http:// 或 https:// 开头';
+            return i18n.t(
+              'validation.apiUrlScheme',
+              'API URL must start with http:// or https://'
+            );
           }
           if (
             type === 'string_too_long' ||
             msg.includes('at most 2000 characters')
           ) {
-            return 'API URL 长度不能超过2000个字符';
+            return i18n.t(
+              'validation.apiUrlMaxLength',
+              'API URL must not exceed 2000 characters'
+            );
           }
         }
 
         if (loc.includes('concurrent_users')) {
-          return '并发用户数需在1-5000之间';
+          return i18n.t(
+            'validation.concurrentUsersRange',
+            'Concurrent users must be between 1 and 5000'
+          );
         }
 
         if (loc.includes('duration')) {
-          return '持续时间需在1秒至48小时之间';
+          return i18n.t(
+            'validation.durationRange',
+            'Duration must be between 1 second and 48 hours'
+          );
         }
 
         // Fallback to item msg or type

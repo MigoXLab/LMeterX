@@ -182,7 +182,7 @@ const HttpResults: React.FC = () => {
   // Uses lightweight /status endpoint instead of full task info.
   useEffect(() => {
     if (!id || !taskInfo) return;
-    const isActive = ['running', 'created', 'pending', 'stopping'].includes(
+    const isActive = ['running', 'created', 'queuing', 'stopping'].includes(
       taskInfo.status?.toLowerCase()
     );
     if (!isActive) return;
@@ -221,7 +221,7 @@ const HttpResults: React.FC = () => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = currentStatus;
 
-    const activeStatuses = ['running', 'created', 'pending', 'stopping'];
+    const activeStatuses = ['running', 'created', 'queuing', 'stopping'];
     const isActive = activeStatuses.includes(
       currentStatus?.toLowerCase() || ''
     );
@@ -838,7 +838,7 @@ const HttpResults: React.FC = () => {
   // Render the Charts tab content
   const renderChartsContent = () => {
     if (metricsData.length === 0) {
-      const isRunning = ['running', 'created', 'pending', 'stopping'].includes(
+      const isRunning = ['running', 'created', 'queuing', 'stopping'].includes(
         taskInfo?.status?.toLowerCase()
       );
       return (

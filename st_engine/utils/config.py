@@ -32,12 +32,12 @@ else:
 
 # === TASK STATUS CONSTANTS ===
 TASK_STATUS_CREATED = "created"
-TASK_STATUS_PENDING = "pending"
+TASK_STATUS_QUEUING = "queuing"
 TASK_STATUS_RUNNING = "running"
 TASK_STATUS_STOPPING = "stopping"
 TASK_STATUS_STOPPED = "stopped"
-TASK_STATUS_SUCCESSED = "successed"
-TASK_STATUS_EXCEPTION = "exception"
+TASK_STATUS_COMPLETED = "completed"
+TASK_STATUS_FAILED = "failed"
 TASK_STATUS_FAILED_REQUESTS = (
     "failed_requests"  # Test completed but had failed requests (Locust exit code 1)
 )

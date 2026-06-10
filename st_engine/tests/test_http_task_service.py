@@ -13,13 +13,13 @@ from unittest.mock import Mock, patch
 import pytest
 
 from config.business import (
-    TASK_STATUS_EXCEPTION,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_FAILED,
     TASK_STATUS_FAILED_REQUESTS,
-    TASK_STATUS_PENDING,
+    TASK_STATUS_QUEUING,
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
-    TASK_STATUS_SUCCESSED,
 )
 from service.http_task_service import ENGINE_ID, HttpTaskService
 
@@ -50,9 +50,7 @@ class TestUpdateTaskStatus:
         task.id = "task-trunc-001"
 
         long_error = "x" * 70000
-        task_service.update_task_status(
-            session, task, TASK_STATUS_EXCEPTION, long_error
-        )
+        task_service.update_task_status(session, task, TASK_STATUS_FAILED, long_error)
 
         assert "truncated" in task.error_message
         assert len(task.error_message) < 66000
@@ -63,9 +61,7 @@ class TestUpdateTaskStatus:
         task.id = "task-short-err"
 
         short_error = "Something went wrong"
-        task_service.update_task_status(
-            session, task, TASK_STATUS_EXCEPTION, short_error
-        )
+        task_service.update_task_status(session, task, TASK_STATUS_FAILED, short_error)
         assert task.error_message == short_error
 
 
@@ -85,7 +81,7 @@ class TestGetAndLockTask:
         locked = task_service.get_and_lock_task(session)
 
         assert locked is task
-        assert task.status == "pending"
+        assert task.status == "queuing"
         session.commit.assert_called_once()
 
     def test_returns_none_when_no_task(self, task_service):
@@ -149,7 +145,7 @@ class TestEnqueueAndClaim:
         session = Mock()
         task = Mock()
         task.id = "task-claim-001"
-        task.status = TASK_STATUS_PENDING
+        task.status = TASK_STATUS_QUEUING
 
         result = Mock()
         result.scalar_one_or_none.return_value = task
@@ -242,7 +238,7 @@ class TestResolveTaskStatus:
         with patch.object(task_service, "update_task_status") as mock_update:
             task_service._resolve_task_status(session, task, run_result, Mock())
 
-        mock_update.assert_called_with(session, task, TASK_STATUS_SUCCESSED)
+        mock_update.assert_called_with(session, task, TASK_STATUS_COMPLETED)
         task_service.result_service.insert_locust_results.assert_called_once()
 
     def test_completed_without_results_marks_failed(self, task_service):
@@ -259,7 +255,7 @@ class TestResolveTaskStatus:
         # Should be called twice: first COMPLETED, then FAILED
         assert mock_update.call_count == 2
         last_call = mock_update.call_args_list[-1]
-        assert last_call[0][2] == TASK_STATUS_EXCEPTION
+        assert last_call[0][2] == TASK_STATUS_FAILED
 
     def test_stopped_by_signal(self, task_service):
         session = Mock()
@@ -320,7 +316,7 @@ class TestResolveTaskStatus:
             task_service._resolve_task_status(session, task, run_result, Mock())
 
         mock_update.assert_called_with(
-            session, task, TASK_STATUS_EXCEPTION, "Segfault occurred"
+            session, task, TASK_STATUS_FAILED, "Segfault occurred"
         )
 
 
@@ -457,7 +453,7 @@ class TestReconcileTasksOnStartup:
 
             mock_update.assert_called_once()
             call_args = mock_update.call_args
-            assert call_args[0][2] == TASK_STATUS_EXCEPTION
+            assert call_args[0][2] == TASK_STATUS_FAILED
             assert "not found" in call_args[0][3].lower()
 
     def test_empty_engine_id_skipped(self, task_service):

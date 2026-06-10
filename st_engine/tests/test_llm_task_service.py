@@ -7,12 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from config.business import (
-    TASK_STATUS_EXCEPTION,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_FAILED,
     TASK_STATUS_FAILED_REQUESTS,
-    TASK_STATUS_PENDING,
+    TASK_STATUS_QUEUING,
     TASK_STATUS_RUNNING,
     TASK_STATUS_STOPPED,
-    TASK_STATUS_SUCCESSED,
 )
 from service.llm_task_service import ENGINE_ID, LlmTaskService
 
@@ -49,7 +49,7 @@ def test_get_and_lock_task_locks_task(task_service):
     locked_task = task_service.get_and_lock_task(mock_session)
 
     assert locked_task is mock_task
-    assert mock_task.status == "pending"
+    assert mock_task.status == "queuing"
     mock_session.commit.assert_called_once()
 
 
@@ -93,7 +93,7 @@ def test_claim_pending_task_claims_task(task_service):
     mock_session = Mock()
     mock_task = Mock()
     mock_task.id = "task-pending-001"
-    mock_task.status = TASK_STATUS_PENDING
+    mock_task.status = TASK_STATUS_QUEUING
 
     mock_result = Mock()
     mock_result.scalar_one_or_none.return_value = mock_task
@@ -230,5 +230,5 @@ def test_reconcile_marks_running_failed_when_process_missing(task_service):
 
     mock_update_status.assert_called_once()
     call_args = mock_update_status.call_args
-    assert call_args[0][2] == TASK_STATUS_EXCEPTION
+    assert call_args[0][2] == TASK_STATUS_FAILED
     assert "not found" in call_args[0][3].lower()

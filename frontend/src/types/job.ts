@@ -59,12 +59,12 @@ export interface LlmTask {
   engine_id?: string;
   status:
     | 'created'
-    | 'pending'
+    | 'queuing'
     | 'running'
     | 'stopping'
     | 'stopped'
-    | 'successed'
-    | 'exception'
+    | 'completed'
+    | 'failed'
     | 'failed_requests';
   created_at: string;
   updated_at: string;
@@ -102,12 +102,12 @@ export interface HttpTask {
   engine_id?: string;
   status:
     | 'created'
-    | 'pending'
+    | 'queuing'
     | 'running'
     | 'stopping'
     | 'stopped'
-    | 'successed'
-    | 'exception'
+    | 'completed'
+    | 'failed'
     | 'failed_requests';
   created_at: string;
   updated_at: string;

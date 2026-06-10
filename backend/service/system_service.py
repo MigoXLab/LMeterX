@@ -497,18 +497,9 @@ async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
     http_hosts_res = await db.execute(http_hosts_query)
 
     all_hosts = set()
-    for h in llm_hosts_res.scalars().all():
-        if h:
-            h_clean = h.strip()
-            if h_clean:
-                parts = urlsplit(h_clean if "://" in h_clean else f"http://{h_clean}")
-                netloc = parts.netloc or parts.path
-                if netloc:
-                    host_part = netloc.split("/")[0].strip().lower()
-                    if host_part:
-                        all_hosts.add(host_part)
-
-    for h in http_hosts_res.scalars().all():
+    llm_hosts = list(llm_hosts_res.scalars().all())
+    http_hosts = list(http_hosts_res.scalars().all())
+    for h in llm_hosts + http_hosts:
         if h:
             h_clean = h.strip()
             if h_clean:
@@ -546,12 +537,9 @@ async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
     http_users_res = await db.execute(http_users_query)
 
     all_users = set()
-    for u in llm_users_res.scalars().all():
-        if u:
-            cleaned = u.strip()
-            if cleaned and cleaned != "-":
-                all_users.add(cleaned)
-    for u in http_users_res.scalars().all():
+    llm_users = list(llm_users_res.scalars().all())
+    http_users = list(http_users_res.scalars().all())
+    for u in llm_users + http_users:
         if u:
             cleaned = u.strip()
             if cleaned and cleaned != "-":
@@ -570,19 +558,15 @@ async def _get_task_stats(db: AsyncSession, username: str) -> Dict[str, Any]:
     # LLM Task counts — single query with conditional aggregation
     llm_stats_query = select(
         func.count(Task.id).label("total"),
-        func.sum(case((Task.status.in_(["pending", "created"]), 1), else_=0)).label(
+        func.sum(case((Task.status.in_(["queuing", "created"]), 1), else_=0)).label(
             "pending"
         ),
         func.sum(case((Task.status == "running", 1), else_=0)).label("running"),
-        func.sum(case((Task.status.in_(["successed", "completed"]), 1), else_=0)).label(
-            "successed"
-        ),
+        func.sum(case((Task.status == "completed", 1), else_=0)).label("successed"),
         func.sum(case((Task.status == "failed_requests", 1), else_=0)).label(
             "partial_failed"
         ),
-        func.sum(case((Task.status.in_(["exception", "failed"]), 1), else_=0)).label(
-            "exception"
-        ),
+        func.sum(case((Task.status == "failed", 1), else_=0)).label("exception"),
         func.sum(case((Task.created_by == username, 1), else_=0)).label("my_count"),
         func.count(
             func.distinct(
@@ -609,19 +593,15 @@ async def _get_task_stats(db: AsyncSession, username: str) -> Dict[str, Any]:
     # HTTP Task counts — single query with conditional aggregation
     http_stats_query = select(
         func.count(HttpTask.id).label("total"),
-        func.sum(case((HttpTask.status.in_(["pending", "created"]), 1), else_=0)).label(
+        func.sum(case((HttpTask.status.in_(["queuing", "created"]), 1), else_=0)).label(
             "pending"
         ),
         func.sum(case((HttpTask.status == "running", 1), else_=0)).label("running"),
-        func.sum(
-            case((HttpTask.status.in_(["successed", "completed"]), 1), else_=0)
-        ).label("successed"),
+        func.sum(case((HttpTask.status == "completed", 1), else_=0)).label("successed"),
         func.sum(case((HttpTask.status == "failed_requests", 1), else_=0)).label(
             "partial_failed"
         ),
-        func.sum(
-            case((HttpTask.status.in_(["exception", "failed"]), 1), else_=0)
-        ).label("exception"),
+        func.sum(case((HttpTask.status == "failed", 1), else_=0)).label("exception"),
         func.sum(case((HttpTask.created_by == username, 1), else_=0)).label("my_count"),
     ).where(HttpTask.is_deleted == 0)
 
@@ -656,7 +636,7 @@ async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
     from collections import defaultdict
     from datetime import datetime, timedelta
 
-    from sqlalchemy import func, literal_column
+    from sqlalchemy import func
 
     from model.http_task import HttpTask
     from model.llm_task import Task
@@ -676,7 +656,7 @@ async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
             func.count(Task.id).label("cnt"),
         )
         .where(Task.is_deleted == 0, Task.created_at >= eight_weeks_ago)
-        .group_by(literal_column("week_monday"))
+        .group_by(llm_monday_expr)
     )
 
     http_monday_expr = func.subdate(
@@ -688,7 +668,7 @@ async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
             func.count(HttpTask.id).label("cnt"),
         )
         .where(HttpTask.is_deleted == 0, HttpTask.created_at >= eight_weeks_ago)
-        .group_by(literal_column("week_monday"))
+        .group_by(http_monday_expr)
     )
 
     llm_weekly_rows = (await db.execute(llm_weekly_query)).all()

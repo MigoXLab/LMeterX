@@ -1652,7 +1652,7 @@ const Tasks: React.FC = () => {
   }, [activeMode, messageApi, navigate, selectedRowKeys, t]);
 
   const COMPARABLE_STATUSES = useMemo(
-    () => ['successed', 'failed_requests'],
+    () => ['completed', 'failed_requests'],
     []
   );
 

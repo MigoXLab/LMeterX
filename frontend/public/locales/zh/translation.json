@@ -1029,20 +1029,20 @@
     "taskStopping": "任务正在停止..."
   },
   "status": {
-    "pending": "排队中",
+    "queuing": "排队中",
     "running": "运行中",
-    "successed": "运行成功",
-    "exception": "运行异常",
+    "completed": "运行成功",
+    "failed": "运行异常",
     "stopped": "已停止",
     "created": "已创建",
     "stopping": "停止中",
     "failed_requests": "部分失败",
     "desc": {
       "created": "任务已创建，等待引擎调度",
-      "pending": "任务正在排队等待执行",
-      "successed": "所有API请求成功",
+      "queuing": "任务正在排队等待执行",
+      "completed": "所有API请求成功",
       "failed_requests": "服务侧存在异常报错请求",
-      "exception": "压测引擎可能存在异常，比如引擎oom、crash等",
+      "failed": "压测引擎可能存在异常，比如引擎oom、crash等",
       "stopping": "任务正在停止中，等待进程终止",
       "stopped": "任务已被用户手动停止"
     }
@@ -1056,7 +1056,13 @@
     "number": "请输入有效的数字",
     "positive": "请输入正数",
     "integer": "请输入整数",
-    "range": "值应在{{min}}到{{max}}之间"
+    "range": "值应在{{min}}到{{max}}之间",
+    "taskNameMaxLength": "任务名称长度不能超过100个字符",
+    "taskNameRequired": "任务名称不能为空",
+    "apiUrlScheme": "API URL 需以 http:// 或 https:// 开头",
+    "apiUrlMaxLength": "API URL 长度不能超过2000个字符",
+    "concurrentUsersRange": "并发用户数需在1-5000之间",
+    "durationRange": "持续时间需在1秒至48小时之间"
   },
   "time": {
     "seconds": "秒",

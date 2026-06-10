@@ -34,7 +34,7 @@ const buildAuthHeaders = () => {
 };
 
 const isActiveStatus = (status?: string) =>
-  ['running', 'created', 'pending', 'stopping'].includes(
+  ['running', 'created', 'queuing', 'stopping'].includes(
     status?.toLowerCase() || ''
   );
 

@@ -212,7 +212,7 @@ const Header: React.FC = () => {
             <span>Star</span>
           </a>
           <LanguageSwitcher />
-          {LDAP_ENABLED && (
+          {LDAP_ENABLED && user ? (
             <Dropdown
               menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
               trigger={['click']}
@@ -243,7 +243,11 @@ const Header: React.FC = () => {
                 </Space>
               </Button>
             </Dropdown>
-          )}
+          ) : LDAP_ENABLED && !user ? (
+            <Button type='primary' onClick={() => navigate('/login')}>
+              {t('header.login') ?? 'Login'}
+            </Button>
+          ) : null}
         </div>
       </div>
     </AntdHeader>

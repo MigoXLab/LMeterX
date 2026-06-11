@@ -160,20 +160,9 @@ const App: React.FC = () => {
                   />
                   <Route
                     path='/'
-                    element={
-                      <RequireAuth>
-                        <Navigate to='/dashboard' replace />
-                      </RequireAuth>
-                    }
+                    element={<Navigate to='/dashboard' replace />}
                   />
-                  <Route
-                    path='/dashboard'
-                    element={
-                      <RequireAuth>
-                        <Dashboard />
-                      </RequireAuth>
-                    }
-                  />
+                  <Route path='/dashboard' element={<Dashboard />} />
                   <Route
                     path='/jobs'
                     element={
@@ -182,38 +171,13 @@ const App: React.FC = () => {
                       </RequireAuth>
                     }
                   />
-                  <Route
-                    path='/llm-results/:id'
-                    element={
-                      <RequireAuth>
-                        <LlmResults />
-                      </RequireAuth>
-                    }
-                  />
+                  <Route path='/llm-results/:id' element={<LlmResults />} />
                   <Route
                     path='/results/:id'
-                    element={
-                      <RequireAuth>
-                        <LegacyResultsRedirect />
-                      </RequireAuth>
-                    }
+                    element={<LegacyResultsRedirect />}
                   />
-                  <Route
-                    path='/http-results/:id'
-                    element={
-                      <RequireAuth>
-                        <HttpResults />
-                      </RequireAuth>
-                    }
-                  />
-                  <Route
-                    path='/logs/task/:id'
-                    element={
-                      <RequireAuth>
-                        <TaskLog />
-                      </RequireAuth>
-                    }
-                  />
+                  <Route path='/http-results/:id' element={<HttpResults />} />
+                  <Route path='/logs/task/:id' element={<TaskLog />} />
                   <Route
                     path='/result-comparison'
                     element={

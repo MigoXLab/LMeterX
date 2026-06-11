@@ -38,9 +38,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
     Validate Bearer tokens for protected endpoints.
     """
 
-    def __init__(self, app, exempt_paths: Optional[Iterable[str]] = None):
+    def __init__(
+        self,
+        app,
+        exempt_paths: Optional[Iterable[str]] = None,
+        exempt_prefixes: Optional[Iterable[str]] = None,
+    ):
         super().__init__(app)
         self.exempt_paths = set(exempt_paths or [])
+        self.exempt_prefixes = tuple(exempt_prefixes or [])
 
     async def dispatch(self, request: Request, call_next: Callable):
         path = request.url.path
@@ -54,6 +60,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 or path in self.exempt_paths
                 or path.startswith("/docs")
                 or path.startswith("/openapi")
+                or (self.exempt_prefixes and path.startswith(self.exempt_prefixes))
             ):
                 return await call_next(request)
 

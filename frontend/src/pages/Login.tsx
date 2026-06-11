@@ -8,7 +8,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher';
 import { LoginResponse } from '../types/auth';
 import { clearAuth, saveAuth } from '../utils/auth';
 
-const { Title, Paragraph } = Typography;
+const { Paragraph } = Typography;
 
 const cardStyle: React.CSSProperties = {
   maxWidth: 420,
@@ -84,9 +84,6 @@ const Login: React.FC = () => {
           >
             LMeterX
           </div>
-          <Title level={4} style={{ marginBottom: 8, color: '#282e58' }}>
-            {t('pages.login.title')}
-          </Title>
           <Paragraph style={{ margin: 0, color: '#545983' }}>
             {t('pages.login.subtitle')}
           </Paragraph>

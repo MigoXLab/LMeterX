@@ -12,6 +12,7 @@
     "english": "English",
     "chinese": "中文",
     "logout": "退出登录",
+    "login": "登录",
     "starOnGithub": "去 GitHub 给我们 Star",
     "switchToEnglish": "Switch to English",
     "switchToChinese": "切换为中文"
@@ -68,7 +69,6 @@
       "weeklyNewTasks": "每周新增任务数"
     },
     "login": {
-      "title": "欢迎登录 LMeterX",
       "subtitle": "使用AD账号完成身份验证",
       "usernameLabel": "用户名",
       "usernamePlaceholder": "用户名",

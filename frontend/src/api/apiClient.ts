@@ -112,7 +112,7 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response && error.response.status === 401) {
-      const { pathname } = window.location;
+      const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
       const isPublicPage =
         pathname === '/' ||
         pathname === '/dashboard' ||

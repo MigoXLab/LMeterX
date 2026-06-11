@@ -60,7 +60,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 or path in self.exempt_paths
                 or path.startswith("/docs")
                 or path.startswith("/openapi")
-                or (self.exempt_prefixes and path.startswith(self.exempt_prefixes))
+                or (
+                    request.method == "GET"
+                    and self.exempt_prefixes
+                    and path.startswith(self.exempt_prefixes)
+                )
             ):
                 return await call_next(request)
 

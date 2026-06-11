@@ -12,6 +12,7 @@
     "english": "English",
     "chinese": "中文",
     "logout": "Logout",
+    "login": "Login",
     "starOnGithub": "Star us on GitHub",
     "switchToEnglish": "Switch to English",
     "switchToChinese": "切换为中文"
@@ -68,7 +69,6 @@
       "weeklyNewTasks": "Weekly New Tasks"
     },
     "login": {
-      "title": "Welcome to LMeterX",
       "subtitle": "Sign in with your AD account",
       "usernameLabel": "Username",
       "usernamePlaceholder": "Username",

@@ -4,7 +4,7 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 from fastapi import Request
 from sqlalchemy import select
@@ -712,7 +712,7 @@ async def _get_running_tasks(
         {
             "id": t.id,
             "name": t.name,
-            "status": map_llm_status(t.status),
+            "status": map_llm_status(cast(Optional[str], t.status)),
             "model": t.model,
             "concurrent_users": t.concurrent_users,
             "duration": t.duration,
@@ -732,7 +732,7 @@ async def _get_running_tasks(
         {
             "id": t.id,
             "name": t.name,
-            "status": map_http_status(t.status),
+            "status": map_http_status(cast(Optional[str], t.status)),
             "method": t.method,
             "target_url": t.target_url,
             "concurrent_users": t.concurrent_users,

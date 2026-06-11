@@ -90,7 +90,20 @@ async def add_backend_marker(request: Request, call_next):
 if auth_settings.LDAP_ENABLED and not os.getenv("TESTING"):
     app.add_middleware(
         AuthMiddleware,
-        exempt_paths={"/health", "/", "/api/auth/login", "/api/auth/logout"},
+        exempt_paths={
+            "/health",
+            "/",
+            "/api/auth/login",
+            "/api/auth/logout",
+            "/api/system/dashboard-stats",
+        },
+        exempt_prefixes=[
+            "/api/llm-tasks/",
+            "/api/http-tasks/",
+            "/api/logs/",
+            "/api/analyze",
+            "/api/monitoring/engines",
+        ],
     )
 
 # Add database middleware

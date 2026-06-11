@@ -112,8 +112,16 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response && error.response.status === 401) {
+      const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+      const isPublicPage =
+        pathname === '/' ||
+        pathname === '/dashboard' ||
+        pathname.startsWith('/llm-results/') ||
+        pathname.startsWith('/http-results/') ||
+        pathname.startsWith('/results/') ||
+        pathname.startsWith('/logs/task/');
       clearAuth();
-      if (!window.location.pathname.startsWith('/login')) {
+      if (!isPublicPage && !pathname.startsWith('/login')) {
         window.location.href = '/login';
       }
     }

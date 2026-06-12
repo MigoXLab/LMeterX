@@ -6,7 +6,7 @@ Copyright (c) 2025, All Rights Reserved.
 import time
 from typing import Any, Dict, Optional
 
-from config.base import DEFAULT_TIMEOUT, HTTP_OK
+from config.base import DEFAULT_STREAM_IDLE_TIMEOUT, HTTP_OK
 from engine.core import GlobalConfig
 from utils.event_handler import EventManager
 
@@ -236,8 +236,13 @@ class ErrorResponse:
         error_msg = str(e)
         response_time = (time.perf_counter() - start_time) * 1000
 
-        if "Read timed out" in error_msg:
-            error_msg = f"Stream request timeout (current timeout: {DEFAULT_TIMEOUT} seconds): {error_msg}"
+        if "Read timed out" in error_msg or "timed out" in error_msg.lower():
+            error_msg = (
+                f"[Client idle timeout] No response data received from server for "
+                f"{DEFAULT_STREAM_IDLE_TIMEOUT} seconds, client triggered fallback "
+                f"timeout mechanism. Original error: {error_msg}"
+            )
+            self.task_logger.warning(error_msg)
         elif "Connection" in error_msg:
             error_msg = f"Network connection error: {error_msg}"
         else:

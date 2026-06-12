@@ -12,6 +12,7 @@ import time
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import requests
 
 from config.base import (
     DEFAULT_CONNECT_TIMEOUT,
@@ -142,7 +143,7 @@ class TestTimeoutErrorHandling:
         mock_client = MagicMock()
 
         # Simulate ReadTimeout during connection
-        mock_client.post.side_effect = TimeoutError("Read timed out")
+        mock_client.post.side_effect = requests.exceptions.Timeout("Read timed out")
 
         base_kwargs = {
             "json": {"messages": [{"role": "user", "content": "hi"}]},
@@ -171,7 +172,7 @@ class TestTimeoutErrorHandling:
         client_obj, task_logger = api_client
         mock_client = MagicMock()
 
-        mock_client.post.side_effect = TimeoutError(
+        mock_client.post.side_effect = requests.exceptions.Timeout(
             "HTTPSConnectionPool: Read timed out. (read timeout=7200)"
         )
 
@@ -199,7 +200,7 @@ class TestTimeoutErrorHandling:
         client_obj, task_logger = api_client
         mock_client = MagicMock()
 
-        mock_client.post.side_effect = ConnectionError(
+        mock_client.post.side_effect = requests.exceptions.ConnectionError(
             "Connection refused: [Errno 111]"
         )
 

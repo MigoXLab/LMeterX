@@ -10,6 +10,7 @@ from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
 import orjson
+import requests
 
 from config.base import (
     DEFAULT_CONNECT_TIMEOUT,
@@ -1222,7 +1223,12 @@ class APIClient:
                         payload_data=payload_data,
                     )
                     return "", "", usage
-        except (ConnectionError, TimeoutError) as e:
+        except (
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as e:
             response_time = (time.perf_counter() - start_time) * 1000
             error_str = str(e)
             if "timed out" in error_str.lower() or "timeout" in error_str.lower():
@@ -1492,7 +1498,12 @@ class APIClient:
                     )
                 return reasoning_content, content, usage
 
-        except (ConnectionError, TimeoutError) as e:
+        except (
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as e:
             response_time = (time.perf_counter() - start_time) * 1000
             error_str = str(e)
             if "timed out" in error_str.lower() or "timeout" in error_str.lower():

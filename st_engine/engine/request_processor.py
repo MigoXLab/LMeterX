@@ -10,8 +10,14 @@ from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
 import orjson
+import requests
 
-from config.base import DEFAULT_PROMPT
+from config.base import (
+    DEFAULT_CONNECT_TIMEOUT,
+    DEFAULT_NON_STREAM_TIMEOUT,
+    DEFAULT_PROMPT,
+    DEFAULT_STREAM_IDLE_TIMEOUT,
+)
 from config.business import METRIC_TTOC, METRIC_TTT
 from engine.core import (
     ConfigManager,
@@ -1082,7 +1088,11 @@ class APIClient:
     ) -> Tuple[str, str]:
         """Handle streaming API request with comprehensive metrics collection."""
         metrics = StreamMetrics()
-        request_kwargs = {**base_request_kwargs, "stream": True}
+        request_kwargs = {
+            **base_request_kwargs,
+            "stream": True,
+            "timeout": (DEFAULT_CONNECT_TIMEOUT, DEFAULT_STREAM_IDLE_TIMEOUT),
+        }
         field_mapping = ConfigManager.resolve_field_mapping(
             self.config, required_fields=("content",)
         )
@@ -1213,10 +1223,25 @@ class APIClient:
                         payload_data=payload_data,
                     )
                     return "", "", usage
-        except (ConnectionError, TimeoutError) as e:
+        except (
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as e:
             response_time = (time.perf_counter() - start_time) * 1000
+            error_str = str(e)
+            if "timed out" in error_str.lower() or "timeout" in error_str.lower():
+                error_msg = (
+                    f"[Client idle timeout] No response data received from server for "
+                    f"{DEFAULT_STREAM_IDLE_TIMEOUT} seconds, client triggered fallback "
+                    f"timeout mechanism. Original error: {e}"
+                )
+                self.task_logger.warning(error_msg)
+            else:
+                error_msg = f"Connection error: {e}"
             self.error_handler._handle_general_exception_event(
-                error_msg=f"Connection error: {e}",
+                error_msg=error_msg,
                 response=response,
                 response_time=response_time,
                 additional_context={"api_path": self.config.api_path},
@@ -1320,7 +1345,11 @@ class APIClient:
         """Handle non-streaming API request."""
 
         req_id = uuid.uuid4().hex[:8]
-        request_kwargs = {**base_request_kwargs, "stream": False}
+        request_kwargs = {
+            **base_request_kwargs,
+            "stream": False,
+            "timeout": (DEFAULT_CONNECT_TIMEOUT, DEFAULT_NON_STREAM_TIMEOUT),
+        }
         payload_data = request_kwargs.get("json") or request_kwargs.get("data")
         response = None
 
@@ -1469,10 +1498,25 @@ class APIClient:
                     )
                 return reasoning_content, content, usage
 
-        except (ConnectionError, TimeoutError) as e:
+        except (
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as e:
             response_time = (time.perf_counter() - start_time) * 1000
+            error_str = str(e)
+            if "timed out" in error_str.lower() or "timeout" in error_str.lower():
+                error_msg = (
+                    f"[Client timeout] No response received from server for "
+                    f"{DEFAULT_NON_STREAM_TIMEOUT} seconds, client triggered fallback "
+                    f"timeout mechanism. Original error: {e}"
+                )
+                self.task_logger.warning(error_msg)
+            else:
+                error_msg = f"Connection error: {e}"
             self.error_handler._handle_general_exception_event(
-                error_msg=f"Connection error: {e}",
+                error_msg=error_msg,
                 response=response,
                 response_time=response_time,
                 additional_context={

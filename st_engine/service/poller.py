@@ -21,9 +21,10 @@ def _is_stopping_timed_out(session, task_id: str, task_service) -> bool:
     try:
         model_cls = task_service.model_cls
         task = session.get(model_cls, task_id)
-        if task:
-            session.expire(task)
-            task = session.get(model_cls, task_id)
+        if task is None:
+            return False
+        session.expire(task)
+        task = session.get(model_cls, task_id)
         if task and task.updated_at:
             updated_at = task.updated_at
             if updated_at.tzinfo is None:

@@ -183,18 +183,19 @@ const TOOLTIP_METRIC_LABELS: Record<
   NumericMetricKey | HttpNumericMetricKey,
   string
 > = {
-  first_token_latency: 'TTFT',
-  total_time: 'Total Time',
-  total_tps: 'Total Tokens Throughput',
-  completion_tps: 'Completion Tokens Throughput',
-  avg_total_tokens_per_req: 'Avg Total Tokens/Req',
-  avg_completion_tokens_per_req: 'Avg Completion Tokens/Req',
-  rps: 'RPS',
-  avg_response_time: 'Avg Response Time',
-  p95_response_time: 'P95 Response Time',
-  min_response_time: 'Min Response Time',
-  max_response_time: 'Max Response Time',
-  success_rate: 'Success Rate',
+  first_token_latency: 'pages.resultComparison.chartTitles.ttft',
+  total_time: 'pages.resultComparison.chartTitles.totalTime',
+  total_tps: 'pages.resultComparison.chartTitles.totalTps',
+  completion_tps: 'pages.resultComparison.chartTitles.completionTps',
+  avg_total_tokens_per_req: 'pages.resultComparison.chartTitles.avgTotalTpr',
+  avg_completion_tokens_per_req:
+    'pages.resultComparison.chartTitles.avgCompletionTpr',
+  rps: 'pages.resultComparison.chartTitles.rps',
+  avg_response_time: 'pages.results.avgResponseTime',
+  p95_response_time: 'pages.results.p95ResponseTime',
+  min_response_time: 'pages.results.minResponseTime',
+  max_response_time: 'pages.results.maxResponseTime',
+  success_rate: 'pages.results.successRate',
 };
 
 const orderByTaskIds = <T extends { task_id: string }>(
@@ -1116,10 +1117,15 @@ const ResultComparison: React.FC = () => {
         if (!item) return '';
         const dataItem = displayData[item.dataIndex];
         if (!dataItem) return '';
-        const metricLabel =
+        const metricLabelKey =
           TOOLTIP_METRIC_LABELS[
             metricKey as NumericMetricKey | HttpNumericMetricKey
-          ] || 'Metric';
+          ];
+        const metricLabel = metricLabelKey
+          ? t(metricLabelKey)
+          : chartTitle || t('pages.results.metricType', 'Metric');
+        const taskNameLabel = t('pages.resultComparison.taskName');
+        const taskIdLabel = t('pages.resultComparison.taskId');
         const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dataItem.color};margin-right:8px;flex:0 0 8px;"></span>`;
         const rowStyle =
           'display:flex;align-items:flex-start;gap:0;line-height:1.5;margin-top:6px;';
@@ -1130,11 +1136,11 @@ const ResultComparison: React.FC = () => {
         return `
           <div style="max-width:360px;">
             <div style="${rowStyle}margin-top:0;">
-              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">Name:</span></span>
+              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${taskNameLabel}:</span></span>
               <span style="${valueStyle}white-space:normal;word-break:break-word;">${dataItem.fullName}</span>
             </div>
             <div style="${rowStyle}">
-              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">Task ID:</span></span>
+              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${taskIdLabel}:</span></span>
               <span style="${valueStyle}white-space:normal;word-break:break-all;">${dataItem.taskId}</span>
             </div>
             <div style="${rowStyle}">

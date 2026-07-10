@@ -16,6 +16,14 @@ from utils.logger import logger
 STOPPING_TIMEOUT_SECONDS = LOCUST_STOP_TIMEOUT * 2
 
 
+def _detach_claimed_task(session, task):
+    """Load committed task attributes before passing it outside the session."""
+    if task is not None:
+        session.refresh(task)
+        session.expunge(task)
+    return task
+
+
 def _is_stopping_timed_out(session, task_id: str, task_service) -> bool:
     """Check if a task in 'stopping' state has exceeded the timeout threshold."""
     try:
@@ -84,6 +92,7 @@ def llm_task_create_poller():
             task = None
             with get_db_session() as session:
                 task = task_service.claim_pending_task(session)
+                task = _detach_claimed_task(session, task)
             if task:
                 logger.info(
                     f"[LLM] Poller claimed task: {task.id}. Starting execution."
@@ -228,6 +237,7 @@ def http_task_create_poller():
             task = None
             with get_db_session() as session:
                 task = task_service.claim_pending_task(session)
+                task = _detach_claimed_task(session, task)
             if task:
                 logger.info(
                     f"[HTTP] Poller claimed task: {task.id}. Starting execution."

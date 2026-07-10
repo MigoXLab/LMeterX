@@ -166,9 +166,14 @@ def test_pipeline_skips_soft_deleted_task(task_service):
     with (
         patch("service.llm_task_service.add_task_log_sink", return_value=1),
         patch("service.llm_task_service.remove_task_log_sink"),
+        patch("service.llm_task_service.get_db_session") as mock_get_db_session,
         patch.object(task_service, "update_task_status") as mock_update_status,
         patch.object(task_service, "start_task") as mock_start_task,
     ):
+        mock_db_session = Mock()
+        mock_db_session.get.return_value = mock_task
+        mock_get_db_session.return_value.__enter__.return_value = mock_db_session
+
         task_service.process_task_pipeline(mock_task, mock_session)
 
     mock_start_task.assert_not_called()
@@ -186,6 +191,7 @@ def test_pipeline_runs_non_deleted_task(task_service):
     with (
         patch("service.llm_task_service.add_task_log_sink", return_value=1),
         patch("service.llm_task_service.remove_task_log_sink"),
+        patch("service.llm_task_service.get_db_session") as mock_get_db_session,
         patch.object(task_service, "update_task_status") as mock_update_status,
         patch.object(
             task_service,
@@ -198,6 +204,10 @@ def test_pipeline_runs_non_deleted_task(task_service):
             },
         ) as mock_start_task,
     ):
+        mock_db_session = Mock()
+        mock_db_session.get.return_value = mock_task
+        mock_get_db_session.return_value.__enter__.return_value = mock_db_session
+
         task_service.process_task_pipeline(mock_task, mock_session)
 
     mock_start_task.assert_called_once_with(mock_task)

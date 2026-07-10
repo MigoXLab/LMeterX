@@ -81,13 +81,14 @@ def llm_task_create_poller():
 
     while True:
         try:
+            task = None
             with get_db_session() as session:
                 task = task_service.claim_pending_task(session)
-                if task:
-                    logger.info(
-                        f"[LLM] Poller claimed task: {task.id}. Starting execution."
-                    )
-                    task_service.process_task_pipeline(task, session)
+            if task:
+                logger.info(
+                    f"[LLM] Poller claimed task: {task.id}. Starting execution."
+                )
+                task_service.process_task_pipeline(task)
             # Wait for a short interval before the next poll
             time.sleep(3)
         except Exception as e:
@@ -224,13 +225,14 @@ def http_task_create_poller():
     logger.info("[HTTP] Task execution poller started.")
     while True:
         try:
+            task = None
             with get_db_session() as session:
                 task = task_service.claim_pending_task(session)
-                if task:
-                    logger.info(
-                        f"[HTTP] Poller claimed task: {task.id}. Starting execution."
-                    )
-                    task_service.process_task_pipeline(task, session)
+            if task:
+                logger.info(
+                    f"[HTTP] Poller claimed task: {task.id}. Starting execution."
+                )
+                task_service.process_task_pipeline(task)
             time.sleep(3)
         except Exception as e:
             logger.exception(f"[HTTP] Error in task execution poller: {e}")

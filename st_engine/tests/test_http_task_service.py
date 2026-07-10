@@ -333,9 +333,14 @@ class TestProcessTaskPipeline:
         with (
             patch("service.http_task_service.add_task_log_sink", return_value=1),
             patch("service.http_task_service.remove_task_log_sink"),
+            patch("service.http_task_service.get_db_session") as mock_get_db_session,
             patch.object(task_service, "update_task_status") as mock_update,
             patch.object(task_service, "start_task") as mock_start,
         ):
+            mock_session = Mock()
+            mock_session.get.return_value = task
+            mock_get_db_session.return_value.__enter__.return_value = mock_session
+
             task_service.process_task_pipeline(task, session)
 
         mock_start.assert_not_called()
@@ -352,6 +357,7 @@ class TestProcessTaskPipeline:
         with (
             patch("service.http_task_service.add_task_log_sink", return_value=1),
             patch("service.http_task_service.remove_task_log_sink"),
+            patch("service.http_task_service.get_db_session") as mock_get_db_session,
             patch.object(task_service, "update_task_status"),
             patch.object(task_service, "_resolve_task_status"),
             patch.object(
@@ -365,6 +371,10 @@ class TestProcessTaskPipeline:
                 },
             ) as mock_start,
         ):
+            mock_session = Mock()
+            mock_session.get.return_value = task
+            mock_get_db_session.return_value.__enter__.return_value = mock_session
+
             task_service.process_task_pipeline(task, session)
 
         mock_start.assert_called_once_with(task)
@@ -378,9 +388,14 @@ class TestProcessTaskPipeline:
         with (
             patch("service.http_task_service.add_task_log_sink", return_value=1),
             patch("service.http_task_service.remove_task_log_sink"),
+            patch("service.http_task_service.get_db_session") as mock_get_db_session,
             patch.object(task_service, "update_task_status"),
             patch.object(task_service, "start_task", side_effect=RuntimeError("boom")),
         ):
+            mock_session = Mock()
+            mock_session.get.return_value = task
+            mock_get_db_session.return_value.__enter__.return_value = mock_session
+
             # Should not raise
             task_service.process_task_pipeline(task, session)
 
@@ -395,9 +410,14 @@ class TestProcessTaskPipeline:
                 "service.http_task_service.add_task_log_sink", return_value=42
             ) as mock_add,
             patch("service.http_task_service.remove_task_log_sink") as mock_remove,
+            patch("service.http_task_service.get_db_session") as mock_get_db_session,
             patch.object(task_service, "update_task_status"),
             patch.object(task_service, "start_task", side_effect=RuntimeError("boom")),
         ):
+            mock_session = Mock()
+            mock_session.get.return_value = task
+            mock_get_db_session.return_value.__enter__.return_value = mock_session
+
             task_service.process_task_pipeline(task, session)
 
         mock_remove.assert_called_once_with(42)

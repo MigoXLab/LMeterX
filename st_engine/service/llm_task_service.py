@@ -20,6 +20,7 @@ from config.business import (
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
 )
+from db.database import get_db_session
 from engine.llm_runner import LlmLocustRunner
 from engine.process_manager import (
     cleanup_task_resources,
@@ -553,139 +554,140 @@ class LlmTaskService:
                 "return_code": -1,
             }
 
-    def process_task_pipeline(self, task: Task, session: Session):  # noqa: C901
+    def process_task_pipeline(self, task: Task, session: Session = None):  # noqa: C901
         """
         Manages the complete pipeline for processing a single task.
 
+        Uses short-lived DB sessions internally to avoid connection timeouts
+        during long-running tasks (which can last hours/days).
+
         Args:
             task (Task): The task to process.
-            session (Session): The SQLAlchemy database session.
+            session (Session): Deprecated. Ignored if provided — sessions are
+                managed internally.
         """
         handler_id = None
-        task_logger = logger.bind(task_id=task.id)
+        task_id = task.id
+        task_logger = logger.bind(task_id=task_id)
         try:
             # Add task log sink first
-            handler_id = add_task_log_sink(task.id)
+            handler_id = add_task_log_sink(task_id)
 
-            # Re-check soft-delete flag to handle the race where a user deletes
-            # a "created" task right after the poller locked it but before
-            # execution starts.
-            try:
-                session.refresh(task)
-            except Exception:
-                task_logger.debug(
-                    "Could not refresh task before execution check.",
-                    exc_info=True,
-                )
-            if getattr(task, "is_deleted", 0) == 1:
-                task_logger.info(
-                    f"Task {task.id} was soft-deleted before execution. Skipping."
-                )
-                return
+            # Pre-execution check: verify task not soft-deleted
+            with get_db_session() as pre_session:
+                fresh_task = pre_session.get(self.model_cls, task_id)
+                if fresh_task is None:
+                    task_logger.warning(
+                        f"Task {task_id} not found in database. Skipping."
+                    )
+                    return
+                if getattr(fresh_task, "is_deleted", 0) == 1:
+                    task_logger.info(
+                        f"Task {task_id} was soft-deleted before execution. Skipping."
+                    )
+                    return
 
             # Start the task execution (task is already in 'running' status
-            # after claim_pending_task set it)
+            # after claim_pending_task set it).
+            # No DB session is held during this potentially long-running phase.
             run_result = self.start_task(task)
             task_logger.info(
-                f"Task execution completed for task {task.id}, result status: {run_result.get('status', 'unknown')}"
+                f"Task execution completed for task {task_id}, result status: {run_result.get('status', 'unknown')}"
             )
 
             run_status = run_result.get("status")
             locust_result = run_result.get("locust_result", {})
 
-            # Refresh the task state to get any updates that may have occurred
-            # during the run, such as a manual stop request.
-            try:
-                session.refresh(task)
-            except (OperationalError, pymysql.err.OperationalError) as e:
-                error_msg = str(getattr(e, "orig", e))
-                task_logger.warning(
-                    f"Database connection error while refreshing task state: {error_msg}. "
-                    "Continuing with task processing."
-                )
-                try:
-                    session.rollback()
-                except Exception:
-                    task_logger.debug(
-                        "Failed to rollback session after refresh error.",
-                        exc_info=True,
+            # Post-execution: acquire a fresh session for finalization.
+            # The previous session's connection would be stale after hours of inactivity.
+            with get_db_session() as post_session:
+                # Re-fetch the task to get current state (e.g. manual stop)
+                task = post_session.get(self.model_cls, task_id)
+                if task is None:
+                    task_logger.warning(
+                        f"Task {task_id} not found after execution. Cannot update status."
                     )
+                    return
 
-            if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
-                task_logger.info(
-                    f"Task {task.id} was stopped during execution. Marking as '{TASK_STATUS_STOPPED}'."
-                )
-                self.update_task_status(session, task, TASK_STATUS_STOPPED)
-            elif run_status == "STOPPED":
-                # Task was stopped during warmup or main test phase
-                task_logger.info(
-                    f"Task {task.id} was stopped (possibly during warmup). Marking as '{TASK_STATUS_STOPPED}'."
-                )
-                self.update_task_status(session, task, TASK_STATUS_STOPPED)
-            elif run_status == "COMPLETED":
-                task_logger.info(
-                    f"Runner completed successfully. Processing results..."
-                )
-                self.update_task_status(session, task, TASK_STATUS_COMPLETED)
-                if locust_result:
-                    # Always insert results first, regardless of outcome
-                    task_logger.info(f"Inserting locust results for task {task.id}")
-                    self.result_service.insert_locust_results(
-                        session, locust_result, task.id
-                    )
+                if task.status in (TASK_STATUS_STOPPING, TASK_STATUS_STOPPED):
                     task_logger.info(
-                        f"Locust results inserted successfully for task {task.id}"
+                        f"Task {task_id} was stopped during execution. Marking as '{TASK_STATUS_STOPPED}'."
                     )
-                else:
-                    error_message = (
-                        f"Runner completed but no result file was generated."
+                    self.update_task_status(post_session, task, TASK_STATUS_STOPPED)
+                elif run_status == "STOPPED":
+                    task_logger.info(
+                        f"Task {task_id} was stopped (possibly during warmup). Marking as '{TASK_STATUS_STOPPED}'."
                     )
-                    task_logger.error(f"{error_message}")
-                    self.update_task_status(
-                        session, task, TASK_STATUS_FAILED, error_message
+                    self.update_task_status(post_session, task, TASK_STATUS_STOPPED)
+                elif run_status == "COMPLETED":
+                    task_logger.info(
+                        f"Runner completed successfully. Processing results..."
                     )
-            elif run_status == "FAILED_REQUESTS":
-                task_logger.warning(
-                    f"Runner completed with failed requests. Processing results..."
-                )
-                if locust_result:
-                    # Insert results even when there are failures
-                    self.result_service.insert_locust_results(
-                        session, locust_result, task.id
+                    self.update_task_status(post_session, task, TASK_STATUS_COMPLETED)
+                    if locust_result:
+                        task_logger.info(f"Inserting locust results for task {task_id}")
+                        self.result_service.insert_locust_results(
+                            post_session, locust_result, task_id
+                        )
+                        task_logger.info(
+                            f"Locust results inserted successfully for task {task_id}"
+                        )
+                    else:
+                        error_message = (
+                            f"Runner completed but no result file was generated."
+                        )
+                        task_logger.error(f"{error_message}")
+                        self.update_task_status(
+                            post_session, task, TASK_STATUS_FAILED, error_message
+                        )
+                elif run_status == "FAILED_REQUESTS":
+                    task_logger.warning(
+                        f"Runner completed with failed requests. Processing results..."
                     )
+                    if locust_result:
+                        self.result_service.insert_locust_results(
+                            post_session, locust_result, task_id
+                        )
 
-                    error_message = f"Task {task.id} completed with failed requests."
-                    task_logger.warning(f"{error_message}")
+                        error_message = (
+                            f"Task {task_id} completed with failed requests."
+                        )
+                        task_logger.warning(f"{error_message}")
+                        self.update_task_status(
+                            post_session,
+                            task,
+                            TASK_STATUS_FAILED_REQUESTS,
+                            error_message,
+                        )
+                    else:
+                        error_message = f"Task {task_id} had request failures but no result file was generated."
+                        task_logger.error(f"{error_message}")
+                        self.update_task_status(
+                            post_session,
+                            task,
+                            TASK_STATUS_FAILED_REQUESTS,
+                            error_message,
+                        )
+                elif run_status == "FAILED":
+                    return_code = run_result.get("return_code", "unknown")
+                    stderr_details = run_result.get("stderr", "No stderr.")
+                    error_message = f"Task {task_id} execution failed (Locust exit code: {return_code}). Details: {stderr_details}"
+                    task_logger.error(f"Task execution failed.")
+                    task_logger.error(f"Return code: {return_code}")
+                    task_logger.error(f"Stderr: {stderr_details}")
                     self.update_task_status(
-                        session, task, TASK_STATUS_FAILED_REQUESTS, error_message
+                        post_session, task, TASK_STATUS_FAILED, error_message
                     )
                 else:
-                    error_message = f"Task {task.id} had request failures but no result file was generated."
-                    task_logger.error(f"{error_message}")
+                    return_code = run_result.get("return_code", "unknown")
+                    stderr_details = run_result.get("stderr", "No stderr.")
+                    error_message = f"Task {task_id} returned unexpected status '{run_status}' (return code: {return_code}). Details: {stderr_details}"
+                    task_logger.error(f"Unexpected runner status: {run_status}")
+                    task_logger.error(f"Return code: {return_code}")
+                    task_logger.error(f"Stderr: {stderr_details}")
                     self.update_task_status(
-                        session, task, TASK_STATUS_FAILED, error_message
+                        post_session, task, TASK_STATUS_FAILED, error_message
                     )
-            elif run_status == "FAILED":
-                return_code = run_result.get("return_code", "unknown")
-                stderr_details = run_result.get("stderr", "No stderr.")
-                error_message = f"Task {task.id} execution failed (Locust exit code: {return_code}). Details: {stderr_details}"
-                task_logger.error(f"Task execution failed.")
-                task_logger.error(f"Return code: {return_code}")
-                task_logger.error(f"Stderr: {stderr_details}")
-                self.update_task_status(
-                    session, task, TASK_STATUS_FAILED, error_message
-                )
-            else:
-                # Unexpected status from runner
-                return_code = run_result.get("return_code", "unknown")
-                stderr_details = run_result.get("stderr", "No stderr.")
-                error_message = f"Task {task.id} returned unexpected status '{run_status}' (return code: {return_code}). Details: {stderr_details}"
-                task_logger.error(f"Unexpected runner status: {run_status}")
-                task_logger.error(f"Return code: {return_code}")
-                task_logger.error(f"Stderr: {stderr_details}")
-                self.update_task_status(
-                    session, task, TASK_STATUS_FAILED, error_message
-                )
 
         except (OperationalError, pymysql.err.OperationalError) as e:
             task_logger.warning(
@@ -693,40 +695,36 @@ class LlmTaskService:
                 "Task processing may be incomplete."
             )
             try:
-                session.rollback()
-            except Exception:
-                task_logger.debug(
-                    "Failed to rollback session after pipeline DB error.",
-                    exc_info=True,
-                )
-            # Try to update status, but don't fail if database is still unavailable
-            try:
-                self.update_task_status(
-                    session,
-                    task,
-                    TASK_STATUS_FAILED,
-                    f"Pipeline error: Database connection issue - {str(e)}",
-                )
+                with get_db_session() as err_session:
+                    err_task = err_session.get(self.model_cls, task_id)
+                    if err_task:
+                        self.update_task_status(
+                            err_session,
+                            err_task,
+                            TASK_STATUS_FAILED,
+                            f"Pipeline error: Database connection issue - {str(e)}",
+                        )
             except Exception as status_update_error:
                 logger.warning(
-                    f"Could not update task {task.id} status due to database error: {status_update_error}"
+                    f"Could not update task {task_id} status due to database error: {status_update_error}"
                 )
         except Exception as e:
             error_message = f"An unexpected error occurred in the pipeline: {e}"
             task_logger.exception(f"Pipeline failed with an unexpected error: {e}")
-            # Log the full traceback for debugging
             import traceback
 
             task_logger.error(f"Full traceback: {traceback.format_exc()}")
 
-            # Ensure the task status is updated even if there's an exception
             try:
-                self.update_task_status(
-                    session, task, TASK_STATUS_FAILED, error_message
-                )
-                task_logger.info(
-                    f"Task {task.id} status updated to EXCEPTION after exception"
-                )
+                with get_db_session() as err_session:
+                    err_task = err_session.get(self.model_cls, task_id)
+                    if err_task:
+                        self.update_task_status(
+                            err_session, err_task, TASK_STATUS_FAILED, error_message
+                        )
+                        task_logger.info(
+                            f"Task {task_id} status updated to FAILED after exception"
+                        )
             except (OperationalError, pymysql.err.OperationalError) as db_error:
                 logger.warning(
                     f"Database connection error while updating failed task status: {db_error}"
@@ -735,9 +733,8 @@ class LlmTaskService:
                 task_logger.error(
                     f"Failed to update task status after pipeline error: {status_update_error}"
                 )
-                # Also log to the system logger in case task logger is broken
                 logger.error(
-                    f"Critical: Failed to update status for task {task.id}: {status_update_error}"
+                    f"Critical: Failed to update status for task {task_id}: {status_update_error}"
                 )
         finally:
             if handler_id is not None:

@@ -16,6 +16,14 @@ from utils.logger import logger
 STOPPING_TIMEOUT_SECONDS = LOCUST_STOP_TIMEOUT * 2
 
 
+def _detach_claimed_task(session, task):
+    """Load committed task attributes before passing it outside the session."""
+    if task is not None:
+        session.refresh(task)
+        session.expunge(task)
+    return task
+
+
 def _is_stopping_timed_out(session, task_id: str, task_service) -> bool:
     """Check if a task in 'stopping' state has exceeded the timeout threshold."""
     try:
@@ -81,13 +89,15 @@ def llm_task_create_poller():
 
     while True:
         try:
+            task = None
             with get_db_session() as session:
                 task = task_service.claim_pending_task(session)
-                if task:
-                    logger.info(
-                        f"[LLM] Poller claimed task: {task.id}. Starting execution."
-                    )
-                    task_service.process_task_pipeline(task, session)
+                task = _detach_claimed_task(session, task)
+            if task:
+                logger.info(
+                    f"[LLM] Poller claimed task: {task.id}. Starting execution."
+                )
+                task_service.process_task_pipeline(task)
             # Wait for a short interval before the next poll
             time.sleep(3)
         except Exception as e:
@@ -224,13 +234,15 @@ def http_task_create_poller():
     logger.info("[HTTP] Task execution poller started.")
     while True:
         try:
+            task = None
             with get_db_session() as session:
                 task = task_service.claim_pending_task(session)
-                if task:
-                    logger.info(
-                        f"[HTTP] Poller claimed task: {task.id}. Starting execution."
-                    )
-                    task_service.process_task_pipeline(task, session)
+                task = _detach_claimed_task(session, task)
+            if task:
+                logger.info(
+                    f"[HTTP] Poller claimed task: {task.id}. Starting execution."
+                )
+                task_service.process_task_pipeline(task)
             time.sleep(3)
         except Exception as e:
             logger.exception(f"[HTTP] Error in task execution poller: {e}")

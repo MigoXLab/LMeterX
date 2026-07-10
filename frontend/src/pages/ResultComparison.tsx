@@ -179,6 +179,35 @@ interface HttpMetricCardConfig {
 
 const CHART_VISIBLE_COUNT = 6;
 
+const TOOLTIP_METRIC_LABELS: Record<
+  NumericMetricKey | HttpNumericMetricKey,
+  string
+> = {
+  first_token_latency: 'pages.resultComparison.chartTitles.ttft',
+  total_time: 'pages.resultComparison.chartTitles.totalTime',
+  total_tps: 'pages.resultComparison.chartTitles.totalTps',
+  completion_tps: 'pages.resultComparison.chartTitles.completionTps',
+  avg_total_tokens_per_req: 'pages.resultComparison.chartTitles.avgTotalTpr',
+  avg_completion_tokens_per_req:
+    'pages.resultComparison.chartTitles.avgCompletionTpr',
+  rps: 'pages.resultComparison.chartTitles.rps',
+  avg_response_time: 'pages.results.avgResponseTime',
+  p95_response_time: 'pages.results.p95ResponseTime',
+  min_response_time: 'pages.results.minResponseTime',
+  max_response_time: 'pages.results.maxResponseTime',
+  success_rate: 'pages.results.successRate',
+};
+
+const orderByTaskIds = <T extends { task_id: string }>(
+  items: T[],
+  taskIds: string[]
+) => {
+  const itemMap = new Map(items.map(item => [item.task_id, item]));
+  return taskIds
+    .map(taskId => itemMap.get(taskId))
+    .filter((item): item is T => Boolean(item));
+};
+
 const ResultComparison: React.FC = () => {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguage();
@@ -187,7 +216,7 @@ const ResultComparison: React.FC = () => {
     const urlMode = searchParams.get('mode');
     if (urlMode === 'model' || urlMode === 'http') return urlMode;
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
-    return stored === 'http' ? 'http' : 'model';
+    return stored === 'model' ? 'model' : 'http';
   });
   const [loading, setLoading] = useState(false);
   const [comparing, setComparing] = useState(false);
@@ -300,18 +329,25 @@ const ResultComparison: React.FC = () => {
         });
 
         if (response.data.status === 'success') {
-          setComparisonResults(response.data.data);
+          const orderedResults = orderByTaskIds(
+            response.data.data,
+            tempSelectedTasks
+          );
+          setComparisonResults(orderedResults);
 
-          const selectedTasksData = availableTasks
-            .filter(task => tempSelectedTasks.includes(task.task_id))
-            .map(task => ({
-              task_id: task.task_id,
-              model_name: task.model_name,
-              concurrent_users: task.concurrent_users,
-              task_name: task.task_name,
-              created_at: task.created_at,
-              duration: task.duration,
-            }));
+          const selectedTasksData = orderByTaskIds(
+            availableTasks.filter(task =>
+              tempSelectedTasks.includes(task.task_id)
+            ),
+            tempSelectedTasks
+          ).map(task => ({
+            task_id: task.task_id,
+            model_name: task.model_name,
+            concurrent_users: task.concurrent_users,
+            task_name: task.task_name,
+            created_at: task.created_at,
+            duration: task.duration,
+          }));
 
           setSelectedTasks(selectedTasksData);
           setIsModalVisible(false);
@@ -333,19 +369,26 @@ const ResultComparison: React.FC = () => {
         });
 
         if (response.data.status === 'success') {
-          setHttpComparisonResults(response.data.data);
+          const orderedResults = orderByTaskIds(
+            response.data.data,
+            tempSelectedTasks
+          );
+          setHttpComparisonResults(orderedResults);
 
-          const selectedTasksData = availableHttpTasks
-            .filter(task => tempSelectedTasks.includes(task.task_id))
-            .map(task => ({
-              task_id: task.task_id,
-              task_name: task.task_name,
-              method: task.method,
-              target_url: task.target_url,
-              concurrent_users: task.concurrent_users,
-              created_at: task.created_at,
-              duration: task.duration,
-            }));
+          const selectedTasksData = orderByTaskIds(
+            availableHttpTasks.filter(task =>
+              tempSelectedTasks.includes(task.task_id)
+            ),
+            tempSelectedTasks
+          ).map(task => ({
+            task_id: task.task_id,
+            task_name: task.task_name,
+            method: task.method,
+            target_url: task.target_url,
+            concurrent_users: task.concurrent_users,
+            created_at: task.created_at,
+            duration: task.duration,
+          }));
 
           setSelectedHttpTasks(selectedTasksData);
           setIsModalVisible(false);
@@ -391,18 +434,20 @@ const ResultComparison: React.FC = () => {
           });
 
           if (response.data.status === 'success') {
-            setComparisonResults(response.data.data);
+            const orderedResults = orderByTaskIds(response.data.data, taskIds);
+            setComparisonResults(orderedResults);
 
-            const selectedTasksData = availableTasks
-              .filter(task => taskIds.includes(task.task_id))
-              .map(task => ({
-                task_id: task.task_id,
-                model_name: task.model_name,
-                concurrent_users: task.concurrent_users,
-                task_name: task.task_name,
-                created_at: task.created_at,
-                duration: task.duration,
-              }));
+            const selectedTasksData = orderByTaskIds(
+              availableTasks.filter(task => taskIds.includes(task.task_id)),
+              taskIds
+            ).map(task => ({
+              task_id: task.task_id,
+              model_name: task.model_name,
+              concurrent_users: task.concurrent_users,
+              task_name: task.task_name,
+              created_at: task.created_at,
+              duration: task.duration,
+            }));
 
             setSelectedTasks(selectedTasksData);
             messageApi.success(t('pages.resultComparison.comparisonCompleted'));
@@ -422,19 +467,21 @@ const ResultComparison: React.FC = () => {
           });
 
           if (response.data.status === 'success') {
-            setHttpComparisonResults(response.data.data);
+            const orderedResults = orderByTaskIds(response.data.data, taskIds);
+            setHttpComparisonResults(orderedResults);
 
-            const selectedTasksData = availableHttpTasks
-              .filter(task => taskIds.includes(task.task_id))
-              .map(task => ({
-                task_id: task.task_id,
-                task_name: task.task_name,
-                method: task.method,
-                target_url: task.target_url,
-                concurrent_users: task.concurrent_users,
-                created_at: task.created_at,
-                duration: task.duration,
-              }));
+            const selectedTasksData = orderByTaskIds(
+              availableHttpTasks.filter(task => taskIds.includes(task.task_id)),
+              taskIds
+            ).map(task => ({
+              task_id: task.task_id,
+              task_name: task.task_name,
+              method: task.method,
+              target_url: task.target_url,
+              concurrent_users: task.concurrent_users,
+              created_at: task.created_at,
+              duration: task.duration,
+            }));
 
             setSelectedHttpTasks(selectedTasksData);
             messageApi.success(t('pages.resultComparison.comparisonCompleted'));
@@ -648,6 +695,26 @@ const ResultComparison: React.FC = () => {
             dataIndex: 'task_name',
             key: 'task_name',
             ellipsis: true,
+            render: (taskName: string, record: SelectedTask) => (
+              <Tooltip title={taskName} placement='topLeft'>
+                <a
+                  href={`/llm-results/${record.task_id}`}
+                  target='_blank'
+                  rel='noreferrer'
+                  style={{
+                    color: '#667eea',
+                    textDecoration: 'none',
+                    display: 'inline-block',
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {taskName}
+                </a>
+              </Tooltip>
+            ),
           },
           {
             title: t('pages.resultComparison.modelName'),
@@ -715,6 +782,26 @@ const ResultComparison: React.FC = () => {
           dataIndex: 'task_name',
           key: 'task_name',
           ellipsis: true,
+          render: (taskName: string, record: SelectedHttpTask) => (
+            <Tooltip title={taskName} placement='topLeft'>
+              <a
+                href={`/http-results/${record.task_id}`}
+                target='_blank'
+                rel='noreferrer'
+                style={{
+                  color: '#667eea',
+                  textDecoration: 'none',
+                  display: 'inline-block',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {taskName}
+              </a>
+            </Tooltip>
+          ),
         },
         {
           title: t('pages.resultComparison.concurrentUsers'),
@@ -750,6 +837,26 @@ const ResultComparison: React.FC = () => {
             dataIndex: 'task_name',
             key: 'task_name',
             ellipsis: true,
+            render: (taskName: string, record: SelectedTask) => (
+              <Tooltip title={taskName} placement='topLeft'>
+                <a
+                  href={`/llm-results/${record.task_id}`}
+                  target='_blank'
+                  rel='noreferrer'
+                  style={{
+                    color: '#667eea',
+                    textDecoration: 'none',
+                    display: 'inline-block',
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {taskName}
+                </a>
+              </Tooltip>
+            ),
           },
           {
             title: t('pages.resultComparison.modelName'),
@@ -807,6 +914,26 @@ const ResultComparison: React.FC = () => {
           dataIndex: 'task_name',
           key: 'task_name',
           ellipsis: true,
+          render: (taskName: string, record: SelectedHttpTask) => (
+            <Tooltip title={taskName} placement='topLeft'>
+              <a
+                href={`/http-results/${record.task_id}`}
+                target='_blank'
+                rel='noreferrer'
+                style={{
+                  color: '#667eea',
+                  textDecoration: 'none',
+                  display: 'inline-block',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {taskName}
+              </a>
+            </Tooltip>
+          ),
         },
         {
           title: t('pages.resultComparison.targetUrl', 'Target URL'),
@@ -990,13 +1117,37 @@ const ResultComparison: React.FC = () => {
         if (!item) return '';
         const dataItem = displayData[item.dataIndex];
         if (!dataItem) return '';
-        const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dataItem.color};margin-right:6px;vertical-align:middle;"></span>`;
-        const displayName =
-          dataItem.fullName.length > 40
-            ? `${dataItem.fullName.slice(0, 40)}…`
-            : dataItem.fullName;
-        return `<div style="font-weight:600;margin-bottom:6px;font-size:13px;color:#282e58;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:288px;" title="${dataItem.fullName}">${displayName}</div>
-            <div style="display:flex;align-items:center">${colorDot}<span style="color:#545983">${chartTitle}:</span><b style="color:#282e58;margin-left:6px">${formatMetricValue(item.value, decimals, unit)}</b></div>`;
+        const metricLabelKey =
+          TOOLTIP_METRIC_LABELS[
+            metricKey as NumericMetricKey | HttpNumericMetricKey
+          ];
+        const metricLabel = metricLabelKey
+          ? t(metricLabelKey)
+          : chartTitle || t('pages.results.metricType', 'Metric');
+        const taskNameLabel = t('pages.resultComparison.taskName');
+        const taskIdLabel = t('pages.resultComparison.taskId');
+        const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dataItem.color};margin-right:8px;flex:0 0 8px;"></span>`;
+        const rowStyle =
+          'display:flex;align-items:flex-start;gap:0;line-height:1.5;margin-top:6px;';
+        const labelGroupStyle =
+          'display:flex;align-items:center;flex:0 0 auto;white-space:nowrap;margin-right:8px;';
+        const labelStyle = 'color:#6b7394;flex:0 0 auto;';
+        const valueStyle = 'color:#282e58;flex:1 1 auto;min-width:0;';
+        return `
+          <div style="max-width:360px;">
+            <div style="${rowStyle}margin-top:0;">
+              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${taskNameLabel}:</span></span>
+              <span style="${valueStyle}white-space:normal;word-break:break-word;">${dataItem.fullName}</span>
+            </div>
+            <div style="${rowStyle}">
+              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${taskIdLabel}:</span></span>
+              <span style="${valueStyle}white-space:normal;word-break:break-all;">${dataItem.taskId}</span>
+            </div>
+            <div style="${rowStyle}">
+              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${metricLabel}:</span></span>
+              <span style="${valueStyle}">${formatMetricValue(item.value, decimals, unit)}</span>
+            </div>
+          </div>`;
       },
     };
 
@@ -1030,6 +1181,7 @@ const ResultComparison: React.FC = () => {
         yAxis: {
           type: 'category' as const,
           data: reversedData.map(d => d.fullName),
+          triggerEvent: true,
           axisLabel: {
             formatter: (val: string) => truncateName(val, 18),
             color: '#545983',
@@ -1103,6 +1255,7 @@ const ResultComparison: React.FC = () => {
       xAxis: {
         type: 'category' as const,
         data: data.map(d => d.fullName),
+        triggerEvent: true,
         axisLabel: {
           formatter: (val: string) => truncateName(val),
           color: '#545983',
@@ -1618,22 +1771,22 @@ const ResultComparison: React.FC = () => {
         }}
         items={[
           {
-            key: 'model',
-            label: (
-              <span className='tab-label'>
-                {t('pages.resultComparison.modelTasks') ||
-                  t('pages.jobs.llmTab') ||
-                  'LLM Tasks Comparison'}
-              </span>
-            ),
-          },
-          {
             key: 'http',
             label: (
               <span className='tab-label'>
                 {t('pages.resultComparison.httpTasks') ||
                   t('pages.jobs.httpApiTab') ||
                   'HTTP Tasks Comparison'}
+              </span>
+            ),
+          },
+          {
+            key: 'model',
+            label: (
+              <span className='tab-label'>
+                {t('pages.resultComparison.modelTasks') ||
+                  t('pages.jobs.llmTab') ||
+                  'LLM Tasks Comparison'}
               </span>
             ),
           },

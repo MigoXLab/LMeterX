@@ -22,6 +22,7 @@ from config.business import (
     TASK_STATUS_STOPPED,
     TASK_STATUS_STOPPING,
 )
+from db.database import get_db_session
 from engine.http_runner import HttpLocustRunner
 from engine.process_manager import (
     cleanup_task_resources,
@@ -596,33 +597,75 @@ class HttpTaskService:
                 f" Critical: Failed to update status for task {task.id}: {status_update_error}"
             )
 
-    def process_task_pipeline(self, task: HttpTask, session: Session):
-        """Process a single task end-to-end and persist its status/results."""
-        handler_id = None
-        task_logger = logger.bind(task_id=task.id)
-        try:
-            handler_id = add_task_log_sink(task.id)
+    def process_task_pipeline(self, task: HttpTask, session: Session = None):
+        """Process a single task end-to-end and persist its status/results.
 
-            # Re-check soft-delete flag to handle the race where a user deletes
-            # a "created" task right after the poller locked it but before
-            # execution starts.
-            self._safe_refresh_task(session, task, task_logger)
-            if getattr(task, "is_deleted", 0) == 1:
-                task_logger.info(
-                    f" Task {task.id} was soft-deleted before execution. Skipping."
-                )
-                return
+        Uses short-lived DB sessions internally to avoid connection timeouts
+        during long-running tasks.
+
+        Args:
+            task (HttpTask): The task to process.
+            session (Session): Deprecated. Ignored if provided — sessions are
+                managed internally.
+        """
+        handler_id = None
+        task_id = task.id
+        task_logger = logger.bind(task_id=task_id)
+        try:
+            handler_id = add_task_log_sink(task_id)
+
+            # Pre-execution check: verify task not soft-deleted
+            with get_db_session() as pre_session:
+                fresh_task = pre_session.get(self.model_cls, task_id)
+                if fresh_task is None:
+                    task_logger.info(
+                        f" Task {task_id} not found in database. Skipping."
+                    )
+                    return
+                if getattr(fresh_task, "is_deleted", 0) == 1:
+                    task_logger.info(
+                        f" Task {task_id} was soft-deleted before execution. Skipping."
+                    )
+                    return
 
             # Start execution (task is already in 'running' status after
-            # claim_pending_task set it)
+            # claim_pending_task set it).
+            # No DB session is held during this potentially long-running phase.
             run_result = self.start_task(task)
 
-            self._safe_refresh_task(session, task, task_logger)
-            self._resolve_task_status(session, task, run_result, task_logger)
+            # Post-execution: acquire a fresh session for finalization
+            with get_db_session() as post_session:
+                task = post_session.get(self.model_cls, task_id)
+                if task is None:
+                    task_logger.warning(
+                        f" Task {task_id} not found after execution. Cannot update status."
+                    )
+                    return
+                self._resolve_task_status(post_session, task, run_result, task_logger)
         except (OperationalError, pymysql.err.OperationalError) as e:
-            self._handle_pipeline_db_error(session, task, task_logger, e)
+            try:
+                with get_db_session() as err_session:
+                    err_task = err_session.get(self.model_cls, task_id)
+                    if err_task:
+                        self._handle_pipeline_db_error(
+                            err_session, err_task, task_logger, e
+                        )
+            except Exception as status_update_error:
+                logger.warning(
+                    f" Could not update task {task_id} status due to database error: {status_update_error}"
+                )
         except Exception as e:
-            self._handle_pipeline_error(session, task, task_logger, e)
+            try:
+                with get_db_session() as err_session:
+                    err_task = err_session.get(self.model_cls, task_id)
+                    if err_task:
+                        self._handle_pipeline_error(
+                            err_session, err_task, task_logger, e
+                        )
+            except Exception as status_update_error:
+                logger.error(
+                    f" Critical: Failed to update status for task {task_id}: {status_update_error}"
+                )
         finally:
             if handler_id is not None:
                 remove_task_log_sink(handler_id)

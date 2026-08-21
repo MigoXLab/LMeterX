@@ -78,7 +78,12 @@
       "passwordRequired": "请输入密码",
       "loginButton": "登录",
       "loginSuccess": "登录成功",
-      "loginFailedDefault": "登录失败，请检查用户名或密码"
+      "invalidCredentials": "用户名或密码错误，请重新输入",
+      "ldapConnectionFailed": "LDAP 服务连接失败或超时，请稍后重试或联系管理员",
+      "ldapConfigurationError": "LDAP 认证服务配置异常，请联系管理员",
+      "networkError": "无法连接到认证服务，请检查网络后重试",
+      "authenticationServiceError": "认证服务暂时不可用，请稍后重试",
+      "loginFailedDefault": "登录失败，请稍后重试"
     },
     "jobs": {
       "title": "基准测试任务",

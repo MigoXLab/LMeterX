@@ -917,18 +917,19 @@ const LlmResults: React.FC = () => {
     return typeSet;
   }, [results, taskInfo?.api_path]);
 
-  const calculateFailedRequests = () => {
+  const calculateFailedRequests = (apiPathMetric?: any) => {
+    const apiPathFailures = getFailureCountValue(apiPathMetric);
     const failureRequests = getRequestCountValue(failResult);
-    if (failureRequests !== undefined) {
-      return failureRequests;
-    }
-
     const fallbackFailures = getFailureCountValue(failResult);
-    if (fallbackFailures !== undefined) {
-      return fallbackFailures;
-    }
 
-    return 0;
+    // The API-path row is the canonical Locust request metric, while the
+    // dedicated failure row may contain the same failures. Use the largest
+    // available count to avoid both omissions and double-counting.
+    return Math.max(
+      apiPathFailures ?? 0,
+      failureRequests ?? 0,
+      fallbackFailures ?? 0
+    );
   };
 
   // Check if we have any valid test results
@@ -1144,10 +1145,10 @@ const LlmResults: React.FC = () => {
       );
     }
 
-    const failedRequestCount = calculateFailedRequests();
     const apiPathMetric = taskInfo?.api_path
       ? results.find(item => item.metric_type === taskInfo.api_path)
       : undefined;
+    const failedRequestCount = calculateFailedRequests(apiPathMetric);
     const apiPathRequestCount = getRequestCountValue(apiPathMetric);
     const completionRequests = getRequestCountValue(CompletionResult);
     const firstTokenRequests = getRequestCountValue(firstTokenResult);

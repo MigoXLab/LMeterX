@@ -78,7 +78,12 @@
       "passwordRequired": "Please enter your password",
       "loginButton": "Login",
       "loginSuccess": "Login successful",
-      "loginFailedDefault": "Login failed. Please check your username or password"
+      "invalidCredentials": "Incorrect username or password. Please try again",
+      "ldapConnectionFailed": "The LDAP service connection failed or timed out. Please try again later or contact your administrator",
+      "ldapConfigurationError": "The LDAP authentication service is misconfigured. Please contact your administrator",
+      "networkError": "Unable to reach the authentication service. Check your network and try again",
+      "authenticationServiceError": "The authentication service is temporarily unavailable. Please try again later",
+      "loginFailedDefault": "Login failed. Please try again later"
     },
     "jobs": {
       "title": "Benchmark Jobs",

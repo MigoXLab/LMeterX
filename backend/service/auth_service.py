@@ -7,7 +7,10 @@ from typing import Optional
 
 from fastapi import Request
 from ldap3 import ALL, BASE, Connection, Server  # type: ignore[import-untyped]
-from ldap3.core.exceptions import LDAPSocketOpenError  # type: ignore[import-untyped]
+from ldap3.core.exceptions import (  # type: ignore[import-untyped]
+    LDAPBindError,
+    LDAPCommunicationError,
+)
 from ldap3.utils.conv import escape_filter_chars  # type: ignore[import-untyped]
 
 from model.auth import LoginRequest, LoginResponse, UserInfo
@@ -24,6 +27,7 @@ def _ensure_ldap_ready() -> None:
         raise ErrorResponse.bad_request(
             ErrorMessages.LDAP_DISABLED,
             details="Set LDAP_ENABLED=on to enable LDAP authentication.",
+            code="ldap_disabled",
         )
 
     missing = []
@@ -40,6 +44,7 @@ def _ensure_ldap_ready() -> None:
         raise ErrorResponse.bad_request(
             ErrorMessages.LDAP_CONFIG_INCOMPLETE,
             details={"missing": missing},
+            code="ldap_config_incomplete",
         )
 
 
@@ -108,7 +113,10 @@ async def login_with_ldap(_: Request, login_request: LoginRequest) -> LoginRespo
     password = login_request.password
 
     if not username or not password:
-        raise ErrorResponse.bad_request(ErrorMessages.INVALID_CREDENTIALS)
+        raise ErrorResponse.bad_request(
+            ErrorMessages.INVALID_CREDENTIALS,
+            code="invalid_credentials",
+        )
 
     server = _build_server()
 
@@ -132,13 +140,17 @@ async def login_with_ldap(_: Request, login_request: LoginRequest) -> LoginRespo
                     settings.LDAP_SEARCH_FILTER,
                 )
                 if not user_dn:
-                    raise ErrorResponse.unauthorized(ErrorMessages.INVALID_CREDENTIALS)
+                    raise ErrorResponse.unauthorized(
+                        ErrorMessages.INVALID_CREDENTIALS,
+                        code="invalid_credentials",
+                    )
         elif settings.LDAP_USER_DN_TEMPLATE:
             user_dn = settings.LDAP_USER_DN_TEMPLATE.format(username=username)
         else:
             raise ErrorResponse.bad_request(
                 ErrorMessages.LDAP_CONFIG_INCOMPLETE,
                 details="Set LDAP_USER_DN_TEMPLATE or LDAP_BIND_DN/LDAP_SEARCH_BASE.",
+                code="ldap_config_incomplete",
             )
 
         # Bind as the user to validate password
@@ -175,13 +187,23 @@ async def login_with_ldap(_: Request, login_request: LoginRequest) -> LoginRespo
         token = create_access_token(user_info.model_dump())
         return LoginResponse(access_token=token, user=user_info)
 
-    except LDAPSocketOpenError as exc:
+    except LDAPCommunicationError as exc:
         logger.error("LDAP connection failed: {}", exc)
         raise ErrorResponse.internal_server_error(
             ErrorMessages.LDAP_CONNECTION_FAILED,
+            code="ldap_connection_failed",
+        )
+    except LDAPBindError as exc:
+        logger.info("LDAP credentials rejected for user '{}': {}", username, exc)
+        raise ErrorResponse.unauthorized(
+            ErrorMessages.INVALID_CREDENTIALS,
+            code="invalid_credentials",
         )
     except ErrorResponse:
         raise
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.error("LDAP authentication failed: {}", exc)
-        raise ErrorResponse.unauthorized(ErrorMessages.INVALID_CREDENTIALS)
+        raise ErrorResponse.internal_server_error(
+            ErrorMessages.INTERNAL_SERVER_ERROR,
+            code="authentication_service_error",
+        )

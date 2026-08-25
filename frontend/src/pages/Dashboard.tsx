@@ -12,7 +12,6 @@ import {
   FireOutlined,
   ReloadOutlined,
   TeamOutlined,
-  UserOutlined,
 } from '@ant-design/icons';
 import {
   Avatar,
@@ -52,7 +51,6 @@ interface DashboardStats {
   totalModels: number;
   llmTasksCount: number;
   httpTasksCount: number;
-  myTasksCount: number;
   totalUsers?: number;
 }
 
@@ -79,7 +77,6 @@ const Dashboard: React.FC = () => {
     totalModels: 0,
     llmTasksCount: 0,
     httpTasksCount: 0,
-    myTasksCount: 0,
     totalUsers: 0,
   });
 
@@ -683,51 +680,6 @@ const Dashboard: React.FC = () => {
                       <Badge status='processing' style={{ marginLeft: 8 }} />
                     ) : null
                   }
-                />
-              </Card>
-            </Col>
-
-            {/* My Created Tasks */}
-            <Col
-              className='dashboard-stat-col'
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <Card
-                bordered={false}
-                style={{
-                  borderRadius: '12px',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  boxShadow:
-                    '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)',
-                }}
-                bodyStyle={{
-                  padding: '20px 24px',
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <Statistic
-                  title={
-                    <Space size={6}>
-                      <UserOutlined style={{ color: '#ec4899' }} />
-                      <span style={{ color: '#64748b', fontWeight: 500 }}>
-                        {t('pages.dashboard.createdByMe')}
-                      </span>
-                    </Space>
-                  }
-                  value={stats.myTasksCount}
-                  valueStyle={{
-                    fontSize: '28px',
-                    fontWeight: 700,
-                    color: '#ec4899',
-                  }}
                 />
               </Card>
             </Col>

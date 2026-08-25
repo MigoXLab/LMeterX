@@ -39,6 +39,36 @@ stats_manager = StatsManager()
 _async_token_counter = AsyncTokenCounter()
 
 
+def _has_successful_token_usage(
+    reasoning_content: str,
+    content: str,
+    usage: Optional[Dict[str, Any]],
+) -> bool:
+    """Return True only when a request produced countable tokens.
+
+    Failed handlers return empty response text plus a zeroed usage dict.
+    A non-empty dict is always truthy in Python, so callers must check
+    actual token values rather than dict emptiness. Otherwise failed
+    requests still enter token counting and inflate Input_tokens via
+    tiktoken estimates of the original prompt.
+    """
+    if reasoning_content or content:
+        return True
+    if not usage:
+        return False
+    for key in (
+        "prompt_tokens",
+        "input_tokens",
+        "completion_tokens",
+        "output_tokens",
+        "total_tokens",
+    ):
+        value = usage.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            return True
+    return False
+
+
 def _report_token_stats(
     input_tokens: int,
     completion_tokens: int,
@@ -54,6 +84,8 @@ def _report_token_stats(
 
     Called both from the synchronous fast path (inline) and from the async
     slow path (in background greenlet, after thread pool computation).
+    Failed requests must not reach this function; Input_tokens should
+    only include successful requests.
     """
     if completion_tokens <= 0 and total_tokens <= 0:
         return
@@ -690,7 +722,7 @@ class LLMTestUser(HttpUser):
             except Exception as inner_e:
                 self.task_logger.warning(f"Failed to record failure event: {inner_e}")
 
-        if reasoning_content or content or usage:
+        if _has_successful_token_usage(reasoning_content, content, usage):
             self._log_token_counts(user_prompt or "", reasoning_content, content, usage)
 
     def stop(self, force=False):

@@ -70,6 +70,15 @@ const SUMMARY_METRIC_TYPES = new Set([
   'Completion_tokens',
 ]);
 
+const isOutputItemMetric = (name?: string) =>
+  Boolean(
+    name &&
+    /^Output_item_(?:message|reasoning|tool_call|other)_lifecycle$/.test(name)
+  );
+
+const isIndexedOutputItemMetric = (name?: string) =>
+  Boolean(name && /^Output_item_\d+_lifecycle$/.test(name));
+
 const statisticWrapperStyle: React.CSSProperties = {
   textAlign: 'left',
 };
@@ -499,14 +508,7 @@ const LlmResults: React.FC = () => {
   );
 
   // --- LLM per-metric names and color palette for response time chart ---
-  type LLMMetricName =
-    | 'Total_time'
-    | 'Time_to_first_reasoning_token'
-    | 'Time_to_first_output_token'
-    | 'Time_to_reasoning_completion'
-    | 'Time_to_output_completion';
-
-  const LLM_METRIC_NAMES: LLMMetricName[] = [
+  const LLM_METRIC_NAMES = [
     'Total_time',
     'Time_to_first_reasoning_token',
     'Time_to_first_output_token',
@@ -514,7 +516,7 @@ const LlmResults: React.FC = () => {
     'Time_to_output_completion',
   ];
 
-  const LLM_METRIC_COLORS: Record<LLMMetricName, string> = {
+  const LLM_METRIC_COLORS: Record<string, string> = {
     Total_time: '#1890ff',
     Time_to_first_reasoning_token: '#faad14',
     Time_to_first_output_token: '#52c41a',
@@ -527,14 +529,18 @@ const LlmResults: React.FC = () => {
     const found = new Set<string>();
     metricsData.forEach(p => {
       if (p.metrics) {
-        LLM_METRIC_NAMES.forEach(name => {
-          if (p.metrics![name]) {
+        Object.keys(p.metrics).forEach(name => {
+          if (LLM_METRIC_NAMES.includes(name) || isOutputItemMetric(name)) {
             found.add(name);
           }
         });
       }
     });
-    return LLM_METRIC_NAMES.filter(n => found.has(n));
+    const baseMetrics = LLM_METRIC_NAMES.filter(n => found.has(n));
+    const itemMetrics = [...found]
+      .filter(isOutputItemMetric)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return [...baseMetrics, ...itemMetrics];
   }, [metricsData]);
 
   // ECharts: Response Time chart
@@ -566,8 +572,28 @@ const LlmResults: React.FC = () => {
       symbolSize: 4,
       showSymbol: false,
       connectNulls: true,
-      itemStyle: { color: LLM_METRIC_COLORS[metricName] ?? '#1890ff' },
-      lineStyle: { color: LLM_METRIC_COLORS[metricName] ?? '#1890ff' },
+      itemStyle: {
+        color:
+          LLM_METRIC_COLORS[metricName] ??
+          (metricName.includes('message')
+            ? '#13c2c2'
+            : metricName.includes('reasoning')
+              ? '#fa8c16'
+              : metricName.includes('tool_call')
+                ? '#9254de'
+                : '#597ef7'),
+      },
+      lineStyle: {
+        color:
+          LLM_METRIC_COLORS[metricName] ??
+          (metricName.includes('message')
+            ? '#13c2c2'
+            : metricName.includes('reasoning')
+              ? '#fa8c16'
+              : metricName.includes('tool_call')
+                ? '#9254de'
+                : '#597ef7'),
+      },
     }));
 
     // Fallback if no per-metric detail: show aggregate avg (backward compat)
@@ -613,7 +639,7 @@ const LlmResults: React.FC = () => {
   }, [metricsData, formatChartTime, chartTooltip, t, availableMetricNames]);
 
   // ECharts: RPS & Failures chart
-  // RPS: prefer Total_time metric, fallback to api_path metric, then aggregate
+  // RPS: use the Locust HTTP request entry so item metrics never inflate it.
   // Failures/s: prefer failure metric, fallback to api_path metric, then aggregate
   const rpsOption = useMemo(() => {
     if (metricsData.length === 0) return {};
@@ -624,12 +650,6 @@ const LlmResults: React.FC = () => {
 
     const rpsData = metricsData.map(p => {
       if (p.metrics) {
-        // Prefer Total_time's rps
-        const totalEntry = p.metrics.Total_time;
-        if (totalEntry?.current_rps != null) {
-          return Number(totalEntry.current_rps.toFixed(2));
-        }
-        // Fallback: api_path metric
         const apiEntry = apiPath ? p.metrics[apiPath] : undefined;
         if (apiEntry?.current_rps != null) {
           return Number(apiEntry.current_rps.toFixed(2));
@@ -908,6 +928,8 @@ const LlmResults: React.FC = () => {
       if (
         item?.metric_type &&
         !SUMMARY_METRIC_TYPES.has(item.metric_type) &&
+        !isOutputItemMetric(item.metric_type) &&
+        !isIndexedOutputItemMetric(item.metric_type) &&
         hasRequestStats
       ) {
         typeSet.add(item.metric_type);
@@ -1267,7 +1289,8 @@ const LlmResults: React.FC = () => {
       isMeaningfulValue(ttftDisplay) &&
       isMeaningfulValue(firstTokenResult?.avg_response_time);
 
-    const rpsValue = CompletionResult?.rps ?? firstTokenResult?.rps;
+    const rpsValue =
+      apiPathMetric?.rps ?? CompletionResult?.rps ?? firstTokenResult?.rps;
     const qpmValue =
       rpsValue !== null && rpsValue !== undefined
         ? Number(rpsValue) * 60
@@ -2002,6 +2025,9 @@ const LlmResults: React.FC = () => {
                                   item.metric_type !== 'token_metrics' &&
                                   item.metric_type !== 'Input_tokens' &&
                                   item.metric_type !== 'Completion_tokens' &&
+                                  !isIndexedOutputItemMetric(
+                                    item.metric_type
+                                  ) &&
                                   (results.length <= 1 ||
                                     !requestMetricTypeSet.has(item.metric_type))
                               )}

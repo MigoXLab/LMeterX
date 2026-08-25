@@ -56,7 +56,7 @@ MAX_DURATION_FOR_TESTING = 120  # max duration to wait for testing
 MAX_HEADER_ITEMS = 20
 MAX_COOKIE_ITEMS = 20
 DEFAULT_API_TYPE = "openai-chat"
-AUTO_FIELD_MAPPING_APIS = {"openai-chat", "claude-chat"}
+AUTO_FIELD_MAPPING_APIS = {"openai-chat", "openai-responses", "claude-chat"}
 settings = get_auth_settings()
 
 
@@ -503,7 +503,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             created_by = created_by or "-"
 
         # Convert field_mapping to JSON string if provided
-        # For standard chat APIs (openai-chat, claude-chat), empty field_mapping is acceptable
+        # Standard OpenAI/Claude protocols can use engine-generated field mappings.
         # as st_engine will auto-generate it based on api_type
         api_type = body.api_type or DEFAULT_API_TYPE
         field_mapping_data = body.field_mapping or {}
@@ -1045,13 +1045,16 @@ def _prepare_request_payload(body: Union[TaskCreateReq, TaskTestReq]) -> Dict:
         default_payload = {
             "model": body.model or "your-model-name",
             "stream": body.stream_mode,
-            "messages": [
+        }
+        if body.api_type == "openai-responses":
+            default_payload["input"] = "Hi"
+        else:
+            default_payload["messages"] = [
                 {
                     "role": "user",
                     "content": "Hi",
                 }
-            ],
-        }
+            ]
         return default_payload
 
     # Use provided request_payload
@@ -1303,18 +1306,22 @@ async def _handle_streaming_response(
     Returns:
         A dictionary containing the streaming response.
     """
+    # Transport chunks do not align with SSE events or even UTF-8/text lines. Keep
+    # the unfinished tail between reads and expose one continuous response body.
+    # This also preserves blank lines between SSE events.
     stream_data: List[str] = []
-    append_chunk = stream_data.append
+    pending_text = ""
     test_note = "Streaming connection test completed, only collected partial data for verification"
 
     def _build_stream_result(
         note: str, warning: Optional[str] = None
     ) -> Dict[str, Any]:
-        test_successful = len(stream_data) > 0
+        response_text = "".join(stream_data)
+        test_successful = bool(response_text)
         response_payload: Dict[str, Any] = {
             "status_code": response.status_code,
             "headers": dict(response.headers),
-            "data": stream_data,
+            "data": response_text,
             "is_stream": True,
             "test_note": note,
         }
@@ -1355,23 +1362,35 @@ async def _handle_streaming_response(
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max_duration
 
-        # Process streaming data with only time limit
-        async for chunk in response.aiter_lines():
-            if chunk:
-                chunk_str = chunk.strip()
-                if chunk_str:
-                    append_chunk(chunk_str)
+        # Process raw decoded text instead of treating each network chunk as one
+        # event. A chunk may contain several SSE events or end halfway through a
+        # data line, so only commit complete lines while the stream is active.
+        async for chunk in response.aiter_text():
+            if not chunk:
+                continue
 
-                    # Check if we've spent too much time
-                    if loop.time() >= deadline:
-                        test_note = (
-                            "Streaming connection test completed after reaching the "
-                            f"{max_duration}-second limit"
-                        )
-                        logger.info(
-                            f"Stopped streaming test after {max_duration} seconds",
-                        )
-                        break
+            pending_text += chunk
+            last_line_break = max(pending_text.rfind("\n"), pending_text.rfind("\r"))
+            if last_line_break >= 0:
+                stream_data.append(pending_text[: last_line_break + 1])
+                pending_text = pending_text[last_line_break + 1 :]
+
+            # Check if we've spent too much time. Do not publish pending_text
+            # here because it may be an incomplete SSE data line.
+            if loop.time() >= deadline:
+                test_note = (
+                    "Streaming connection test completed after reaching the "
+                    f"{max_duration}-second limit"
+                )
+                logger.info(
+                    f"Stopped streaming test after {max_duration} seconds",
+                )
+                break
+        else:
+            # EOF is a valid line terminator, so retain a final line even when
+            # the upstream response does not end with a newline.
+            if pending_text:
+                stream_data.append(pending_text)
 
         return _build_stream_result(test_note)
 

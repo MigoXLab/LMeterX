@@ -3,10 +3,11 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import json
 import math
 from typing import Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, root_validator, validator
 from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text, func
 
 from db.mysql import Base
@@ -216,12 +217,15 @@ class TaskCreateReq(BaseModel):
         max_length=50000,
         description="Custom request payload for non-chat APIs (JSON string, max 50000 chars)",
     )
-    field_mapping: Optional[Dict[str, str]] = Field(
-        default=None, description="Field mapping configuration for custom APIs"
-    )
     api_type: Optional[str] = Field(
         default="openai-chat",
-        description="API type: openai-chat, claude-chat, embeddings, or custom-chat",
+        description=(
+            "API type: openai-chat, openai-responses, claude-chat, embeddings, "
+            "or custom-chat"
+        ),
+    )
+    field_mapping: Optional[Dict[str, str]] = Field(
+        default=None, description="Field mapping configuration for custom APIs"
     )
     test_data: Optional[str] = Field(
         default="",
@@ -258,6 +262,36 @@ class TaskCreateReq(BaseModel):
         le=172800,
         description="Duration to sustain at max users in seconds",
     )
+
+    @root_validator(pre=True)
+    def default_responses_payload(cls, values):
+        """Use the Responses API input field when no payload is supplied."""
+        if (
+            values.get("api_type") == "openai-responses"
+            and not str(values.get("request_payload") or "").strip()
+        ):
+            values["request_payload"] = json.dumps(
+                {
+                    "model": values.get("model") or "your-model-name",
+                    "stream": values.get("stream_mode", True),
+                    "input": "Hi",
+                }
+            )
+        return values
+
+    @validator("api_type")
+    def validate_api_type(cls, v):
+        allowed = {
+            "openai-chat",
+            "openai-responses",
+            "claude-chat",
+            "embeddings",
+            "custom-chat",
+        }
+        normalized = v or "openai-chat"
+        if normalized not in allowed:
+            raise ValueError(f"Unsupported api_type: {normalized}")
+        return normalized
 
     @validator("load_mode")
     def validate_load_mode(cls, v: str) -> str:
@@ -428,7 +462,7 @@ class TaskCreateReq(BaseModel):
         """
         api_type = values.get("api_type") or "openai-chat"
         # For standard chat APIs we allow empty/auto mapping
-        if api_type in {"openai-chat", "claude-chat"}:
+        if api_type in {"openai-chat", "openai-responses", "claude-chat"}:
             return v or {}
 
         # For custom-chat / embeddings, field_mapping must be a non-empty dict
@@ -488,8 +522,41 @@ class TaskTestReq(BaseModel):
     )
     api_type: Optional[str] = Field(
         default="openai-chat",
-        description="API type: openai-chat, claude-chat, embeddings, or custom-chat",
+        description=(
+            "API type: openai-chat, openai-responses, claude-chat, embeddings, "
+            "or custom-chat"
+        ),
     )
+
+    @root_validator(pre=True)
+    def default_responses_payload(cls, values):
+        """Use the Responses API input field when no payload is supplied."""
+        if (
+            values.get("api_type") == "openai-responses"
+            and not str(values.get("request_payload") or "").strip()
+        ):
+            values["request_payload"] = json.dumps(
+                {
+                    "model": values.get("model") or "your-model-name",
+                    "stream": values.get("stream_mode", True),
+                    "input": "Hi",
+                }
+            )
+        return values
+
+    @validator("api_type")
+    def validate_api_type(cls, v):
+        allowed = {
+            "openai-chat",
+            "openai-responses",
+            "claude-chat",
+            "embeddings",
+            "custom-chat",
+        }
+        normalized = v or "openai-chat"
+        if normalized not in allowed:
+            raise ValueError(f"Unsupported api_type: {normalized}")
+        return normalized
 
     @validator("target_host")
     def validate_target_host(cls, v):

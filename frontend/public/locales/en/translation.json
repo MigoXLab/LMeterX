@@ -65,7 +65,6 @@
       "modelsDesc": "Covering major open-source and commercial models",
       "customApi": "Custom API",
       "concurrency": "Concurrency",
-      "createdByMe": "Created By Me",
       "weeklyNewTasks": "Weekly New Tasks"
     },
     "login": {
@@ -713,7 +712,6 @@
       "testResponse": "Response",
       "stream": "Streaming",
       "nonStreaming": "Non-streaming",
-      "chunks": "chunks",
       "fileSizeExceedsLimit": "File size exceeds 10MB limit.",
       "fileSizeExceedsLimitWithSize": "File size exceeds 10MB limit. Current size: {{size}}MB",
       "fileSelected": "{{fileName}} file selected",

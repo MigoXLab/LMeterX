@@ -303,17 +303,18 @@ async def extract_task_metrics(  # noqa: C901
 
         # Handle RPS
         rps_val = None
-        # Check Total_time first
-        if total_time_data and getattr(total_time_data, "rps", None):
-            val = float(total_time_data.rps)
+        # The API-path row is Locust's real HTTP request stat. Custom latency
+        # and output-item metrics are separate events and must not affect RPS.
+        api_path_data = metrics_map.get(getattr(task, "api_path", ""))
+        if api_path_data and getattr(api_path_data, "rps", None):
+            val = float(api_path_data.rps)
             if val > 0:
                 rps_val = val
 
-        # Fallback to Time_to_first_output_token if RPS is still None
+        # Backward-compatible fallback for older result files.
         if rps_val is None:
-            ttft_output = metrics_map.get("Time_to_first_output_token")
-            if ttft_output and getattr(ttft_output, "rps", None):
-                val = float(ttft_output.rps)
+            if total_time_data and getattr(total_time_data, "rps", None):
+                val = float(total_time_data.rps)
                 if val > 0:
                     rps_val = val
 

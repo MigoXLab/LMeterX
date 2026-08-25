@@ -1,7 +1,6 @@
-"""
-Task API tests.
-"""
+"""Task API tests."""
 
+import json
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -110,6 +109,61 @@ class TestTaskAPI:
     def test_create_task_validation_error(self):
         invalid_data = {"name": "Test Task"}
         response = client.post("/api/llm-tasks", json=invalid_data)
+        assert response.status_code == 422
+
+    @patch("api.api_llm_task.create_task_svc")
+    def test_create_openai_responses_task_uses_input_payload(self, mock_create_task):
+        mock_create_task.return_value = TaskCreateRsp(
+            task_id="responses_1",
+            status="created",
+            message="Task created successfully",
+        )
+        response = client.post(
+            "/api/llm-tasks",
+            json={
+                "temp_task_id": "temp_responses",
+                "name": "Responses API Test",
+                "target_host": "https://api.example.com",
+                "api_path": "/v1/responses",
+                "api_type": "openai-responses",
+                "model": "gpt-test",
+                "duration": 60,
+                "concurrent_users": 1,
+                "spawn_rate": 1,
+                "chat_type": 0,
+                "stream_mode": True,
+                "headers": [],
+            },
+        )
+
+        assert response.status_code == 200
+        body = mock_create_task.call_args.args[1]
+        assert body.api_type == "openai-responses"
+        assert json.loads(body.request_payload) == {
+            "model": "gpt-test",
+            "stream": True,
+            "input": "Hi",
+        }
+        assert body.field_mapping == {}
+
+    def test_create_task_rejects_unknown_api_type(self):
+        response = client.post(
+            "/api/llm-tasks",
+            json={
+                "temp_task_id": "temp_unknown",
+                "name": "Unknown API",
+                "target_host": "https://api.example.com",
+                "api_path": "/v1/unknown",
+                "api_type": "unknown-api",
+                "model": "test",
+                "duration": 60,
+                "concurrent_users": 1,
+                "spawn_rate": 1,
+                "chat_type": 0,
+                "stream_mode": True,
+                "headers": [],
+            },
+        )
         assert response.status_code == 422
 
     @patch("api.api_llm_task.stop_task_svc")

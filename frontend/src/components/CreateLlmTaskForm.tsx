@@ -60,7 +60,28 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 // API Type definitions
-type ApiType = 'openai-chat' | 'claude-chat' | 'embeddings' | 'custom-chat';
+type ApiType =
+  | 'openai-chat'
+  | 'openai-responses'
+  | 'claude-chat'
+  | 'embeddings'
+  | 'custom-chat';
+
+const formatTestResponse = (data: unknown, isStream: boolean): string => {
+  if (typeof data === 'string') return data;
+
+  // Backward compatibility for responses produced by older backends, which
+  // returned one array item per streamed line.
+  if (isStream && Array.isArray(data)) {
+    return data
+      .map(item =>
+        typeof item === 'string' ? item : JSON.stringify(item, null, 2)
+      )
+      .join('\n');
+  }
+
+  return JSON.stringify(data, null, 2) ?? String(data ?? '');
+};
 
 interface CreateLlmTaskFormProps {
   onSubmit: (values: any) => Promise<void>;
@@ -104,6 +125,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     switch (type) {
       case 'openai-chat':
         return '/v1/chat/completions';
+      case 'openai-responses':
+        return '/v1/responses';
       case 'claude-chat':
         return '/v1/messages';
       case 'embeddings':
@@ -119,6 +142,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
   const getDefaultFieldMapping = (type: ApiType) => {
     switch (type) {
       case 'openai-chat':
+      case 'openai-responses':
       case 'claude-chat':
         // For standard chat APIs, backend will auto-generate field mapping
         return {};
@@ -179,6 +203,17 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                 content: 'Hi',
               },
             ],
+          },
+          null,
+          2
+        );
+
+      case 'openai-responses':
+        return JSON.stringify(
+          {
+            model: model || 'none',
+            stream: streamMode,
+            input: 'Hi',
           },
           null,
           2
@@ -306,8 +341,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
   // Tab navigation functions
   const goToNextTab = () => {
     const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
-    const isStandardChatApi =
-      currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+    const isStandardChatApi = [
+      'openai-chat',
+      'openai-responses',
+      'claude-chat',
+    ].includes(currentApiType);
 
     if (activeTabKey === '1') {
       setActiveTabKey('2');
@@ -319,8 +357,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
   const goToPreviousTab = () => {
     const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
-    const isStandardChatApi =
-      currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+    const isStandardChatApi = [
+      'openai-chat',
+      'openai-responses',
+      'claude-chat',
+    ].includes(currentApiType);
 
     if (activeTabKey === '2') {
       setActiveTabKey('1');
@@ -351,8 +392,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         // Tab 2: Field Mapping
         const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
         const isEmbedType = currentApiType === 'embeddings';
-        const isStandardChatApi =
-          currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+        const isStandardChatApi = [
+          'openai-chat',
+          'openai-responses',
+          'claude-chat',
+        ].includes(currentApiType);
         const currentStreamMode = form.getFieldValue('stream_mode');
 
         // Skip validation for standard chat APIs (backend will handle field mapping)
@@ -372,8 +416,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       }
       // Data/Load configuration tab (key '2' for standard APIs, '3' for others)
       const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
-      const isStandardChatApi =
-        currentApiType === 'openai-chat' || currentApiType === 'claude-chat';
+      const isStandardChatApi = [
+        'openai-chat',
+        'openai-responses',
+        'claude-chat',
+      ].includes(currentApiType);
       const dataLoadTabKey = isStandardChatApi ? '2' : '3';
 
       if (activeTabKey === dataLoadTabKey) {
@@ -398,7 +445,9 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           (isStandardChatApi ? 'default' : 'none');
         if (
           currentTestDataInputType === 'default' &&
-          (currentApiType === 'openai-chat' || currentApiType === 'claude-chat')
+          ['openai-chat', 'openai-responses', 'claude-chat'].includes(
+            currentApiType
+          )
         ) {
           requiredFields.push('chat_type');
         }
@@ -632,8 +681,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
       // Dataset source defaults must match API type (no built-in option for embeddings/custom-chat)
       const fillApiType = dataToFill.api_type || 'openai-chat';
-      const isFillChatApi =
-        fillApiType === 'openai-chat' || fillApiType === 'claude-chat';
+      const isFillChatApi = [
+        'openai-chat',
+        'openai-responses',
+        'claude-chat',
+      ].includes(fillApiType);
       if (isFillChatApi) {
         if (
           dataToFill.test_data_input_type === undefined ||
@@ -1157,8 +1209,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
       // Handle test data input type
       const submitApiType = values.api_type || 'openai-chat';
-      const isSubmitChatApi =
-        submitApiType === 'openai-chat' || submitApiType === 'claude-chat';
+      const isSubmitChatApi = [
+        'openai-chat',
+        'openai-responses',
+        'claude-chat',
+      ].includes(submitApiType);
       const inputType =
         values.test_data_input_type || (isSubmitChatApi ? 'default' : 'none');
       if (inputType === 'upload') {
@@ -1728,6 +1783,9 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           >
             <Select placeholder={t('components.createJobForm.apiType')}>
               <Select.Option value='openai-chat'>OpenAI Chat</Select.Option>
+              <Select.Option value='openai-responses'>
+                OpenAI Responses
+              </Select.Option>
               <Select.Option value='claude-chat'>Claude Chat</Select.Option>
               <Select.Option value='embeddings'>Embeddings</Select.Option>
               <Select.Option value='custom-chat'>Custom Chat</Select.Option>
@@ -2081,9 +2139,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         {({ getFieldValue }) => {
           const inputType = getFieldValue('test_data_input_type');
           const currentApiType = getFieldValue('api_type') || 'openai-chat';
-          const isChatApi =
-            currentApiType === 'openai-chat' ||
-            currentApiType === 'claude-chat';
+          const isChatApi = [
+            'openai-chat',
+            'openai-responses',
+            'claude-chat',
+          ].includes(currentApiType);
 
           const cardStyle = {
             background: token.colorFillAlter,
@@ -2767,6 +2827,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             switch (currentApiType) {
               case 'openai-chat':
                 return 'messages.0.content.-1.text';
+              case 'openai-responses':
+                return 'input';
               case 'claude-chat':
                 return 'messages.0.content.-1.text';
               case 'embeddings':
@@ -2782,6 +2844,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             switch (currentApiType) {
               case 'openai-chat':
                 return 'messages.0.content.0.image_url';
+              case 'openai-responses':
+                return 'input.0.content.-1.image_url';
               case 'claude-chat':
                 return 'messages.0.content.0.source.data';
               case 'custom-chat':
@@ -2839,7 +2903,9 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                   </Form.Item>
                 </Col>
                 {!isEmbedType &&
-                  !['openai-chat', 'claude-chat'].includes(currentApiType) && (
+                  !['openai-chat', 'openai-responses', 'claude-chat'].includes(
+                    currentApiType
+                  ) && (
                     <Col span={12}>
                       <Form.Item
                         name={['field_mapping', 'image']}
@@ -3412,8 +3478,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
   // Render tab action buttons
   const renderTabActions = () => {
-    const isStandardChatApi =
-      watchedApiType === 'openai-chat' || watchedApiType === 'claude-chat';
+    const isStandardChatApi = [
+      'openai-chat',
+      'openai-responses',
+      'claude-chat',
+    ].includes(watchedApiType);
 
     if (activeTabKey === '1') {
       return (
@@ -3586,6 +3655,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               // Update dataset settings based on API type
               if (
                 newApiType === 'openai-chat' ||
+                newApiType === 'openai-responses' ||
                 newApiType === 'claude-chat'
               ) {
                 form.setFieldsValue({
@@ -3770,9 +3840,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         <Form.Item noStyle shouldUpdate>
           {({ getFieldValue }) => {
             const currentApiType = getFieldValue('api_type') || 'openai-chat';
-            const isStandardChatApi =
-              currentApiType === 'openai-chat' ||
-              currentApiType === 'claude-chat';
+            const isStandardChatApi = [
+              'openai-chat',
+              'openai-responses',
+              'claude-chat',
+            ].includes(currentApiType);
 
             // Build tabs array based on API type
             const tabItems = [
@@ -3891,7 +3963,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                     color={testResult.response.is_stream ? 'blue' : 'default'}
                   >
                     {testResult.response.is_stream
-                      ? `${t('components.createJobForm.stream')}${Array.isArray(testResult.response.data) ? ` (${testResult.response.data.length} ${t('components.createJobForm.chunks')})` : ''}`
+                      ? t('components.createJobForm.stream')
                       : t('components.createJobForm.nonStreaming')}
                   </Tag>
                 </Descriptions.Item>
@@ -3936,23 +4008,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                     size='small'
                     icon={<CopyOutlined />}
                     onClick={() => {
-                      let textToCopy = '';
-                      if (
-                        testResult.response.is_stream &&
-                        Array.isArray(testResult.response.data)
-                      ) {
-                        textToCopy = testResult.response.data.join('\n');
-                      } else if (typeof testResult.response.data === 'string') {
-                        textToCopy = testResult.response.data;
-                      } else {
-                        textToCopy = JSON.stringify(
-                          testResult.response.data,
-                          null,
-                          2
-                        );
-                      }
                       copyToClipboard(
-                        textToCopy,
+                        formatTestResponse(
+                          testResult.response.data,
+                          testResult.response.is_stream
+                        ),
                         t('common.copySuccess'),
                         t('common.copyFailed')
                       );
@@ -3962,79 +4022,21 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                   </Button>
                 </div>
 
-                {testResult.response.is_stream &&
-                Array.isArray(testResult.response.data) ? (
-                  // Stream response display
-                  <div
-                    style={{
-                      flex: 1,
-                      overflow: 'auto',
-                      maxHeight: 'calc(100vh - 340px)',
-                    }}
-                    className='custom-scrollbar'
-                  >
-                    {testResult.response.data.map(
-                      (chunk: string, index: number) => (
-                        <div
-                          key={index}
-                          style={{
-                            padding: '8px 12px',
-                            backgroundColor:
-                              index % 2 === 0 ? '#ffffff' : '#f8f9fa',
-                            borderRadius: '4px',
-                            border: '1px solid #e8e8e8',
-                            marginBottom: 4,
-                            fontSize: '12px',
-                            fontFamily:
-                              "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
-                            wordBreak: 'break-all',
-                            whiteSpace: 'pre-wrap',
-                            lineHeight: '1.4',
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                            }}
-                          >
-                            <span
-                              style={{
-                                color: '#666',
-                                marginRight: 12,
-                                fontSize: '11px',
-                                fontWeight: 'bold',
-                                minWidth: '40px',
-                                opacity: 0.7,
-                              }}
-                            >
-                              [{String(index + 1).padStart(3, '0')}]
-                            </span>
-                            <div style={{ flex: 1 }}>{chunk}</div>
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                ) : (
-                  // Non-stream response display
-                  <TextArea
-                    readOnly
-                    value={
-                      typeof testResult.response.data === 'string'
-                        ? testResult.response.data
-                        : JSON.stringify(testResult.response.data, null, 2)
-                    }
-                    style={{
-                      flex: 1,
-                      minHeight: 300,
-                      fontFamily:
-                        "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
-                      fontSize: 12,
-                      resize: 'vertical',
-                    }}
-                  />
-                )}
+                <TextArea
+                  readOnly
+                  value={formatTestResponse(
+                    testResult.response.data,
+                    testResult.response.is_stream
+                  )}
+                  style={{
+                    flex: 1,
+                    minHeight: 300,
+                    fontFamily:
+                      "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
+                    fontSize: 12,
+                    resize: 'vertical',
+                  }}
+                />
               </div>
             )}
           </div>

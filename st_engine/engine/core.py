@@ -36,6 +36,11 @@ class StreamMetrics:
     # Timing fields for metric calculation (previously dynamically injected)
     _start_thinking_perf: Optional[float] = None
     _first_output_token_perf: Optional[float] = None
+    # Responses API state. Item lifecycles are keyed by item id because output
+    # indices can be reused across separate requests and are not identity keys.
+    output_items: Dict[str, "OutputItemLifecycle"] = field(default_factory=dict)
+    responses_terminal_event: Optional[str] = None
+    responses_error: Optional[str] = None
 
     @property
     def content(self) -> str:
@@ -46,6 +51,18 @@ class StreamMetrics:
     def reasoning_content(self) -> str:
         """Get accumulated reasoning content as a single string."""
         return "".join(self._reasoning_parts)
+
+
+@dataclass
+class OutputItemLifecycle:
+    """Timing state for one Responses API output item."""
+
+    item_id: str
+    output_index: int
+    item_type: str
+    category: str
+    added_perf: float
+    done_perf: Optional[float] = None
 
 
 @dataclass
@@ -415,7 +432,8 @@ class ConfigManager:
         """Generate default field mapping based on API type.
 
         Args:
-            api_type: The API type (openai-chat, claude-chat, embeddings, custom-chat)
+            api_type: The API type (openai-chat, openai-responses, claude-chat,
+                embeddings, custom-chat)
             stream_mode: Whether the API is in streaming mode
 
         Returns:
@@ -442,6 +460,25 @@ class ConfigManager:
                 image="messages.0.content.-1.image_url.url",
                 prompt_tokens="usage.prompt_tokens",
                 completion_tokens="usage.completion_tokens",
+                total_tokens="usage.total_tokens",
+            )
+        elif api_type == "openai-responses":
+            # Streaming Responses events are event-oriented and can contain
+            # several heterogeneous output items. A dedicated processor handles
+            # deltas and lifecycle timing; these paths cover payload/usage
+            # extraction and non-streaming compatibility.
+            return FieldMapping(
+                stream_prefix="data:",
+                data_format="json",
+                stop_flag="response.completed",
+                end_prefix="data:",
+                end_field="type",
+                content="output.0.content.0.text",
+                reasoning_content="",
+                prompt="input",
+                image="",
+                prompt_tokens="usage.input_tokens",
+                completion_tokens="usage.output_tokens",
                 total_tokens="usage.total_tokens",
             )
         elif api_type == "claude-chat":
@@ -582,7 +619,11 @@ class ValidationManager:
             task_logger.error("Task ID is required but not provided")
             return False
 
-        if getattr(config, "api_type", "") in ("openai-chat", "claude-chat"):
+        if getattr(config, "api_type", "") in (
+            "openai-chat",
+            "openai-responses",
+            "claude-chat",
+        ):
             if not config.model_name:
                 task_logger.error("Model name is required for this API type")
                 return False

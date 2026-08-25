@@ -484,9 +484,17 @@ class AsyncTokenCounter:
                 )
                 total_tokens = extract_token_from_usage(usage, ["total", "all"])
 
-            # Step 2: Determine whether CPU-bound tiktoken is needed
+            # Step 2: Determine whether CPU-bound tiktoken is needed.
+            # Do not estimate input tokens from the prompt alone: that path
+            # is typical of failed requests (empty content, zero usage) and
+            # would inflate Input_tokens with failures.
             needs_tiktoken = False
-            if input_tokens == 0 and user_prompt:
+            has_response_text = bool(content or reasoning_content)
+            if (
+                input_tokens == 0
+                and user_prompt
+                and (has_response_text or completion_tokens > 0 or total_tokens > 0)
+            ):
                 needs_tiktoken = True
             if completion_tokens == 0:
                 if total_tokens > 0 and input_tokens > 0:

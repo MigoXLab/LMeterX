@@ -2710,7 +2710,7 @@ body {
 }
 
 /* ========================================
-   Dashboard 5-Column Stat Row Layout
+   Dashboard 4-Column Stat Row Layout
    ======================================== */
 .dashboard-stat-row {
   display: flex !important;
@@ -2719,8 +2719,8 @@ body {
 
 @media (min-width: 992px) {
   .dashboard-stat-col {
-    flex: 0 0 20% !important;
-    max-width: 20% !important;
+    flex: 0 0 25% !important;
+    max-width: 25% !important;
   }
 }
 

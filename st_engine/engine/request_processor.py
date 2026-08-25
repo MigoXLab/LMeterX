@@ -24,6 +24,7 @@ from engine.core import (
     FieldMapping,
     GlobalConfig,
     GlobalStateManager,
+    OutputItemLifecycle,
     StreamMetrics,
 )
 from utils.common import encode_image, safe_int_convert
@@ -36,6 +37,21 @@ global_state = GlobalStateManager()
 # Prevents OOM from malicious or buggy servers sending unbounded data
 MAX_STREAM_CONTENT_SIZE = 10 * 1024 * 1024  # 10 MB
 STOP_REASON_CHECK_API_TYPES = {"openai-chat", "claude-chat", "custom-chat"}
+
+RESPONSES_TERMINAL_EVENTS = {
+    "response.completed",
+    "response.failed",
+    "response.incomplete",
+    "error",
+}
+RESPONSES_TEXT_DELTA_EVENTS = {
+    "response.output_text.delta",
+    "response.refusal.delta",
+}
+RESPONSES_REASONING_DELTA_EVENTS = {
+    "response.reasoning_summary_text.delta",
+    "response.reasoning_text.delta",
+}
 
 
 # === LAZY IMAGE ENCODING ===
@@ -457,12 +473,194 @@ class StreamProcessor:
         return False, None, metrics
 
 
+class ResponsesStreamProcessor:
+    """Process event-oriented OpenAI Responses API SSE payloads."""
+
+    @staticmethod
+    def classify_item(item_type: Any) -> str:
+        """Map an output item type to a stable result metric category."""
+        normalized = str(item_type or "").strip().lower()
+        if normalized == "message":
+            return "message"
+        if normalized == "reasoning":
+            return "reasoning"
+        if normalized == "function_call" or normalized.endswith("_call"):
+            return "tool_call"
+        return "other"
+
+    @staticmethod
+    def _extract_event(
+        chunk: bytes, field_mapping: FieldMapping
+    ) -> Optional[Dict[str, Any]]:
+        """Decode one SSE data line into a Responses event."""
+        if not chunk:
+            return None
+        chunk_str = chunk.decode("utf-8", errors="replace").strip()
+        if StreamProcessor.should_skip_non_json_chunk(chunk_str):
+            return None
+        processed = StreamProcessor.remove_chunk_prefix(chunk_str, field_mapping)
+        if not processed or processed == "[DONE]":
+            return None
+        try:
+            event = orjson.loads(processed)
+        except (orjson.JSONDecodeError, TypeError):
+            return None
+        return event if isinstance(event, dict) else None
+
+    @staticmethod
+    def _error_message(event: Dict[str, Any]) -> str:
+        """Build a useful error for failed/incomplete/error terminal events."""
+        event_type = str(event.get("type") or "error")
+        response = event.get("response")
+        details: Any = event.get("error")
+        if isinstance(response, dict):
+            details = (
+                response.get("error")
+                or response.get("incomplete_details")
+                or response.get("status")
+            )
+        return f"Responses stream ended with {event_type}: {details or event}"
+
+    @staticmethod
+    def _record_first_delta(
+        event: Dict[str, Any],
+        metrics: StreamMetrics,
+        start_time: float,
+    ) -> None:
+        """Record first non-empty delta belonging to any output item."""
+        event_type = str(event.get("type") or "")
+        delta = event.get("delta")
+        has_delta = (isinstance(delta, str) and bool(delta)) or (
+            isinstance(delta, (dict, list, tuple, bytes)) and bool(delta)
+        )
+        if (
+            metrics.first_token_received
+            or not event.get("item_id")
+            or not event_type.endswith(".delta")
+            or not has_delta
+        ):
+            return
+
+        current_perf = time.perf_counter()
+        metrics.first_token_received = True
+        metrics.first_output_token_time = time.time()
+        metrics._first_output_token_perf = current_perf
+        if start_time > 0:
+            EventManager.fire_metric_event(
+                "Time_to_first_output_token",
+                (current_perf - start_time) * 1000,
+                0,
+            )
+
+    @staticmethod
+    def _append_delta(event: Dict[str, Any], metrics: StreamMetrics) -> None:
+        """Retain text/reasoning/tool deltas for logging and token fallback."""
+        delta = event.get("delta")
+        if not isinstance(delta, str) or not delta:
+            return
+        event_type = str(event.get("type") or "")
+        if event_type in RESPONSES_REASONING_DELTA_EVENTS:
+            if metrics._reasoning_size + len(delta) <= MAX_STREAM_CONTENT_SIZE:
+                metrics._reasoning_parts.append(delta)
+                metrics._reasoning_size += len(delta)
+            return
+        if event_type in RESPONSES_TEXT_DELTA_EVENTS or "arguments" in event_type:
+            if metrics._content_size + len(delta) <= MAX_STREAM_CONTENT_SIZE:
+                metrics._content_parts.append(delta)
+                metrics._content_size += len(delta)
+
+    @staticmethod
+    def _handle_item_event(event: Dict[str, Any], metrics: StreamMetrics) -> None:
+        """Track item.added -> item.done by item id and emit lifecycle metrics."""
+        event_type = str(event.get("type") or "")
+        item = event.get("item")
+        if not isinstance(item, dict):
+            return
+        item_id = str(item.get("id") or event.get("item_id") or "").strip()
+        if not item_id:
+            return
+
+        if event_type == "response.output_item.added":
+            if item_id not in metrics.output_items:
+                item_type = str(item.get("type") or "other")
+                try:
+                    output_index = int(event.get("output_index", 0))
+                except (TypeError, ValueError):
+                    output_index = 0
+                metrics.output_items[item_id] = OutputItemLifecycle(
+                    item_id=item_id,
+                    output_index=output_index,
+                    item_type=item_type,
+                    category=ResponsesStreamProcessor.classify_item(item_type),
+                    added_perf=time.perf_counter(),
+                )
+            return
+
+        if event_type != "response.output_item.done":
+            return
+        lifecycle = metrics.output_items.get(item_id)
+        if lifecycle is None or lifecycle.done_perf is not None:
+            return
+        lifecycle.done_perf = time.perf_counter()
+        duration_ms = (lifecycle.done_perf - lifecycle.added_perf) * 1000
+        EventManager.fire_metric_event(
+            f"Output_item_{lifecycle.category}_lifecycle", duration_ms, 0
+        )
+
+    @staticmethod
+    def _extract_completed_usage(event: Dict[str, Any], metrics: StreamMetrics) -> None:
+        """Read token usage exclusively from response.completed.response.usage."""
+        response = event.get("response")
+        usage = response.get("usage") if isinstance(response, dict) else None
+        if not isinstance(usage, dict):
+            return
+        metrics.usage = {
+            "prompt_tokens": safe_int_convert(usage.get("input_tokens")),
+            "completion_tokens": safe_int_convert(usage.get("output_tokens")),
+            "total_tokens": safe_int_convert(usage.get("total_tokens")),
+        }
+
+    @staticmethod
+    def process_stream_chunk(
+        chunk: bytes,
+        field_mapping: FieldMapping,
+        start_time: float,
+        metrics: StreamMetrics,
+        task_logger,
+    ) -> Tuple[bool, Optional[str], StreamMetrics]:
+        """Process one Responses SSE line and return terminal/error state."""
+        event = ResponsesStreamProcessor._extract_event(chunk, field_mapping)
+        if event is None:
+            return False, None, metrics
+
+        event_type = str(event.get("type") or "")
+        ResponsesStreamProcessor._handle_item_event(event, metrics)
+        ResponsesStreamProcessor._record_first_delta(event, metrics, start_time)
+        ResponsesStreamProcessor._append_delta(event, metrics)
+
+        if event_type not in RESPONSES_TERMINAL_EVENTS:
+            return False, None, metrics
+
+        metrics.responses_terminal_event = event_type
+        if event_type == "response.completed":
+            response = event.get("response")
+            if not isinstance(response, dict) or response.get("status") != "completed":
+                metrics.responses_error = ResponsesStreamProcessor._error_message(event)
+                return True, metrics.responses_error, metrics
+            ResponsesStreamProcessor._extract_completed_usage(event, metrics)
+            return True, None, metrics
+
+        metrics.responses_error = ResponsesStreamProcessor._error_message(event)
+        return True, metrics.responses_error, metrics
+
+
 # === REQUEST HANDLERS ===
 class PayloadBuilder:
     """Handles different types of API requests with dataset integration.
 
     Architecture:
-    - Type-specific updaters: Each API type (openai-chat, claude-chat, embeddings)
+    - Type-specific updaters: Each API type (openai-chat, openai-responses,
+      claude-chat, embeddings)
       has a dedicated method that understands its specific payload format
     - Preservation of user config: All methods preserve original payload parameters
       (model, stream, max_tokens, etc.) and only update dataset-related fields
@@ -471,9 +669,10 @@ class PayloadBuilder:
 
     Payload Update Strategy by API Type:
     1. openai-chat: Updates messages array, preserves system messages, adds/updates user message
-    2. claude-chat: Updates messages array, preserves all params, adds/updates user message
-    3. embeddings: Only updates input field, preserves model and other params
-    4. custom-chat: Uses field_mapping for flexible field updates
+    2. openai-responses: Updates the input field
+    3. claude-chat: Updates messages array, preserves all params, adds/updates user message
+    4. embeddings: Only updates input field, preserves model and other params
+    5. custom-chat: Uses field_mapping for flexible field updates
     """
 
     def __init__(self, config: GlobalConfig, task_logger) -> None:
@@ -498,8 +697,11 @@ class PayloadBuilder:
                 default_payload = {
                     "model": self.config.model_name or "your-model-name",
                     "stream": self.config.stream_mode,
-                    "messages": [{"role": "user", "content": "Hi"}],
                 }
+                if getattr(self.config, "api_type", "") == "openai-responses":
+                    default_payload["input"] = "Hi"
+                else:
+                    default_payload["messages"] = [{"role": "user", "content": "Hi"}]
                 request_payload = orjson.dumps(default_payload).decode("utf-8")
                 self.task_logger.info(
                     "Generated default request payload as none was provided"
@@ -628,6 +830,10 @@ class PayloadBuilder:
             # Route to appropriate updater based on API type
             if api_type == "openai-chat":
                 self._update_openai_chat_payload(
+                    payload, user_prompt, image_url, image_base64, prompt_data
+                )
+            elif api_type == "openai-responses":
+                self._update_openai_responses_payload(
                     payload, user_prompt, image_url, image_base64, prompt_data
                 )
             elif api_type == "claude-chat":
@@ -807,6 +1013,36 @@ class PayloadBuilder:
 
         # Update messages in payload (preserves all other parameters)
         payload["messages"] = messages
+
+    def _update_openai_responses_payload(
+        self,
+        payload: Dict[str, Any],
+        user_prompt: str,
+        image_url: str,
+        image_base64: str,
+        prompt_data: Dict[str, Any] = None,
+    ) -> None:
+        """Update the Responses API ``input`` while preserving other options."""
+        raw_data = prompt_data.get("raw_data") if prompt_data else None
+        if isinstance(raw_data, dict) and "input" in raw_data:
+            payload["input"] = copy.deepcopy(raw_data["input"])
+            return
+
+        dataset_messages = prompt_data.get("messages") if prompt_data else None
+        if dataset_messages:
+            payload["input"] = copy.deepcopy(dataset_messages)
+            return
+
+        if image_url or image_base64:
+            content = [{"type": "input_text", "text": user_prompt}]
+            image_value = (
+                f"data:image/jpeg;base64,{image_base64}" if image_base64 else image_url
+            )
+            content.append({"type": "input_image", "image_url": image_value})
+            payload["input"] = [{"role": "user", "content": content}]
+            return
+
+        payload["input"] = user_prompt
 
     def _update_claude_chat_payload(
         self,
@@ -1085,7 +1321,7 @@ class APIClient:
 
     def handle_stream_request(
         self, client, base_request_kwargs: Dict[str, Any], start_time: float
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, str, Dict[str, Optional[int]]]:
         """Handle streaming API request with comprehensive metrics collection."""
         metrics = StreamMetrics()
         request_kwargs = {
@@ -1103,6 +1339,7 @@ class APIClient:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        is_responses_api = getattr(self.config, "api_type", "") == "openai-responses"
 
         req_id = uuid.uuid4().hex[:8]
         payload_data = request_kwargs.get("json") or request_kwargs.get("data")
@@ -1131,16 +1368,27 @@ class APIClient:
                 try:
                     # Process as streaming response
                     for chunk in self._iter_stream_lines(response):
-                        should_break, error_message, metrics = (
-                            StreamProcessor.process_stream_chunk(
-                                chunk,
-                                field_mapping,
-                                actual_start_time,
-                                metrics,
-                                self.task_logger,
-                                getattr(self.config, "api_type", ""),
+                        if is_responses_api:
+                            should_break, error_message, metrics = (
+                                ResponsesStreamProcessor.process_stream_chunk(
+                                    chunk,
+                                    field_mapping,
+                                    actual_start_time,
+                                    metrics,
+                                    self.task_logger,
+                                )
                             )
-                        )
+                        else:
+                            should_break, error_message, metrics = (
+                                StreamProcessor.process_stream_chunk(
+                                    chunk,
+                                    field_mapping,
+                                    actual_start_time,
+                                    metrics,
+                                    self.task_logger,
+                                    getattr(self.config, "api_type", ""),
+                                )
+                            )
 
                         if should_break:
                             if error_message:
@@ -1162,6 +1410,22 @@ class APIClient:
                                 return "", "", usage
                             # Normal end of stream, break the loop
                             break
+
+                    if (
+                        is_responses_api
+                        and metrics.responses_terminal_event != "response.completed"
+                    ):
+                        self.error_handler._handle_general_exception_event(
+                            error_msg=(
+                                "Responses stream ended before response.completed"
+                            ),
+                            response=response,
+                            response_time=(time.perf_counter() - start_time) * 1000,
+                            additional_context={"api_path": self.config.api_path},
+                            req_id=req_id,
+                            payload_data=payload_data,
+                        )
+                        return "", "", usage
 
                     # Fire completion events for streaming
                     try:
@@ -1457,6 +1721,29 @@ class APIClient:
                     )
                     return "", "", usage
 
+                api_type = getattr(self.config, "api_type", "")
+                if (
+                    api_type == "openai-responses"
+                    and resp_json.get("status") != "completed"
+                ):
+                    terminal_error = (
+                        resp_json.get("error")
+                        or resp_json.get("incomplete_details")
+                        or resp_json.get("status")
+                    )
+                    self.error_handler._handle_general_exception_event(
+                        error_msg=(
+                            "Responses request did not complete successfully: "
+                            f"{terminal_error}"
+                        ),
+                        response=response,
+                        response_time=total_time,
+                        additional_context={"api_path": self.config.api_path},
+                        req_id=req_id,
+                        payload_data=payload_data,
+                    )
+                    return "", "", usage
+
                 EventManager.fire_metric_event(
                     METRIC_TTT,
                     total_time,
@@ -1466,7 +1753,6 @@ class APIClient:
                 # Extract usage and content using FieldMapping
                 usage = self._extract_usage_from_response(resp_json, field_mapping)
 
-                api_type = getattr(self.config, "api_type", "")
                 if api_type == "openai-chat":
                     choices = resp_json.get("choices", [])
                     if choices and isinstance(choices, list) and len(choices) > 0:
@@ -1489,6 +1775,25 @@ class APIClient:
                     reasoning_content = StreamProcessor.get_field_value(
                         resp_json, field_mapping.reasoning_content
                     )
+                if api_type == "openai-responses":
+                    content_parts = []
+                    reasoning_parts = []
+                    for item in resp_json.get("output", []):
+                        if not isinstance(item, dict):
+                            continue
+                        target = (
+                            reasoning_parts
+                            if item.get("type") == "reasoning"
+                            else content_parts
+                        )
+                        for part in item.get("content", []):
+                            if not isinstance(part, dict):
+                                continue
+                            text_value = part.get("text") or part.get("summary")
+                            if isinstance(text_value, str):
+                                target.append(text_value)
+                    content = "".join(content_parts)
+                    reasoning_content = "".join(reasoning_parts)
                 response.success()
                 if payload_data:
                     self.task_logger.opt(lazy=True).debug(

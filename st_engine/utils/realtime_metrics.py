@@ -93,6 +93,7 @@ def collect_realtime_snapshot(
 
     if include_entries:
         metrics: Dict[str, Dict[str, Any]] = {}
+        primary_entries = []
         for (name, _method), entry in environment.stats.entries.items():
             if name in ("Aggregated", "Total") or entry.num_requests == 0:
                 continue
@@ -101,7 +102,35 @@ def collect_realtime_snapshot(
                 "current_rps": round(entry.current_rps, 2),
                 "current_fail_per_sec": round(entry.current_fail_per_sec, 2),
             }
+            # Custom latency/item measurements use request_type="metric".
+            # Keep the headline RPS/failure series tied to real HTTP requests.
+            if _method != "metric":
+                primary_entries.append(entry)
         snapshot["metrics"] = metrics
+
+        if primary_entries:
+            request_count = sum(entry.num_requests for entry in primary_entries)
+            failure_count = sum(entry.num_failures for entry in primary_entries)
+            weighted_latency = sum(
+                entry.avg_response_time * entry.num_requests
+                for entry in primary_entries
+            )
+            snapshot.update(
+                {
+                    "current_rps": round(
+                        sum(entry.current_rps for entry in primary_entries), 2
+                    ),
+                    "current_fail_per_sec": round(
+                        sum(entry.current_fail_per_sec for entry in primary_entries),
+                        2,
+                    ),
+                    "avg_response_time": round(
+                        weighted_latency / request_count if request_count else 0, 2
+                    ),
+                    "total_requests": request_count,
+                    "total_failures": failure_count,
+                }
+            )
 
     return snapshot
 

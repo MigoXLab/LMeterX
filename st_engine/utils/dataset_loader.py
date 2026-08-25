@@ -197,11 +197,17 @@ def _parse_json_obj(
             prompt = extract_prompt_from_conversations(conversations)
     elif messages_list:
         prompt = extract_prompt_from_messages(messages_list)
+    elif api_type == "openai-responses" and "input" in json_obj:
+        raw_input = json_obj.get("input")
+        if isinstance(raw_input, str):
+            prompt = raw_input
+        elif isinstance(raw_input, list):
+            prompt = extract_prompt_from_messages(raw_input)
 
     if not prompt and not messages_list:
-        # For embeddings and custom-chat, allow items with no prompt/messages
+        # Raw-payload APIs can carry valid data without prompt/messages.
         # as long as json_obj has actual data (passed via raw_data).
-        if api_type in ("embeddings", "custom-chat"):
+        if api_type in ("openai-responses", "embeddings", "custom-chat"):
             if len(json_obj) == 0:
                 return None
         else:

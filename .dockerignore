@@ -27,4 +27,6 @@ st_engine/tests/
 # Runtime data must be mounted, never baked into application images
 logs/
 upload_files/
-data/
+
+# Keep data/ in the build context: the engine image copies the built-in
+# benchmark datasets to /app/data.

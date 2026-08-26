@@ -29,6 +29,7 @@ import { api } from '../api/apiClient';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Collection } from '../types/collection';
 import { getStoredUser } from '../utils/auth';
+import { getLdapEnabled } from '../utils/runtimeConfig';
 
 const { Text, Paragraph } = Typography;
 const { TextArea, Search } = Input;
@@ -46,6 +47,7 @@ const Collections: React.FC = () => {
   });
   const [search, setSearch] = useState('');
   const currentUser = getStoredUser();
+  const LDAP_ENABLED = getLdapEnabled();
 
   const fetchCollections = async (
     page = 1,
@@ -139,15 +141,17 @@ const Collections: React.FC = () => {
       <div className='jobs-content-wrapper' style={{ padding: '0 24px' }}>
         <div className='jobs-toolbar'>
           <div className='jobs-toolbar-left'>
-            <Button
-              type='primary'
-              className='modern-button-primary'
-              icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
-              disabled={loading}
-            >
-              {t('pages.collections.create')}
-            </Button>
+            {(!LDAP_ENABLED || currentUser) && (
+              <Button
+                type='primary'
+                className='modern-button-primary'
+                icon={<PlusOutlined />}
+                onClick={() => setIsModalVisible(true)}
+                disabled={loading}
+              >
+                {t('pages.collections.create')}
+              </Button>
+            )}
           </div>
           <div className='jobs-toolbar-right'>
             <Search

@@ -241,6 +241,7 @@ class TestErrorHandlerStreamTimeout:
         handler, task_logger = error_handler
         error = OSError("Read timed out. (read timeout=1800)")
         mock_response = MagicMock()
+        mock_response.headers = {}
 
         handler._handle_stream_error(
             error, mock_response, time.perf_counter(), "/v1/chat/completions"
@@ -251,12 +252,41 @@ class TestErrorHandlerStreamTimeout:
         assert "[Client idle timeout]" in warning_msg
         assert "1800 seconds" in warning_msg
         assert "fallback timeout mechanism" in warning_msg
+        error_log = task_logger.error.call_args[0][0]
+        assert "traceparent" not in error_log
+
+    def test_read_timeout_warning_includes_traceparent(self, error_handler):
+        """Read timeout warning should include a log-safe traceparent when present."""
+        handler, task_logger = error_handler
+        error = OSError("Read timed out. (read timeout=1800)")
+        mock_response = MagicMock()
+        mock_response.headers = {
+            "traceparent": (
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-" "00f067aa0ba902b7-01\r\n"
+            )
+        }
+
+        handler._handle_stream_error(
+            error, mock_response, time.perf_counter(), "/v1/chat/completions"
+        )
+
+        warning_msg = task_logger.warning.call_args[0][0]
+        assert (
+            "traceparent: "
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-"
+            "00f067aa0ba902b7-01" in warning_msg
+        )
+        assert "\r" not in warning_msg
+        assert "\n" not in warning_msg
 
     def test_connection_reset_not_flagged_as_timeout(self, error_handler):
         """OSError with 'Connection reset' should NOT trigger timeout warning."""
         handler, task_logger = error_handler
         error = OSError("Connection reset by peer")
         mock_response = MagicMock()
+        mock_response.headers = {
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        }
 
         handler._handle_stream_error(
             error, mock_response, time.perf_counter(), "/v1/chat/completions"
@@ -266,3 +296,11 @@ class TestErrorHandlerStreamTimeout:
         task_logger.warning.assert_not_called()
         # Should still log error via _handle_general_exception_event
         task_logger.error.assert_called_once()
+        error_log = task_logger.error.call_args[0][0]
+        assert "Network connection error: Connection reset by peer" in error_log
+        assert " | Request elapsed: " in error_log
+        assert error_log.endswith(" ms")
+        assert (
+            "traceparent: "
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" in error_log
+        )

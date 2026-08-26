@@ -7,6 +7,10 @@
 import { message } from 'antd';
 import axios from 'axios';
 import { getApiBaseUrl } from './runtimeConfig';
+import {
+  handleUnauthorizedError,
+  waitForLoginRedirect,
+} from './sessionExpired';
 
 // Create axios instance
 const request = axios.create({
@@ -44,6 +48,10 @@ request.interceptors.response.use(
     return response.data;
   },
   error => {
+    if (handleUnauthorizedError(error)) {
+      return waitForLoginRedirect();
+    }
+
     // Log error details for debugging
     console.error('Request error:', error);
 

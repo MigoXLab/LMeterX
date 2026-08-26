@@ -46,10 +46,11 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { httpTaskApi, skillApi } from '@/api/services';
+import { httpTaskApi, skillApi, clusterApi } from '@/api/services';
+import { Cluster } from '@/types/job';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -132,6 +133,39 @@ const WebOneClickModal: React.FC<Props> = ({
   const [loadtestConfigs, setLoadtestConfigs] = useState<LoadtestConfig[]>([]);
   const [analysisSummary, setAnalysisSummary] = useState('');
   const [llmUsed, setLlmUsed] = useState(false);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+  const [selectedClusterId, setSelectedClusterId] = useState<string>('');
+
+  useEffect(() => {
+    if (open) {
+      setClustersLoading(true);
+      clusterApi
+        .getAllClusters()
+        .then(res => {
+          const list = Array.isArray(res)
+            ? res
+            : Array.isArray((res as any)?.data)
+              ? (res as any).data
+              : Array.isArray((res as any)?.data?.clusters)
+                ? (res as any).data.clusters
+                : [];
+          const sorted = [...list].sort((a, b) => {
+            const aHasSlots = (a.available_slots || 0) > 0;
+            const bHasSlots = (b.available_slots || 0) > 0;
+            if (aHasSlots && !bHasSlots) return -1;
+            if (!aHasSlots && bHasSlots) return 1;
+            return (a.id || '').localeCompare(b.id || '');
+          });
+          setClusters(sorted);
+          if (sorted.length > 0 && !selectedClusterId) {
+            setSelectedClusterId(sorted[0].id);
+          }
+        })
+        .catch(() => setClusters([]))
+        .finally(() => setClustersLoading(false));
+    }
+  }, [open, selectedClusterId]);
 
   // Removed (deleted) API URLs
   const [removedApis, setRemovedApis] = useState<Set<string>>(new Set());
@@ -192,6 +226,7 @@ const WebOneClickModal: React.FC<Props> = ({
     setRemovedApis(new Set());
     setTestResult(null);
     setBatchCreating(false);
+    setSelectedClusterId('');
   }, []);
 
   const handleClose = useCallback(() => {
@@ -297,48 +332,68 @@ const WebOneClickModal: React.FC<Props> = ({
   }, []);
 
   /** Test API connectivity */
-  const handleTestApi = useCallback(async (api: DiscoveredApi) => {
-    const key = api.target_url;
-    setApiStates(prev => ({ ...prev, [key]: 'testing' }));
-    try {
-      const resp = await httpTaskApi.testJob({
-        method: api.method,
-        target_url: api.target_url,
-        headers: api.headers || [],
-        cookies: [],
-        request_body: api.request_body || undefined,
-      });
-      const data = resp.data as any;
-      const httpStatus = data?.http_status ?? data?.status_code ?? data?.status;
-      const isSuccess =
-        httpStatus != null && httpStatus >= 200 && httpStatus < 300;
-      setApiStates(prev => ({
-        ...prev,
-        [key]: isSuccess ? 'tested-ok' : 'tested-fail',
-      }));
-      if (httpStatus != null) {
-        setApiTestStatusCodes(prev => ({ ...prev, [key]: httpStatus }));
+  const handleTestApi = useCallback(
+    async (api: DiscoveredApi) => {
+      const key = api.target_url;
+
+      setApiStates(prev => ({ ...prev, [key]: 'testing' }));
+      try {
+        const resp = await httpTaskApi.testJob({
+          method: api.method,
+          target_url: api.target_url,
+          headers: api.headers || [],
+          cookies: [],
+          request_body: api.request_body || undefined,
+          cluster_id: selectedClusterId || undefined,
+        });
+        const data = resp.data as any;
+        const httpStatus = data?.http_status ?? data?.status_code;
+        const isSuccess =
+          httpStatus != null && httpStatus >= 200 && httpStatus < 300;
+
+        // Handle error responses from engine probe (connection error, timeout, etc.)
+        if (data?.status === 'error' && data?.error && httpStatus == null) {
+          setApiStates(prev => ({ ...prev, [key]: 'tested-fail' }));
+          setTestResult({
+            apiUrl: api.target_url,
+            error: data.error,
+          });
+          return;
+        }
+
+        setApiStates(prev => ({
+          ...prev,
+          [key]: isSuccess ? 'tested-ok' : 'tested-fail',
+        }));
+        if (httpStatus != null) {
+          setApiTestStatusCodes(prev => ({ ...prev, [key]: httpStatus }));
+        }
+        setTestResult({
+          apiUrl: api.target_url,
+          status: httpStatus,
+          body:
+            typeof data?.response_body === 'string'
+              ? data.response_body
+              : JSON.stringify(
+                  data?.response_body ?? data?.body ?? data,
+                  null,
+                  2
+                ),
+        });
+      } catch (err: any) {
+        setApiStates(prev => ({ ...prev, [key]: 'tested-fail' }));
+        setTestResult({
+          apiUrl: api.target_url,
+          error:
+            err?.data?.detail ||
+            err?.data?.message ||
+            err?.statusText ||
+            String(err),
+        });
       }
-      setTestResult({
-        apiUrl: api.target_url,
-        status: httpStatus,
-        body:
-          typeof data?.response_body === 'string'
-            ? data.response_body
-            : JSON.stringify(data?.response_body ?? data, null, 2),
-      });
-    } catch (err: any) {
-      setApiStates(prev => ({ ...prev, [key]: 'tested-fail' }));
-      setTestResult({
-        apiUrl: api.target_url,
-        error:
-          err?.data?.detail ||
-          err?.data?.message ||
-          err?.statusText ||
-          String(err),
-      });
-    }
-  }, []);
+    },
+    [clusters, selectedClusterId, messageApi, t]
+  );
 
   /** Launch load test for a single API */
   const handleLaunchSingle = useCallback(
@@ -360,6 +415,7 @@ const WebOneClickModal: React.FC<Props> = ({
           duration: cfg.duration,
           spawn_rate: cfg.spawn_rate,
           load_mode: cfg.load_mode || 'fixed',
+          cluster_id: selectedClusterId || undefined,
         });
         setApiStates(prev => ({ ...prev, [key]: 'created' }));
         messageApi.success(`${t('pages.jobs.createSuccess')} — ${cfg.name}`);
@@ -376,7 +432,7 @@ const WebOneClickModal: React.FC<Props> = ({
         );
       }
     },
-    [configMap, messageApi, onTaskCreated, t]
+    [configMap, messageApi, onTaskCreated, selectedClusterId, t]
   );
 
   /** Batch-create load test tasks for all visible, un-created APIs */
@@ -413,6 +469,7 @@ const WebOneClickModal: React.FC<Props> = ({
           duration: cfg.duration,
           spawn_rate: cfg.spawn_rate,
           load_mode: cfg.load_mode || 'fixed',
+          cluster_id: selectedClusterId || undefined,
         });
       })
     );
@@ -456,7 +513,15 @@ const WebOneClickModal: React.FC<Props> = ({
         })
       );
     }
-  }, [visibleApis, apiStates, configMap, messageApi, onTaskCreated, t]);
+  }, [
+    visibleApis,
+    apiStates,
+    configMap,
+    messageApi,
+    onTaskCreated,
+    selectedClusterId,
+    t,
+  ]);
 
   /* ─────────── Render helpers ─────────── */
 
@@ -997,7 +1062,7 @@ const WebOneClickModal: React.FC<Props> = ({
             type='primary'
             icon={<RocketOutlined />}
             loading={state === 'creating'}
-            disabled={isCreated || !cfg}
+            disabled={isCreated || !cfg || !selectedClusterId}
             onClick={() => handleLaunchSingle(api.target_url)}
           >
             {isCreated
@@ -1027,6 +1092,45 @@ const WebOneClickModal: React.FC<Props> = ({
           style={{ marginBottom: 16 }}
         />
       )}
+
+      {/* Load Testing Environment Selection */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          background: '#fafbff',
+          border: '1px solid #eceffd',
+          borderRadius: 10,
+          padding: '12px 16px',
+          marginBottom: 16,
+        }}
+      >
+        <span
+          style={{
+            fontWeight: 500,
+            fontSize: 14,
+            color: '#333',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {t('components.createHttpTaskForm.env', 'Load Testing Environment')}
+        </span>
+        <Select
+          placeholder={t(
+            'components.createHttpTaskForm.envPlaceholder',
+            'Select Load Testing Environment'
+          )}
+          loading={clustersLoading}
+          value={selectedClusterId || undefined}
+          onChange={setSelectedClusterId}
+          style={{ flex: 1, maxWidth: 350 }}
+          options={clusters.map(c => ({
+            value: c.id,
+            label: `${c.name} (${t('components.createHttpTaskForm.envSlots', { slots: c.available_slots, defaultValue: `${c.available_slots} schedulable tasks` })})`,
+          }))}
+        />
+      </div>
 
       {/* Scrollable API card list */}
       <div
@@ -1072,7 +1176,7 @@ const WebOneClickModal: React.FC<Props> = ({
               type='primary'
               icon={<SendOutlined />}
               loading={batchCreating}
-              disabled={batchCreatableCount === 0}
+              disabled={batchCreatableCount === 0 || !selectedClusterId}
               onClick={handleBatchCreate}
             >
               {t('components.webOneClick.batchCreate', 'Batch Create')}

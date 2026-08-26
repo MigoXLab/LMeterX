@@ -6,11 +6,12 @@ Copyright (c) 2025, All Rights Reserved.
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from service.monitoring_service import (
     get_available_engines,
     get_engine_resource_metrics,
+    get_engines_by_cluster,
     get_task_perf_metrics_from_vm,
 )
 from utils.logger import logger
@@ -26,6 +27,18 @@ async def list_engines():
         return {"status": "success", "data": engines}
     except Exception as e:
         logger.error("Failed to list engines: {}", e, exc_info=True)
+        return {"status": "error", "data": [], "error": str(e)}
+
+
+@router.get("/engines-by-cluster", response_model=Dict[str, Any])
+async def list_engines_by_cluster(request: Request):
+    """Get engines grouped by cluster, for multi-cluster log viewing."""
+    try:
+        db = request.state.db
+        data = await get_engines_by_cluster(db)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        logger.error("Failed to list engines by cluster: {}", e, exc_info=True)
         return {"status": "error", "data": [], "error": str(e)}
 
 

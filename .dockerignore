@@ -1,0 +1,30 @@
+# Version control and local tooling
+.git/
+.agents/
+.claude/
+.codex/
+.openclaw/
+
+# Local secrets and Python environments
+**/.env
+**/.env.local
+**/.env.*.local
+**/.venv/
+**/venv/
+
+# Dependencies, caches, tests, and generated reports
+**/node_modules/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/htmlcov/
+**/coverage.xml
+backend/tests/
+st_engine/tests/
+
+# Runtime data must be mounted, never baked into application images
+logs/
+upload_files/
+data/

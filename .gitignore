@@ -2,10 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
 .pytest_cache/
 .mypy_cache
 .pytest_cache
-
+.*_cache
 
 # vscode
 .vscode/
@@ -14,6 +15,7 @@ __pycache__/
 logs/
 log/
 *.log
+*.bak
 output/
 results/
 upload_files/
@@ -23,15 +25,21 @@ tmp/
 dist/
 node_modules
 
-# k8s deployment
+# k8s deployment / cluster credentials
 k8s/
 *.k8s
-*-k8s
+*-k8s.*
 *.k8s.*
+*k8s.conf
+default-k8s.conf
+kubeconfig
+*.kubeconfig
+.kube/
 
 # ci
 build/
 ci/
+.gitlab-ci.yml
 
 # code check
 code_check/
@@ -40,8 +48,17 @@ coverage.xml
 bandit-report.json
 htmlcov
 
-# env
+# env (keep *.example / frontend Vite env files tracked)
+.env
+**/.env
+.env.local
+**/.env.local
+.env.*.local
 backend/.env
 st_engine/.env
+.openclaw/.env
+.openclaw/.env.local
 
+# dependencies & artifacts
+.claude/skills/*/scripts/.deps/
 .openclaw/skills/.artifacts/

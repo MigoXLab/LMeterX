@@ -6,6 +6,7 @@ Copyright (c) 2025, All Rights Reserved.
 # === TASK STATUS CONSTANTS ===
 TASK_STATUS_CREATED = "created"
 TASK_STATUS_QUEUING = "queuing"
+TASK_STATUS_LOCKED = "locked"
 TASK_STATUS_RUNNING = "running"
 TASK_STATUS_STOPPING = "stopping"
 TASK_STATUS_STOPPED = "stopped"
@@ -26,6 +27,7 @@ __all__ = [
     # task status
     "TASK_STATUS_CREATED",
     "TASK_STATUS_QUEUING",
+    "TASK_STATUS_LOCKED",
     "TASK_STATUS_RUNNING",
     "TASK_STATUS_STOPPING",
     "TASK_STATUS_STOPPED",

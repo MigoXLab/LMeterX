@@ -120,6 +120,13 @@ class HttpTaskCreateReq(BaseModel):
         description="Duration to sustain at max users in seconds",
     )
 
+    # -- Cluster routing --
+    cluster_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Target cluster ID for task execution. If None, uses default cluster.",
+    )
+
     @validator("load_mode")
     def validate_load_mode(cls, v: str) -> str:
         if v not in ("fixed", "stepped"):
@@ -297,6 +304,11 @@ class HttpTaskTestReq(BaseModel):
     request_body: Optional[str] = Field(
         default=None, max_length=100000, description="Request body (raw text/JSON)"
     )
+    cluster_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Cluster to proxy test through (if omitted, test runs from backend directly)",
+    )
 
     @validator("method")
     def validate_method(cls, v: str) -> str:
@@ -465,6 +477,7 @@ class HttpTask(Base):
     result_file = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     engine_id = Column(String(64), nullable=True)
+    cluster_id = Column(String(64), nullable=True)
     is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

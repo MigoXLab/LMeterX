@@ -51,7 +51,9 @@ class StatsManager:
         """
         stats = self.global_state.token_stats
         start_time = self.global_state.start_time
-        end_time = time.perf_counter()
+        # test_stop captures this before token draining / worker synchronization,
+        # so reporting overhead is not included in throughput denominators.
+        end_time = self.global_state.end_time or time.perf_counter()
 
         # Calculate execution time with fallback strategy
         execution_time = 0.0
@@ -149,3 +151,30 @@ class StatsManager:
         except Exception as e:
             self.task_logger.error(f"Failed to get Locust statistics: {e}")
             return []
+
+    def get_locust_errors(self, environment_stats) -> List[Dict[str, Any]]:
+        """Return bounded, JSON-safe request error summaries for reporting.
+
+        Locust keeps these errors separately from its aggregate stat rows. If
+        they are not copied into the result artifact, the UI can show only a
+        failure count and loses the reason for failures such as status code 0.
+        """
+        summaries: List[Dict[str, Any]] = []
+        try:
+            for stats_error in list(environment_stats.errors.values())[:20]:
+                error_text = str(getattr(stats_error, "error", "") or "")
+                is_network_error = "Network error (no HTTP response)" in error_text
+                summaries.append(
+                    {
+                        "method": str(getattr(stats_error, "method", "") or ""),
+                        "name": str(getattr(stats_error, "name", "") or ""),
+                        "error": error_text[:2000],
+                        "occurrences": int(getattr(stats_error, "occurrences", 0) or 0),
+                        "category": (
+                            "network_error" if is_network_error else "request_error"
+                        ),
+                    }
+                )
+        except Exception as e:
+            self.task_logger.warning(f"Failed to collect Locust errors: {e}")
+        return summaries

@@ -39,34 +39,35 @@ stats_manager = StatsManager()
 _async_token_counter = AsyncTokenCounter()
 
 
-def _has_successful_token_usage(
+def _has_token_data(
     reasoning_content: str,
     content: str,
-    usage: Optional[Dict[str, Any]],
+    usage: Optional[Dict[str, Optional[int]]],
 ) -> bool:
-    """Return True only when a request produced countable tokens.
-
-    Failed handlers return empty response text plus a zeroed usage dict.
-    A non-empty dict is always truthy in Python, so callers must check
-    actual token values rather than dict emptiness. Otherwise failed
-    requests still enter token counting and inflate Input_tokens via
-    tiktoken estimates of the original prompt.
-    """
+    """Return whether a completed response contains token-accounting data."""
     if reasoning_content or content:
         return True
-    if not usage:
-        return False
-    for key in (
-        "prompt_tokens",
-        "input_tokens",
-        "completion_tokens",
-        "output_tokens",
-        "total_tokens",
-    ):
-        value = usage.get(key)
-        if isinstance(value, (int, float)) and value > 0:
-            return True
-    return False
+    return bool(
+        usage
+        and any(
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value > 0
+            for value in usage.values()
+        )
+    )
+
+
+def _should_report_token_stats(
+    reasoning_content: str,
+    content: str,
+    usage: Optional[Dict[str, Optional[int]]],
+) -> bool:
+    """Report tokens only after the request handler finalized successfully."""
+    return bool(
+        getattr(usage, "request_succeeded", False)
+        and _has_token_data(reasoning_content, content, usage)
+    )
 
 
 def _report_token_stats(
@@ -84,8 +85,6 @@ def _report_token_stats(
 
     Called both from the synchronous fast path (inline) and from the async
     slow path (in background greenlet, after thread pool computation).
-    Failed requests must not reach this function; Input_tokens should
-    only include successful requests.
     """
     if completion_tokens <= 0 and total_tokens <= 0:
         return
@@ -223,7 +222,9 @@ def _register_master_message_handlers(environment, task_logger):
         task_logger.warning(f"Error registering message handlers: {exc}")
 
 
-def _write_result_file(task_id, final_stats, locust_stats, task_logger) -> str:
+def _write_result_file(
+    task_id, final_stats, locust_stats, task_logger, request_errors=None
+) -> str:
     """Persist aggregated metrics to a temporary location."""
     result_file = os.path.join(
         tempfile.gettempdir(), "locust_result", task_id, "result.json"
@@ -235,6 +236,7 @@ def _write_result_file(task_id, final_stats, locust_stats, task_logger) -> str:
             {
                 "custom_metrics": final_stats,
                 "locust_stats": locust_stats,
+                "request_errors": request_errors or [],
             },
             f,
             indent=4,
@@ -418,7 +420,9 @@ def on_locust_init(environment, **kwargs):
             task_logger.debug(
                 "Running in warmup mode - token stats will not be collected"
             )
-        global_state.start_time = time.perf_counter()
+        # The measured interval starts at test_start, not during Locust setup.
+        global_state.start_time = None
+        global_state.end_time = None
 
         # Register message handlers
         _register_master_message_handlers(environment, task_logger)
@@ -458,6 +462,9 @@ def on_test_start(environment, **kwargs):
     task_logger = global_state.get_task_logger(task_id)
     load_mode = os.environ.get("LOAD_MODE", "fixed")
     task_logger.info(f"LLM API load test started. load_mode={load_mode}")
+    global_state.reset_token_stats()
+    global_state.start_time = time.perf_counter()
+    global_state.end_time = None
 
     # Spawn background greenlet for real-time metrics collection
     # include_entries=True  -> capture per-metric detail for LLM charts
@@ -474,6 +481,11 @@ def on_test_stop(environment, **kwargs):
 
         task_logger = global_state.get_task_logger(global_state.config.task_id)
         runner = environment.runner
+
+        # Freeze the load-test interval before async token draining, worker
+        # synchronization, and result persistence add reporting overhead.
+        if global_state.end_time is None:
+            global_state.end_time = time.perf_counter()
 
         # Stop real-time metrics greenlet
         greenlet = getattr(environment, "_realtime_greenlet", None)
@@ -523,8 +535,16 @@ def on_test_stop(environment, **kwargs):
             task_logger.warning(f"Failed to get final stats: {e}")
             final_stats = {}
 
+        request_errors = stats_manager.get_locust_errors(environment.stats)
+
         try:
-            _write_result_file(task_id, final_stats, locust_stats, task_logger)
+            _write_result_file(
+                task_id,
+                final_stats,
+                locust_stats,
+                task_logger,
+                request_errors=request_errors,
+            )
         except Exception as e:
             task_logger.error(f"Failed to write result file: {e}")
 
@@ -669,6 +689,10 @@ class LLMTestUser(HttpUser):
             self.task_logger.error(
                 "Failed to generate request arguments. Skipping task."
             )
+            EventManager.fire_failure_event(
+                name=self.config.api_path or "failure",
+                exception=ValueError("Failed to generate request arguments"),
+            )
             return
 
         start_time = time.perf_counter()
@@ -722,7 +746,7 @@ class LLMTestUser(HttpUser):
             except Exception as inner_e:
                 self.task_logger.warning(f"Failed to record failure event: {inner_e}")
 
-        if _has_successful_token_usage(reasoning_content, content, usage):
+        if _should_report_token_stats(reasoning_content, content, usage):
             self._log_token_counts(user_prompt or "", reasoning_content, content, usage)
 
     def stop(self, force=False):
@@ -730,8 +754,6 @@ class LLMTestUser(HttpUser):
         Override the default stop method to handle duplicate stop attempts gracefully.
         This prevents the "stopping state" exception when Locust receives multiple stop signals.
         """
-        global _shutdown_in_progress
-
         # If we're already in shutdown process, return gracefully
         if _shutdown_in_progress:
             return

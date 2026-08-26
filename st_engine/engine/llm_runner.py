@@ -6,6 +6,7 @@ Copyright (c) 2025, All Rights Reserved.
 import json
 import math
 import os
+import re
 import shutil
 import subprocess  # nosec B404
 import tempfile
@@ -35,7 +36,12 @@ from engine.process_manager import (
 )
 from model.llm_task import Task
 from utils.common import mask_sensitive_command
-from utils.logger import logger
+from utils.logger import (
+    cleanup_subprocess_log_transport,
+    enable_subprocess_log_transport,
+    forward_subprocess_log_line,
+    logger,
+)
 
 
 class _OutputTailBuffer:
@@ -86,6 +92,33 @@ class LlmLocustRunner:
     _WARMUP_DURATION_SECONDS = 120
     _WARMUP_COOLDOWN_SECONDS = 3
     _WARMUP_STOP_TIMEOUT_SECONDS = 10
+    _SUMMARY_STATS_RE = re.compile(
+        r"^\s*(?P<method>[A-Z]+)\s+"
+        r"(?P<name>.+?)\s+"
+        r"(?P<reqs>\d+)\s+"
+        r"(?P<fails>\d+)\([^)]+\)\s+\|\s+"
+        r"(?P<avg>[\d.]+)\s+"
+        r"(?P<min>[\d.]+)\s+"
+        r"(?P<max>[\d.]+)\s+"
+        r"(?P<med>[\d.]+)\s+\|\s+"
+        r"(?P<rps>[\d.]+)"
+    )
+    _SUMMARY_PERCENTILE_RE = re.compile(
+        r"^\s*(?P<method>[A-Z]+)\s+"
+        r"(?P<name>.+?)\s+"
+        r"(?P<p50>[\d.]+)\s+"
+        r"(?P<p66>[\d.]+)\s+"
+        r"(?P<p75>[\d.]+)\s+"
+        r"(?P<p80>[\d.]+)\s+"
+        r"(?P<p90>[\d.]+)\s+"
+        r"(?P<p95>[\d.]+)\s+"
+        r"(?P<p98>[\d.]+)\s+"
+        r"(?P<p99>[\d.]+)\s+"
+        r"(?P<p999>[\d.]+)\s+"
+        r"(?P<p9999>[\d.]+)\s+"
+        r"(?P<p100>[\d.]+)\s+"
+        r"(?P<reqs>\d+)\s*$"
+    )
 
     def __init__(self, base_dir: str):
         """Create a runner rooted at the given repository directory."""
@@ -298,6 +331,9 @@ class LlmLocustRunner:
         env = os.environ.copy()
         env["TASK_ID"] = warmup_task_id
         env["LOCUST_CONCURRENT_USERS"] = str(warmup_users)
+        # The parent process owns task log collection and SLS delivery.
+        env["SLS_ENABLED"] = "false"
+        enable_subprocess_log_transport(env)
         # Warmup uses INFO level to avoid OOM from large payloads (e.g. base64
         # images) being repr'd into DEBUG log lines in each worker process.
         if "LOG_LEVEL" not in env:
@@ -334,7 +370,10 @@ class LlmLocustRunner:
             warmup_process = subprocess.Popen(
                 warmup_cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                # Locust writes its tables to stderr while application logs use
+                # stdout.  Merge both streams so one reader observes the exact
+                # write order and application messages cannot split a table.
+                stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
                 env=env,
@@ -369,17 +408,14 @@ class LlmLocustRunner:
 
             # Read and log warmup output in real-time using threads
             def read_warmup_stream(pipe, prefix):
+                if pipe is None:
+                    return
                 try:
                     for line in iter(pipe.readline, ""):
                         if line.strip():
-                            if " | DEBUG    | " in line or " | DEBUG | " in line:
-                                task_logger.opt(raw=True).debug(f"{line}")
-                            elif " | WARNING  | " in line or " | WARNING | " in line:
-                                task_logger.opt(raw=True).warning(f"{line}")
-                            elif " | ERROR    | " in line or " | ERROR | " in line:
-                                task_logger.opt(raw=True).error(f"{line}")
-                            else:
-                                task_logger.opt(raw=True).info(f"{line}")
+                            forward_subprocess_log_line(
+                                task_logger, line, stream=prefix
+                            )
                     pipe.close()
                 except Exception as e:
                     task_logger.debug(f"Error reading warmup {prefix}: {e}")
@@ -463,6 +499,7 @@ class LlmLocustRunner:
                     task_logger.debug(f"Killed remaining warmup process {pid}")
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
+            cleanup_subprocess_log_transport(warmup_task_id)
 
         # Wait for KV Cache to stabilize
         task_logger.info(
@@ -670,6 +707,9 @@ class LlmLocustRunner:
 
         env = os.environ.copy()
         env["TASK_ID"] = str(task.id)
+        # Avoid uploading the same event from both Locust and its parent.
+        env["SLS_ENABLED"] = "false"
+        enable_subprocess_log_transport(env)
 
         # Use step_max_users in stepped mode, otherwise concurrent_users
         effective_users = (
@@ -713,7 +753,9 @@ class LlmLocustRunner:
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # Preserve ordering between Locust's stderr table rows and the
+            # locustfile's stdout lifecycle messages.
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             env=env,
@@ -755,15 +797,14 @@ class LlmLocustRunner:
             try:
                 for line in iter(pipe.readline, ""):
                     if line.strip():
-                        output_buffer.append(line)
-                        if " | DEBUG    | " in line or " | DEBUG | " in line:
-                            task_logger.opt(raw=True).debug(line)
-                        elif " | WARNING  | " in line or " | WARNING | " in line:
-                            task_logger.opt(raw=True).warning(line)
-                        elif " | ERROR    | " in line or " | ERROR | " in line:
-                            task_logger.opt(raw=True).error(line)
-                        else:
-                            task_logger.opt(raw=True).info(line)
+                        event = forward_subprocess_log_line(
+                            task_logger, line, stream=name
+                        )
+                        if event is not None:
+                            captured = event.message
+                            if not captured.endswith("\n"):
+                                captured = f"{captured}\n"
+                            output_buffer.append(captured)
                 pipe.close()
             except Exception as e:
                 task_logger.error(f"Error reading {name}: {e}")
@@ -817,9 +858,16 @@ class LlmLocustRunner:
         stdout = stdout_buffer.text()
         stderr = stderr_buffer.text()
         if stdout_buffer.truncated or stderr_buffer.truncated:
+            truncated_streams = []
+            if stdout_buffer.truncated:
+                truncated_streams.append("stdout")
+            if stderr_buffer.truncated:
+                truncated_streams.append("stderr")
             task_logger.warning(
-                "Subprocess output exceeded in-memory capture limit; "
-                f"retained last {MAX_CAPTURED_OUTPUT_BYTES} bytes per stream."
+                f"Subprocess log output ({'/'.join(truncated_streams)}) exceeded "
+                "in-memory capture limit; early logs were discarded, "
+                "only the most recent portion is retained. "
+                "Check the task log file for complete output."
             )
 
         return stdout, stderr
@@ -933,15 +981,43 @@ class LlmLocustRunner:
                         "Locust completed run-time but result.json missing "
                         "(likely shutdown interrupted). Treating as FAILED_REQUESTS."
                     )
-                    locust_result = {}
+                    locust_result = self._build_result_from_summary(
+                        stdout, stderr, task.id, task_logger
+                    )
                     status = "FAILED_REQUESTS"
                 else:
-                    error_msg = f"Result file not found: {result_file}"
-                    task_logger.error(error_msg)
-                    locust_result = {}
-                    status = "FAILED"
+                    locust_result = self._build_result_from_summary(
+                        stdout, stderr, task.id, task_logger
+                    )
+                    if locust_result:
+                        task_logger.warning(
+                            "Result file missing, recovered final statistics "
+                            "from Locust summary output."
+                        )
+                        status = (
+                            "COMPLETED"
+                            if process is not None and process.returncode == 0
+                            else "FAILED_REQUESTS"
+                        )
+                    else:
+                        error_msg = f"Result file not found: {result_file}"
+                        task_logger.error(error_msg)
+                        locust_result = {}
+                        status = "FAILED"
         else:
             locust_result = self._load_locust_result(result_file, task.id, task_logger)
+            if not locust_result.get("locust_stats"):
+                recovered_result = self._build_result_from_summary(
+                    stdout, stderr, task.id, task_logger
+                )
+                if recovered_result:
+                    locust_result = self._merge_recovered_result(
+                        locust_result, recovered_result
+                    )
+                    task_logger.warning(
+                        "Result file contained no Locust stats; recovered "
+                        "statistics from Locust summary output."
+                    )
             if was_stopped:
                 # Stopped but managed to write partial results
                 status = "STOPPED"
@@ -1001,6 +1077,8 @@ class LlmLocustRunner:
                 task_logger.info(f"Force killed remaining orphaned process {pid}")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+
+        cleanup_subprocess_log_transport(task_id)
 
         task_logger.info(f"Cleanup completed for task {task_id}")
 
@@ -1085,3 +1163,81 @@ class LlmLocustRunner:
         except Exception as e:
             task_logger.exception(f"Error loading result: {e}")
             return {}
+
+    def _build_result_from_summary(
+        self, stdout: str, stderr: str, task_id: str, task_logger
+    ) -> dict:
+        """Recover final Locust stats from the human-readable summary output."""
+        locust_stats = self._parse_locust_summary(stdout or "", task_id)
+        if not locust_stats and stderr:
+            locust_stats = self._parse_locust_summary(stderr, task_id)
+
+        if not locust_stats:
+            return {}
+
+        request_count = sum(
+            int(row.get("num_requests", 0) or 0) for row in locust_stats
+        )
+        if request_count <= 0:
+            return {}
+
+        task_logger.warning(
+            f"Recovered {len(locust_stats)} Locust stat row(s) from summary output "
+            f"for task {task_id}."
+        )
+        return {"custom_metrics": {}, "locust_stats": locust_stats}
+
+    def _merge_recovered_result(self, original: dict, recovered: dict) -> dict:
+        """Keep custom metrics from result.json while replacing empty Locust stats."""
+        merged = dict(original or {})
+        if not merged.get("custom_metrics") and recovered.get("custom_metrics"):
+            merged["custom_metrics"] = recovered["custom_metrics"]
+        merged["locust_stats"] = recovered.get("locust_stats", [])
+        return merged
+
+    def _parse_locust_summary(self, output: str, task_id: str) -> List[dict]:
+        """Parse Locust's final text summary into the result schema."""
+        rows: List[dict] = []
+        p95_by_key: dict[tuple[str, int], float] = {}
+        in_percentiles = False
+
+        for raw_line in (output or "").splitlines():
+            line = raw_line.rstrip()
+            if "Response time percentiles" in line:
+                in_percentiles = True
+                continue
+
+            if in_percentiles:
+                match = self._SUMMARY_PERCENTILE_RE.match(line)
+                if match:
+                    metric_type = match.group("name").strip()
+                    reqs = int(match.group("reqs"))
+                    p95_by_key[(metric_type, reqs)] = float(match.group("p95"))
+                continue
+
+            match = self._SUMMARY_STATS_RE.match(line)
+            if not match:
+                continue
+
+            metric_type = match.group("name").strip()
+            rows.append(
+                {
+                    "task_id": task_id,
+                    "metric_type": metric_type,
+                    "num_requests": int(match.group("reqs")),
+                    "num_failures": int(match.group("fails")),
+                    "avg_latency": float(match.group("avg")),
+                    "min_latency": float(match.group("min")),
+                    "max_latency": float(match.group("max")),
+                    "median_latency": float(match.group("med")),
+                    "p95_latency": 0.0,
+                    "rps": float(match.group("rps")),
+                    "avg_content_length": 0.0,
+                }
+            )
+
+        for row in rows:
+            key = (row["metric_type"], row["num_requests"])
+            row["p95_latency"] = p95_by_key.get(key, 0.0)
+
+        return rows

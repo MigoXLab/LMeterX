@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "vitest run",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 500",
     "format": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json,css}'",
@@ -61,6 +62,7 @@
     "less": "^4.2.0",
     "prettier": "^3.5.3",
     "typescript": "^5.8.3",
-    "vite": "^5.4.19"
+    "vite": "^5.4.19",
+    "vitest": "^3.2.7"
   }
 }

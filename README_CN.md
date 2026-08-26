@@ -26,7 +26,7 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 
 - **主流框架兼容**：适配 vLLM、LiteLLM、TRT-LLM 等主流推理框架及云平台，实现环境无缝迁移。
 - **全模态全场景**：支持 GPT、Claude、Llama 及 [MinerU](https://github.com/opendatalab/MinerU)、[dots.ocr](https://github.com/rednote-hilab/dots.ocr) 等文档解析模型，涵盖文本、多模态与流式交互。
-- **混合协议压测**：支持标准 Chat API 与业务 HTTP&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />接口，实现从底层模型到上层业务的全链路压测。
+- **多协议模型接口**：原生支持 OpenAI `/v1/chat/completions`、`/v1/responses`&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />、Anthropic `/v1/messages`、Embeddings 与自定义模型接口，同时支持通用 HTTP 业务接口。
 - **多模式高并发压测**：支持固定/阶梯式并发&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />策略，支持模拟超高并发，精准定位性能拐点与系统容量上限。
 - **内置双模数据集**：预置高质量自建集与 ShareGPT 标准集，支持一键调用，大幅降低测试准备门槛。
 - **智能自动化预热**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持模型自动预热，消除冷启动干扰，确保测试数据精准可靠。
@@ -36,7 +36,8 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 - **一站式 Web 控制台**：直观管理任务调度、监控与实时日志，显著降低上手门槛与运维成本。
 - **Web 解析和智能压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：输入网页 URL 自动爬取页面、识别核心业务 API，一键完成连通性预检与压测任务创建，零配置启动压测。
 - **AI Agent 集成**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：内置 MCP Server 与 [OpenClaw](https://github.com/openclaw) Skills，原生支持 Claude Code、Cursor 等 AI Agent 通过自然语言指令自动生成压测配置并快速启动任务。
-- **企业级架构安全**：支持分布式弹性部署与 LDAP/AD&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />集成，满足企业级高可用与安全认证需求。
+- **跨集群 Engine 调度**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：一个控制面统一管理多个本地或 Kubernetes 压测集群，任务可按压测环境路由，并支持 Engine 心跳、资源监控与弹性扩缩容。
+- **企业级架构安全**：支持分布式部署、LDAP/AD 集成，以及 Engine 与 AI Agent 的独立服务令牌，满足企业级扩展与认证需求。
 
 ### 工具对比
 
@@ -45,18 +46,17 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 | 使用 | 提供 Web UI：任务创建、监控、停止全生命周期管理（压测） | CLI 命令行，面向 ModelScope 生态（效果评测和压测）| CLI 命令行，依赖 Ray 框架（压测） |
 | 并发与压测 | 支持多进程、多任务、固定和阶梯式并发模式，企业级规模化压测 | 支持命令参数并发 | 支持命令参数并发 |
 | 测试报告 | 支持多模型/多版本对比，AI 分析，提供可视化页面 | 基础报告 + 可视化图表（需额外安装 gradio, plotly等） | 简易报告 |
-| 模型与数据支持 | 支持 OpenAI 格式，支持自定义数据和模型接口 | 默认支持 OpenAI 格式，扩展新 API 需自行实现代码 | 支持 OpenAI 格式 |
+| 模型与数据支持 | 支持 OpenAI Chat/Responses、Claude、自定义数据和模型接口 | 默认支持 OpenAI 格式，扩展新 API 需自行实现代码 | 支持 OpenAI 格式 |
 | 性能与资源监控| 支持实时监控性能指标和压测机资源情况 | - | - |
 | 部署与扩展 | 提供 Docker / K8s 部署方案，易于弹性伸缩 | `pip` 或源码 | 源码 |
 
 ## 🏗️ 系统架构
 
-LMeterX 采用微服务架构，由四个核心组件构成：
+LMeterX 采用控制面与执行面分离的微服务架构：
 
-- **后端API服务** - FastAPI REST API，负责任务管理和数据存储
-- **压测引擎** - Locust负载测试引擎，执行性能测试任务
-- **前端界面** - React + TypeScript + Ant Design 现代化Web界面
-- **MySQL数据库** - 存储测试任务、结果数据和配置信息
+- **控制面**：前端、Backend、MySQL 和 VictoriaMetrics，负责任务、调度、结果与监控。
+- **执行面**：一个或多个 Engine 实例，通过 Backend API 注册、心跳并领取所属集群的任务。
+- **Cluster Agent（可选）**：部署在远端 Kubernetes 集群，根据控制面期望状态调整 Engine 副本数。
 
 <div align="center">
   <img src="docs/images/tech-arch.png" alt="LMeterX tech arch" width="800"/>
@@ -70,6 +70,8 @@ LMeterX 采用微服务架构，由四个核心组件构成：
 - 至少 4GB 可用内存、5GB 磁盘空间
 
 > **需要更多部署方式？** 请查阅 [完整部署指南](docs/DEPLOYMENT_GUIDE_CN.md)，获取 Kubernetes、离线环境等高级方案。
+
+> Docker Compose 默认创建 `local` 压测环境。需要接入多个 Engine 集群时，请参考 [跨多集群 Engine 部署指南](docs/MULTI_CLUSTER_GUIDE_CN.md)。
 
 ### 一键部署（推荐）
 
@@ -95,9 +97,11 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 
 1. **访问界面**: 打开 http://localhost:8080
 2. **创建任务**: 导航至 测试任务 → 创建任务，配置 API 请求信息、测试数据以及请求响应字段映射
-   - 2.1 基础信息: 对于 OpenAI-like 和 Claude-like API 只需填写 API 路径、模型与响应模式，也可在请求参数中补充完整 payload
-   - 2.2 数据&负载: 根据需要选择数据集类型、并发数、压测时间等
-   - 2.3 字段映射: 针对自定义 API 需要配置 payload 中 prompt 对应字段路径，以及响应数据中 content、reasoning_content、usage 等字段路径；该映射对于使用压测数据集和解析流式响应尤为关键
+   - 2.1 压测环境: 选择任务要运行的 Engine 集群；单机部署选择默认的 `Local`
+   - 2.2 基础信息: 对于 OpenAI 与 Claude 接口，只需填写 API 类型、路径、模型与响应模式，也可在请求参数中补充完整 payload
+   - 2.3 OpenAI Responses: API 类型选择 `OpenAI Responses`，路径填写 `/v1/responses`；请求体使用 `input` 而不是 `messages`
+   - 2.4 数据与负载: 根据需要选择数据集类型、并发数、压测时间等
+   - 2.5 字段映射: 仅自定义 API 等非标准接口需要配置 prompt、content、reasoning_content、usage 等字段路径
    > 💡 **提示**: 若需自定义图文数据集压测，请参考 [数据集使用指南](docs/DATASET_GUIDE.md) 了解数据准备、挂载与常见问题排查。
 3. **API 测试**: 在 测试任务 → 创建任务，点击基础信息面板的「测试」按钮，快速验证接口连通性（建议使用简短 prompt）
 4. **实时监控**: 访问 测试任务 → 日志/监控中心，查看全链路测试日志，快速定位异常
@@ -212,7 +216,7 @@ victoria-metrics:
         memory: 2G
 ```
 
-> **说明**：资源采集模块支持 cgroup v1 与 cgroup v2，可实现容器感知的精准监控。多引擎部署场景下，每个引擎实例通过唯一的 `engine_id` 标签加以区分（自动从容器 hostname 派生，或通过 `ENGINE_ID` / `ENGINE_POD_NAME` 环境变量显式指定）。
+> **说明**：资源采集模块支持 cgroup v1 与 cgroup v2。多引擎部署时，每个实例必须使用全局唯一的 `engine_id`；容器部署可自动使用 hostname，Kubernetes 推荐将 `ENGINE_ID` 设为 Pod UID。
 
 ## 🤝 开发指南
 
@@ -242,6 +246,7 @@ victoria-metrics:
 ## 📚 相关文档
 
 - [部署指南](docs/DEPLOYMENT_GUIDE_CN.md) - 详细部署说明
+- [跨多集群 Engine 部署指南](docs/MULTI_CLUSTER_GUIDE_CN.md) - 集群注册、Engine 接入、扩缩容与排查
 - [贡献指南](docs/CONTRIBUTING.md) - 参与开发指南
 - [数据集使用指南](docs/DATASET_GUIDE.md) - 自定义图文数据集准备与使用说明
 

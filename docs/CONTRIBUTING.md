@@ -62,10 +62,10 @@ cd LMeterX
 git checkout -b feature/your-feature-name
 
 # 3. Start development environment
-docker-compose up -d
+docker compose -f docker-compose.dev.yml up -d
 
 # 4. Check service status
-docker-compose ps
+docker compose -f docker-compose.dev.yml ps
 ```
 
 ### Option 2: Local Development Environment
@@ -124,10 +124,16 @@ pip install -r requirements.txt
 
 # Configure environment variables
 cp .env.example .env
+# Use API mode against the local Backend:
+# ENGINE_MODE=api
+# BACKEND_URL=http://localhost:5001
+# CLUSTER_ID=local
 
 # Start load testing engine
 python app.py
 ```
+
+The Engine uses Backend API mode by default. Direct MySQL polling (`ENGINE_MODE=db`) is deprecated. For cross-cluster development, see the [Multi-Cluster Engine Guide](MULTI_CLUSTER_GUIDE.md).
 
 #### Frontend Development Environment
 

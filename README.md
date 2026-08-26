@@ -25,7 +25,7 @@ LMeterX is a professional large language model performance testing platform that
 
 - **Broad Framework Compatibility**: Supports mainstream inference frameworks (vLLM, LiteLLM, TRT-LLM) and cloud platforms, ensuring seamless environment migration.
 - **Full Modality & Scenarios**: Supports GPT, Claude, Llama to document parsing models like [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr), covering text, multimodal, and streaming.
-- **Hybrid Protocol Testing**: Supports standard Chat APIs and business HTTP interfaces&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />, enabling full-stack load testing from base models to upper-level services.
+- **Multi-Protocol Model APIs**: Native support for OpenAI `/v1/chat/completions`, `/v1/responses`&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />, Anthropic `/v1/messages`, Embeddings, custom model APIs, and general HTTP services.
 - **Multi-mode & High-Concurrency Load**: Supports fixed/stepped concurrency&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> strategies, supports simulating ultra-high concurrency, and accurately locates performance inflection points and system capacity limits.
 - **Built-in Dual-Mode Datasets**: Pre-configured with high-quality self-built datasets and ShareGPT standard sets, supporting one-click invocation to lower data preparation barriers.
 - **Automated Warm-up Mechanism** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports automatic model service warm-up to eliminate cold-start effects, ensuring the accuracy of test data.
@@ -35,7 +35,8 @@ LMeterX is a professional large language model performance testing platform that
 - **One-stop Web Console**: Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
 - **Web parsing & Intelligent load testing**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Enter a web page URL to automatically crawl the page and discover core business APIs, complete connectivity pre-checks, and create load test tasks with zero configuration.
 - **AI Agent Integration**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Built-in MCP Server and [OpenClaw](https://github.com/openclaw) Skills with native support for AI agents such as Claude Code and Cursor — automatically generate load test configurations and launch tasks via natural language instructions.
-- **Enterprise-Grade Security & Scaling**: Supports distributed elastic deployment and LDAP/AD&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />integration for high availability and secure enterprise authentication.
+- **Cross-Cluster Engine Scheduling**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Manage local and Kubernetes load-generation clusters from one control plane, route tasks by environment, and monitor or scale Engines centrally.
+- **Enterprise-Grade Security & Scaling**: Supports distributed deployment, LDAP/AD, and separate service tokens for Engines and AI agents.
 
 ### Feature Comparison
 | Dimension            | LMeterX                                                                 | EvalScope                                                                 | llmperf                                                  |
@@ -43,18 +44,19 @@ LMeterX is a professional large language model performance testing platform that
 | Usage                | Web UI for full-lifecycle task creation, monitoring & stop (load-test) | CLI for ModelScope ecosystem (eval & load-test)                          | CLI, Ray-based (load-test)                              |
 | Concurrency & Stress | Multi-process / multi-task, fix/stepped load, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
 | Test Report          | Multi-model / multi-version comparison, AI analysis, visual dashboard   | Basic report + visual charts (requires gradio, plotly, etc.)             | Simple report                                            |
-| Model & Data Support | OpenAI-compatible, custom data & model interfaces                       | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
-Performance and Resource Monitoring | Supports real-time monitoring of performance metrics and load testing machine resource status. | - | - |
+| Model & Data Support | OpenAI Chat/Responses, Claude, custom data & model interfaces             | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
+| Performance & Resource Monitoring | Real-time performance metrics and load-generator resource status | - | - |
 | Deployment & Scaling | Docker / K8s ready, easy horizontal scaling                             | `pip` install or source code                                             | Source code only                                         |
 
 ## 🏗️ System Architecture
 
-LMeterX adopts a microservices architecture design, consisting of four core components:
+LMeterX separates its control plane from its execution plane:
 
-1. **Backend Service**: FastAPI-based REST API service responsible for task management and result storage
-2. **Load Testing Engine**: Locust-based load testing engine that executes actual performance testing tasks
-3. **Frontend Interface**: Modern Web interface based on React + TypeScript + Ant Design
-4. **MySQL Database**: Stores test tasks, result data, and configuration information
+- **Control plane**: Frontend, Backend, MySQL, and VictoriaMetrics manage tasks, scheduling, results, and monitoring.
+- **Execution plane**: One or more Engines register with the Backend API, send heartbeats, and claim tasks for their cluster.
+- **Cluster Agent (optional)**: Runs in a remote Kubernetes cluster and reconciles the Engine replica count with the control plane.
+
+The diagram below shows the default single-cluster deployment. See the [Multi-Cluster Engine Guide](docs/MULTI_CLUSTER_GUIDE.md) for the distributed topology.
 
 <div align="center">
   <img src="docs/images/tech-arch.png" alt="LMeterX tech arch" width="700"/>
@@ -68,6 +70,8 @@ LMeterX adopts a microservices architecture design, consisting of four core comp
 - At least 4GB free memory and 5GB disk space
 
 > **Need more deployment options?** See the [Complete Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for Kubernetes, air-gapped installs, and advanced tuning.
+
+> Docker Compose creates a default `local` environment. To attach multiple Engine clusters, see the [Multi-Cluster Engine Guide](docs/MULTI_CLUSTER_GUIDE.md).
 
 ### One-Click Deployment (Recommended)
 
@@ -95,9 +99,11 @@ For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md
 
 1. **Access Web Interface**: Open http://localhost:8080
 2. **Create Test Task**: Navigate to Test Tasks → Create Task, configure API request information, test data, and request/response field mappings.
-   - 2.1 Basic Information: For OpenAI-like and Claude-like APIs, you only need to configure API path, model, and response mode. You can also supplement the complete payload in request parameters.
-   - 2.2 Data & load: Select the dataset type, concurrency, load testing time, etc., as needed.
-   - 2.3 Field Mapping: For custom APIs, you need to configure the prompt field path in payload, and response data paths for model output fields, usage fields, etc. This field mapping is crucial for updating request parameters with datasets and correctly parsing streaming/non-streaming responses.
+   - 2.1 Environment: Select the Engine cluster that should run the task; use `Local` for a single-node deployment.
+   - 2.2 Basic Information: For OpenAI and Claude APIs, select the API type and enter the path, model, and response mode. You may also provide a complete payload.
+   - 2.3 OpenAI Responses: Select `OpenAI Responses`, set the path to `/v1/responses`, and use `input` instead of `messages` in the payload.
+   - 2.4 Data & Load: Select the dataset, concurrency, and duration.
+   - 2.5 Field Mapping: Only non-standard APIs such as custom APIs require prompt, content, reasoning, and usage paths.
    > 💡 **Tip**: For custom multimodal dataset load tests, follow the [Dataset Guide](docs/DATASET_GUIDE.md) for data preparation, mounting, and troubleshooting.
 3. **API Testing**: In Test Tasks → Create Task, click the "Test" button in the Basic Information panel to quickly test API connectivity (use a lightweight prompt for faster feedback).
 4. **Real-time Monitoring**: Navigate to Test Tasks → Logs/Monitoring Center to view full-chain test logs and troubleshoot exceptions
@@ -231,7 +237,7 @@ victoria-metrics:
         memory: 2G
 ```
 
-> **Note**: VictoriaMetrics supports cgroup v1 and v2 for container-aware resource metrics. In multi-engine deployments, each engine instance is identified by a unique `engine_id` label (auto-resolved from hostname or `ENGINE_ID` / `ENGINE_POD_NAME` environment variables).
+> **Note**: VictoriaMetrics supports cgroup v1 and v2. Every instance in a multi-engine deployment must have a globally unique `engine_id`; container hostnames work automatically, while Kubernetes deployments should set `ENGINE_ID` to the Pod UID.
 
 ## 🤝 Development Guide
 
@@ -260,6 +266,13 @@ LMeterX adopts a modern technology stack to ensure system reliability and mainta
 ### Planned
 - [ ] CLI command-line tool
 - [ ] Multi-interface scenario load testing
+
+## 📚 Documentation
+
+- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) — deployment and operations
+- [Multi-Cluster Engine Guide](docs/MULTI_CLUSTER_GUIDE.md) — cluster registration, Engine setup, scaling, and troubleshooting
+- [Dataset Guide](docs/DATASET_GUIDE.md) — custom text and multimodal datasets
+- [Contributing Guide](docs/CONTRIBUTING.md) — development workflow
 
 ## 🗂️ Dataset Reference Notes
 

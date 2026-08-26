@@ -43,6 +43,7 @@ class HttpTask(Base):
     result_file = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     engine_id = Column(String(64), nullable=True)
+    cluster_id = Column(String(64), nullable=True)
     is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

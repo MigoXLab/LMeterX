@@ -10,8 +10,13 @@ import axios, {
   AxiosRequestConfig,
   AxiosResponse,
 } from 'axios';
-import { clearAuth, getToken } from '../utils/auth';
+import { getToken } from '../utils/auth';
 import { getApiBaseUrl } from '../utils/runtimeConfig';
+import {
+  handleUnauthorized,
+  handleUnauthorizedError,
+  waitForLoginRedirect,
+} from '../utils/sessionExpired';
 
 // Define the base API URL
 const BASE_URL = getApiBaseUrl();
@@ -111,19 +116,8 @@ apiClient.interceptors.response.use(
       };
     }
 
-    if (error.response && error.response.status === 401) {
-      const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
-      const isPublicPage =
-        pathname === '/' ||
-        pathname === '/dashboard' ||
-        pathname.startsWith('/llm-results/') ||
-        pathname.startsWith('/http-results/') ||
-        pathname.startsWith('/results/') ||
-        pathname.startsWith('/logs/task/');
-      clearAuth();
-      if (!isPublicPage && !pathname.startsWith('/login')) {
-        window.location.href = '/login';
-      }
+    if (handleUnauthorizedError(error)) {
+      return waitForLoginRedirect();
     }
 
     // Reject other errors normally
@@ -203,6 +197,10 @@ export const uploadFiles = async (
     credentials: 'include',
     // Do not set Content-Type, let the browser automatically set multipart/form-data with a boundary
   });
+
+  if (response.status === 401 && handleUnauthorized(url)) {
+    return waitForLoginRedirect();
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

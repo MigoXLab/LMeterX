@@ -33,8 +33,8 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { httpTaskApi, uploadDatasetFile } from '@/api/services';
-import { HttpTask } from '@/types/job';
+import { clusterApi, httpTaskApi, uploadDatasetFile } from '@/api/services';
+import { Cluster, HttpTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import parseCurlCommand from '@/utils/curl';
 
@@ -78,6 +78,40 @@ const CreateHttpTaskForm: React.FC<Props> = ({
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const { token } = theme.useToken();
+
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+
+  useEffect(() => {
+    setClustersLoading(true);
+    clusterApi
+      .getAllClusters()
+      .then(res => {
+        const list = Array.isArray(res)
+          ? res
+          : Array.isArray((res as any)?.data)
+            ? (res as any).data
+            : Array.isArray((res as any)?.data?.clusters)
+              ? (res as any).data.clusters
+              : [];
+        const sorted = [...list].sort((a, b) => {
+          const aHasSlots = (a.available_slots || 0) > 0;
+          const bHasSlots = (b.available_slots || 0) > 0;
+          if (aHasSlots && !bHasSlots) return -1;
+          if (!aHasSlots && bHasSlots) return 1;
+          return (a.id || '').localeCompare(b.id || '');
+        });
+        setClusters(sorted);
+        if (sorted.length > 0) {
+          const currentClusterId = form.getFieldValue('cluster_id');
+          if (!currentClusterId) {
+            form.setFieldsValue({ cluster_id: sorted[0].id });
+          }
+        }
+      })
+      .catch(() => setClusters([]))
+      .finally(() => setClustersLoading(false));
+  }, []);
 
   const toSingleUploadFileList = (filename?: string, uid: string = '-1') =>
     filename
@@ -398,6 +432,8 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       // Validate minimal set
       await form.validateFields(requiredFields as any);
 
+      const clusterId = form.getFieldValue('cluster_id');
+
       // Get current form values
       const allValues = form.getFieldsValue(true);
 
@@ -422,18 +458,34 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         headers: parsedHeaders,
         cookies: allValues.cookies || [],
         request_body: testHasBody ? allValues.request_body || null : null,
+        cluster_id: clusterId || undefined,
       };
 
       setTesting(true);
       const res = await httpTaskApi.testJob(payload);
       const data = (res as any)?.data ?? {};
-      const httpStatus = data?.http_status ?? data?.status ?? res?.status;
-      setTestResult({
-        status: data?.status || 'success',
-        http_status: httpStatus,
-        headers: data?.headers,
-        body: data?.body ?? data,
-      });
+      const httpStatus =
+        data?.http_status ??
+        (typeof data?.status === 'number' ? data.status : undefined) ??
+        res?.status;
+
+      // If engine/backend returned an error without response body, surface it as error
+      if (data?.status === 'error' && data?.error && data?.body === undefined) {
+        setTestResult({
+          status: 'error',
+          error: data.error,
+          http_status: undefined,
+          headers: undefined,
+          body: undefined,
+        });
+      } else {
+        setTestResult({
+          status: data?.status || 'success',
+          http_status: httpStatus,
+          headers: data?.headers,
+          body: data?.body ?? data,
+        });
+      }
       setTestModalVisible(true);
     } catch (err: any) {
       // apiClient throws { data, status, statusText } — not wrapped in .response
@@ -534,6 +586,27 @@ const CreateHttpTaskForm: React.FC<Props> = ({
           <Input
             placeholder={t('components.createHttpTaskForm.taskNamePlaceholder')}
             maxLength={100}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name='cluster_id'
+          label={t('components.createHttpTaskForm.env')}
+          rules={[
+            {
+              required: true,
+              message: t('components.createHttpTaskForm.envRequired'),
+            },
+          ]}
+        >
+          <Select
+            placeholder={t('components.createHttpTaskForm.envPlaceholder')}
+            loading={clustersLoading}
+            allowClear
+            options={clusters.map(c => ({
+              value: c.id,
+              label: `${c.name} (${t('components.createHttpTaskForm.envSlots', { slots: c.available_slots })})`,
+            }))}
           />
         </Form.Item>
 

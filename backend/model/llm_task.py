@@ -3,11 +3,10 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
-import json
 import math
 from typing import Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, validator
 from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text, func
 
 from db.mysql import Base
@@ -212,17 +211,17 @@ class TaskCreateReq(BaseModel):
     cert_config: Optional[CertConfig] = Field(
         default=None, description="Certificate configuration"
     )
+    api_type: Optional[str] = Field(
+        default="openai-chat",
+        description=(
+            "API type: openai-chat, openai-responses, claude-chat, "
+            "embeddings, or custom-chat"
+        ),
+    )
     request_payload: Optional[str] = Field(
         default="",
         max_length=50000,
         description="Custom request payload for non-chat APIs (JSON string, max 50000 chars)",
-    )
-    api_type: Optional[str] = Field(
-        default="openai-chat",
-        description=(
-            "API type: openai-chat, openai-responses, claude-chat, embeddings, "
-            "or custom-chat"
-        ),
     )
     field_mapping: Optional[Dict[str, str]] = Field(
         default=None, description="Field mapping configuration for custom APIs"
@@ -263,35 +262,12 @@ class TaskCreateReq(BaseModel):
         description="Duration to sustain at max users in seconds",
     )
 
-    @root_validator(pre=True)
-    def default_responses_payload(cls, values):
-        """Use the Responses API input field when no payload is supplied."""
-        if (
-            values.get("api_type") == "openai-responses"
-            and not str(values.get("request_payload") or "").strip()
-        ):
-            values["request_payload"] = json.dumps(
-                {
-                    "model": values.get("model") or "your-model-name",
-                    "stream": values.get("stream_mode", True),
-                    "input": "Hi",
-                }
-            )
-        return values
-
-    @validator("api_type")
-    def validate_api_type(cls, v):
-        allowed = {
-            "openai-chat",
-            "openai-responses",
-            "claude-chat",
-            "embeddings",
-            "custom-chat",
-        }
-        normalized = v or "openai-chat"
-        if normalized not in allowed:
-            raise ValueError(f"Unsupported api_type: {normalized}")
-        return normalized
+    # -- Cluster routing --
+    cluster_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Target cluster ID for task execution. If None, uses default cluster.",
+    )
 
     @validator("load_mode")
     def validate_load_mode(cls, v: str) -> str:
@@ -391,12 +367,18 @@ class TaskCreateReq(BaseModel):
             model = values.get("model", "your-model-name")
             stream_mode = values.get("stream_mode", True)
 
-            # Generate default payload for chat/completions API
-            default_payload = {
-                "model": model,
-                "stream": stream_mode,
-                "messages": [{"role": "user", "content": "Hi"}],
-            }
+            if values.get("api_type") == "openai-responses":
+                default_payload = {
+                    "model": model,
+                    "stream": stream_mode,
+                    "input": "Hi",
+                }
+            else:
+                default_payload = {
+                    "model": model,
+                    "stream": stream_mode,
+                    "messages": [{"role": "user", "content": "Hi"}],
+                }
 
             import json
 
@@ -515,48 +497,23 @@ class TaskTestReq(BaseModel):
     cert_config: Optional[CertConfig] = Field(
         default=None, description="Certificate configuration"
     )
+    api_type: Optional[str] = Field(
+        default="openai-chat",
+        description=(
+            "API type: openai-chat, openai-responses, claude-chat, "
+            "embeddings, or custom-chat"
+        ),
+    )
     request_payload: Optional[str] = Field(
         default="",
         max_length=50000,
         description="Custom request payload (JSON string)",
     )
-    api_type: Optional[str] = Field(
-        default="openai-chat",
-        description=(
-            "API type: openai-chat, openai-responses, claude-chat, embeddings, "
-            "or custom-chat"
-        ),
+    cluster_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Cluster to proxy test through (if omitted, test runs from backend directly)",
     )
-
-    @root_validator(pre=True)
-    def default_responses_payload(cls, values):
-        """Use the Responses API input field when no payload is supplied."""
-        if (
-            values.get("api_type") == "openai-responses"
-            and not str(values.get("request_payload") or "").strip()
-        ):
-            values["request_payload"] = json.dumps(
-                {
-                    "model": values.get("model") or "your-model-name",
-                    "stream": values.get("stream_mode", True),
-                    "input": "Hi",
-                }
-            )
-        return values
-
-    @validator("api_type")
-    def validate_api_type(cls, v):
-        allowed = {
-            "openai-chat",
-            "openai-responses",
-            "claude-chat",
-            "embeddings",
-            "custom-chat",
-        }
-        normalized = v or "openai-chat"
-        if normalized not in allowed:
-            raise ValueError(f"Unsupported api_type: {normalized}")
-        return normalized
 
     @validator("target_host")
     def validate_target_host(cls, v):
@@ -585,11 +542,18 @@ class TaskTestReq(BaseModel):
         if not v or not v.strip():
             model = values.get("model", "your-model-name")
             stream_mode = values.get("stream_mode", True)
-            default_payload = {
-                "model": model,
-                "stream": stream_mode,
-                "messages": [{"role": "user", "content": "Hi"}],
-            }
+            if values.get("api_type") == "openai-responses":
+                default_payload = {
+                    "model": model,
+                    "stream": stream_mode,
+                    "input": "Hi",
+                }
+            else:
+                default_payload = {
+                    "model": model,
+                    "stream": stream_mode,
+                    "messages": [{"role": "user", "content": "Hi"}],
+                }
             import json
 
             return json.dumps(default_payload)
@@ -819,6 +783,7 @@ class Task(Base):
     api_type = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
     engine_id = Column(String(64), nullable=True)
+    cluster_id = Column(String(64), nullable=True)
     test_data = Column(Text, nullable=True)
     is_deleted = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())

@@ -4,6 +4,7 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,24 +12,45 @@ from fastapi.responses import JSONResponse
 
 from api.api_analysis import router as analysis
 from api.api_auth import router as auth
+from api.api_cluster import router as cluster
 from api.api_collection import router as collection
+from api.api_engine import router as engine
 from api.api_http_task import router as http_task
 from api.api_llm_task import router as llm_task
 from api.api_log import router as log
 from api.api_monitoring import router as monitoring
 from api.api_skill import router as skill
 from api.api_system import router as system
+from api.api_task import router as task
 from api.api_upload import router as upload
 from middleware.auth_middleware import AuthMiddleware
 from middleware.db_middleware import DBSessionMiddleware
+from service.scheduler import start_scheduler, stop_scheduler
 from utils.auth_settings import get_auth_settings
 from utils.error_handler import ErrorResponse
 from utils.logger import logger
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup/shutdown lifecycle."""
+    from db.mysql import async_session_factory
+    from service.engine_service import reset_all_engines_heartbeat
+
+    # Reset engine heartbeats to epoch to avoid stale engines on startup
+    async with async_session_factory() as session:
+        await reset_all_engines_heartbeat(session)
+
+    start_scheduler()
+    yield
+    stop_scheduler()
+
 
 app = FastAPI(
     title="LMeterX Backend API",
     description="LMeterX Backend",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 auth_settings = get_auth_settings()
@@ -62,7 +84,7 @@ async def handle_http_exception(request: Request, exc: HTTPException):
     leaking stack traces.
     """
     logger.warning(
-        "HTTP error %s on %s %s: %s",
+        "HTTP error {} on {} {}: {}",
         exc.status_code,
         request.method,
         request.url.path,
@@ -74,7 +96,7 @@ async def handle_http_exception(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def handle_unexpected_exception(request: Request, exc: Exception):
     """Catch-all for unexpected errors with structured logging."""
-    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    logger.exception("Unhandled error on {} {}", request.method, request.url.path)
     return ErrorResponse.internal_server_error().to_response()
 
 
@@ -98,11 +120,14 @@ if auth_settings.LDAP_ENABLED and not os.getenv("TESTING"):
             "/api/system/dashboard-stats",
         },
         exempt_prefixes=[
-            "/api/llm-tasks/",
-            "/api/http-tasks/",
-            "/api/logs/",
+            "/api/tasks",
+            "/api/llm-tasks",
+            "/api/http-tasks",
+            "/api/logs",
             "/api/analyze",
             "/api/monitoring/engines",
+            "/api/engine",
+            "/api/clusters",
         ],
     )
 
@@ -135,8 +160,11 @@ def read_root():
 # add api routers
 app.include_router(analysis, prefix="/api/analyze", tags=["analysis"])
 app.include_router(auth, prefix="/api/auth", tags=["auth"])
+app.include_router(cluster, prefix="/api/clusters", tags=["clusters"])
 app.include_router(collection, prefix="/api/collections", tags=["collections"])
+app.include_router(engine, prefix="/api/engine", tags=["engine"])
 app.include_router(system, prefix="/api/system", tags=["system"])
+app.include_router(task, prefix="/api/tasks", tags=["tasks"])
 app.include_router(llm_task, prefix="/api/llm-tasks", tags=["llm-tasks"])
 app.include_router(http_task, prefix="/api/http-tasks", tags=["http-tasks"])
 app.include_router(log, prefix="/api/logs", tags=["logs"])

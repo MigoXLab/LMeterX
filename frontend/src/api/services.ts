@@ -7,7 +7,8 @@
 
 import { Dataset } from '../types';
 import { LoginResponse, UserInfo } from '../types/auth';
-import { HttpTask, LlmTask } from '../types/job';
+import { Cluster, HttpTask, LlmTask } from '../types/job';
+import { getApiBaseUrl } from '../utils/runtimeConfig';
 import api, { uploadFiles } from './apiClient';
 
 type BasicFileLike =
@@ -108,6 +109,11 @@ export const datasetApi = {
 
   // Delete a dataset
   deleteDataset: (id: string) => api.delete<void>(`/datasets/${id}`),
+};
+
+// Cluster API methods
+export const clusterApi = {
+  getAllClusters: () => api.get<Cluster[]>('/clusters'),
 };
 
 // LLM Task API methods
@@ -362,12 +368,39 @@ export const skillApi = {
 };
 
 // Get log content (supports incremental fetching)
+type SlsLogQueryParams = {
+  start_time?: number;
+  end_time?: number;
+  limit?: number;
+  offset?: number;
+  keyword?: string;
+  level?: string;
+  reverse?: boolean;
+};
+
+const buildApiUrl = (path: string): string => {
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+};
+
 export const logApi = {
+  // Full/archival log reads. These use local files or OSS cache on the backend.
   getServiceLogContent: (
     serviceName: string,
     offset: number = 0,
     tail: number = 0
   ) => api.get<any>(`/logs/${serviceName}`, { params: { offset, tail } }),
+
+  getEngineLogContent: (
+    engineId: string,
+    clusterId: string,
+    offset: number = 0,
+    tail: number = 0
+  ) =>
+    api.get<any>(`/logs/engine/${engineId}`, {
+      params: { cluster_id: clusterId, offset, tail },
+    }),
 
   getTaskLogContent: (
     taskId: string,
@@ -376,6 +409,44 @@ export const logApi = {
     source: string = 'engine'
   ) =>
     api.get<any>(`/logs/task/${taskId}`, { params: { offset, tail, source } }),
+
+  getTaskLogDownloadUrl: (taskId: string, source: string = 'engine') =>
+    buildApiUrl(
+      `/logs/task/${encodeURIComponent(taskId)}/download?source=${encodeURIComponent(source)}`
+    ),
+
+  // Realtime log reads. SLS is the UI source of truth; local/OSS is only fallback.
+  querySlsServiceLogs: (serviceName: string, params: SlsLogQueryParams = {}) =>
+    api.get<any>(`/logs/sls/${serviceName}`, { params }),
+
+  querySlsEngineLogs: (
+    engineId: string,
+    clusterId: string,
+    params: SlsLogQueryParams = {}
+  ) =>
+    api.get<any>(`/logs/sls/engine/${engineId}`, {
+      params: { ...params, cluster_id: clusterId },
+    }),
+
+  querySlsTaskLogs: (taskId: string, params: SlsLogQueryParams = {}) =>
+    api.get<any>(`/logs/sls/task/${taskId}`, { params }),
+
+  queryRealtimeServiceLogs: (
+    serviceName: string,
+    params: SlsLogQueryParams = {}
+  ) => api.get<any>(`/logs/sls/${serviceName}`, { params }),
+
+  queryRealtimeEngineLogs: (
+    engineId: string,
+    clusterId: string,
+    params: SlsLogQueryParams = {}
+  ) =>
+    api.get<any>(`/logs/sls/engine/${engineId}`, {
+      params: { ...params, cluster_id: clusterId },
+    }),
+
+  queryRealtimeTaskLogs: (taskId: string, params: SlsLogQueryParams = {}) =>
+    api.get<any>(`/logs/sls/task/${taskId}`, { params }),
 };
 
 // Analysis API methods
@@ -478,6 +549,21 @@ export const monitoringApi = {
         cpu_percent: number;
       }>;
     }>('/monitoring/engines'),
+
+  /** Get engines grouped by cluster (from DB heartbeat data). */
+  getEnginesByCluster: () =>
+    api.get<{
+      status: string;
+      data: Array<{
+        cluster_id: string;
+        cluster_name: string;
+        engines: Array<{
+          engine_id: string;
+          status: string;
+          last_seen: number;
+        }>;
+      }>;
+    }>('/monitoring/engines-by-cluster'),
 
   /** Get Engine system resource metrics (CPU, Memory, Network). */
   getEngineResources: (params: {

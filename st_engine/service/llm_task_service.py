@@ -3,10 +3,11 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import os
 import subprocess  # nosec B404
 
 import pymysql.err  # type: ignore[import-untyped]
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -38,6 +39,31 @@ from utils.vm_push import ENGINE_ID
 # poller, heartbeat, etc.) share the same runner so that _process_dict and
 # _stopped_task_ids are consistent across threads.
 _shared_llm_runner = LlmLocustRunner(ST_ENGINE_DIR)
+
+
+def _failed_requests_message(task_id: str, locust_result: dict) -> str:
+    """Build a user-facing failure summary from Locust's request errors."""
+    request_errors = locust_result.get("request_errors") or []
+    network_errors = [
+        item
+        for item in request_errors
+        if isinstance(item, dict) and item.get("category") == "network_error"
+    ]
+    if not network_errors:
+        return f"Task {task_id} completed with failed requests."
+
+    occurrences = sum(int(item.get("occurrences", 0) or 0) for item in network_errors)
+    details = []
+    for item in network_errors[:3]:
+        detail = str(item.get("error", "") or "").strip()
+        if detail and detail not in details:
+            details.append(detail)
+    detail_suffix = f" Details: {'; '.join(details)}" if details else ""
+    return (
+        "Network error (no HTTP response): "
+        f"{occurrences} request(s) failed before an HTTP response was received."
+        f"{detail_suffix}"
+    )
 
 
 class LlmTaskService:
@@ -269,10 +295,19 @@ class LlmTaskService:
             The claimed task ready for execution, or None.
         """
         try:
+            cluster_id = os.getenv("CLUSTER_ID", "local")
+            if cluster_id == "local":
+                cluster_filter = or_(
+                    Task.cluster_id == "local", Task.cluster_id.is_(None)
+                )
+            else:
+                cluster_filter = Task.cluster_id == cluster_id
+
             query = (
                 select(Task)
                 .where(Task.status == TASK_STATUS_QUEUING)
                 .where(Task.is_deleted == 0)
+                .where(cluster_filter)
                 .order_by(Task.created_at.asc(), Task.id.asc())
                 .with_for_update()
                 .limit(1)
@@ -649,9 +684,7 @@ class LlmTaskService:
                             post_session, locust_result, task_id
                         )
 
-                        error_message = (
-                            f"Task {task_id} completed with failed requests."
-                        )
+                        error_message = _failed_requests_message(task_id, locust_result)
                         task_logger.warning(f"{error_message}")
                         self.update_task_status(
                             post_session,
@@ -734,7 +767,7 @@ class LlmTaskService:
                     f"Failed to update task status after pipeline error: {status_update_error}"
                 )
                 logger.error(
-                    f"Critical: Failed to update status for task {task_id}: {status_update_error}"
+                    f"Failed to update status for task {task_id}: {status_update_error}"
                 )
         finally:
             if handler_id is not None:

@@ -47,12 +47,13 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
+  clusterApi,
   llmTaskApi,
   uploadCertificateFiles,
   uploadDatasetFile,
 } from '@/api/services';
 import { useI18n } from '@/hooks/useI18n';
-import { LlmTask } from '@/types/job';
+import { Cluster, LlmTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import { safeJsonParse } from '@/utils/data';
 
@@ -67,20 +68,20 @@ type ApiType =
   | 'embeddings'
   | 'custom-chat';
 
-const formatTestResponse = (data: unknown, isStream: boolean): string => {
-  if (typeof data === 'string') return data;
+const isStandardChatApiType = (type: string): boolean =>
+  type === 'openai-chat' ||
+  type === 'openai-responses' ||
+  type === 'claude-chat';
 
-  // Backward compatibility for responses produced by older backends, which
-  // returned one array item per streamed line.
-  if (isStream && Array.isArray(data)) {
-    return data
-      .map(item =>
-        typeof item === 'string' ? item : JSON.stringify(item, null, 2)
-      )
-      .join('\n');
+/** Reconstruct the original stream text. Network fragments already contain newlines and should be concatenated; line-split chunks need `\n` restored. */
+const joinStreamChunks = (chunks: string[]): string => {
+  if (chunks.length === 0) {
+    return '';
   }
-
-  return JSON.stringify(data, null, 2) ?? String(data ?? '');
+  const hasInternalNewlines = chunks.some(
+    chunk => chunk.includes('\n') || chunk.includes('\r')
+  );
+  return chunks.join(hasInternalNewlines ? '' : '\n');
 };
 
 interface CreateLlmTaskFormProps {
@@ -119,6 +120,40 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
   const [datasetFile, setDatasetFile] = useState<File | null>(null);
   // Ref to prevent infinite loops during bidirectional sync between payload and form fields
   const isSyncingRef = useRef(false);
+
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+
+  useEffect(() => {
+    setClustersLoading(true);
+    clusterApi
+      .getAllClusters()
+      .then(res => {
+        const list = Array.isArray(res)
+          ? res
+          : Array.isArray((res as any)?.data)
+            ? (res as any).data
+            : Array.isArray((res as any)?.data?.clusters)
+              ? (res as any).data.clusters
+              : [];
+        const sorted = [...list].sort((a, b) => {
+          const aHasSlots = (a.available_slots || 0) > 0;
+          const bHasSlots = (b.available_slots || 0) > 0;
+          if (aHasSlots && !bHasSlots) return -1;
+          if (!aHasSlots && bHasSlots) return 1;
+          return (a.id || '').localeCompare(b.id || '');
+        });
+        setClusters(sorted);
+        if (sorted.length > 0) {
+          const currentClusterId = form.getFieldValue('cluster_id');
+          if (!currentClusterId) {
+            form.setFieldsValue({ cluster_id: sorted[0].id });
+          }
+        }
+      })
+      .catch(() => setClusters([]))
+      .finally(() => setClustersLoading(false));
+  }, []);
 
   // Get default API path based on API type
   const getDefaultApiPath = (type: ApiType): string => {
@@ -341,11 +376,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
   // Tab navigation functions
   const goToNextTab = () => {
     const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
-    const isStandardChatApi = [
-      'openai-chat',
-      'openai-responses',
-      'claude-chat',
-    ].includes(currentApiType);
+    const isStandardChatApi = isStandardChatApiType(currentApiType);
 
     if (activeTabKey === '1') {
       setActiveTabKey('2');
@@ -357,11 +388,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
   const goToPreviousTab = () => {
     const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
-    const isStandardChatApi = [
-      'openai-chat',
-      'openai-responses',
-      'claude-chat',
-    ].includes(currentApiType);
+    const isStandardChatApi = isStandardChatApiType(currentApiType);
 
     if (activeTabKey === '2') {
       setActiveTabKey('1');
@@ -392,11 +419,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         // Tab 2: Field Mapping
         const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
         const isEmbedType = currentApiType === 'embeddings';
-        const isStandardChatApi = [
-          'openai-chat',
-          'openai-responses',
-          'claude-chat',
-        ].includes(currentApiType);
+        const isStandardChatApi = isStandardChatApiType(currentApiType);
         const currentStreamMode = form.getFieldValue('stream_mode');
 
         // Skip validation for standard chat APIs (backend will handle field mapping)
@@ -416,11 +439,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       }
       // Data/Load configuration tab (key '2' for standard APIs, '3' for others)
       const currentApiType = form.getFieldValue('api_type') || 'openai-chat';
-      const isStandardChatApi = [
-        'openai-chat',
-        'openai-responses',
-        'claude-chat',
-      ].includes(currentApiType);
+      const isStandardChatApi = isStandardChatApiType(currentApiType);
       const dataLoadTabKey = isStandardChatApi ? '2' : '3';
 
       if (activeTabKey === dataLoadTabKey) {
@@ -445,9 +464,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           (isStandardChatApi ? 'default' : 'none');
         if (
           currentTestDataInputType === 'default' &&
-          ['openai-chat', 'openai-responses', 'claude-chat'].includes(
-            currentApiType
-          )
+          isStandardChatApiType(currentApiType)
         ) {
           requiredFields.push('chat_type');
         }
@@ -681,11 +698,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
       // Dataset source defaults must match API type (no built-in option for embeddings/custom-chat)
       const fillApiType = dataToFill.api_type || 'openai-chat';
-      const isFillChatApi = [
-        'openai-chat',
-        'openai-responses',
-        'claude-chat',
-      ].includes(fillApiType);
+      const isFillChatApi = isStandardChatApiType(fillApiType);
       if (isFillChatApi) {
         if (
           dataToFill.test_data_input_type === undefined ||
@@ -939,6 +952,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     try {
       setTesting(true);
 
+      const clusterId = form.getFieldValue('cluster_id');
+
       // Only validate required fields for testing from the first tab
       const requiredFields = ['target_host', 'api_path', 'stream_mode'];
 
@@ -1027,6 +1042,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         cookies: values.cookies,
         request_payload: values.request_payload,
         api_type: values.api_type,
+        cluster_id: clusterId || undefined,
       };
 
       // Include cert_config if present (uploaded via certificate flow)
@@ -1045,15 +1061,35 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       // Try to extract error message from backend response with priority order
       let errorMessage = t('components.createJobForm.testFailedCheckConfig');
 
+      const errData = error?.response?.data ?? error?.data;
+      const detail = errData?.detail;
+      let detailText = '';
+      if (Array.isArray(detail)) {
+        detailText = detail
+          .map((d: any) => d?.msg || d?.error || JSON.stringify(d))
+          .join('; ');
+      } else if (typeof detail === 'string') {
+        detailText = detail;
+      } else if (detail) {
+        detailText =
+          typeof detail === 'object'
+            ? detail?.message || detail?.error || JSON.stringify(detail)
+            : String(detail);
+      }
+
       // Priority 1: Backend API error field (most specific)
-      if (error?.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      if (errData?.error) {
+        errorMessage = errData.error;
       }
       // Priority 2: Backend API message field
-      else if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      else if (errData?.message) {
+        errorMessage = errData.message;
       }
-      // Priority 3: Network timeout or connection errors
+      // Priority 3: Backend API detail field (FastAPI standard)
+      else if (detailText) {
+        errorMessage = detailText;
+      }
+      // Priority 4: Network timeout or connection errors
       else if (
         error?.code === 'ECONNABORTED' &&
         error?.message?.includes('timeout')
@@ -1062,7 +1098,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           'components.createJobForm.networkTimeoutCheckConnection'
         );
       }
-      // Priority 4: Other axios errors
+      // Priority 5: Other axios errors
       else if (error?.message) {
         errorMessage = error.message;
       }
@@ -1209,11 +1245,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
       // Handle test data input type
       const submitApiType = values.api_type || 'openai-chat';
-      const isSubmitChatApi = [
-        'openai-chat',
-        'openai-responses',
-        'claude-chat',
-      ].includes(submitApiType);
+      const isSubmitChatApi = isStandardChatApiType(submitApiType);
       const inputType =
         values.test_data_input_type || (isSubmitChatApi ? 'default' : 'none');
       if (inputType === 'upload') {
@@ -1769,6 +1801,31 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       </Row>
 
       <Row gutter={24}>
+        <Col span={24}>
+          <Form.Item
+            name='cluster_id'
+            label={t('components.createJobForm.env')}
+            rules={[
+              {
+                required: true,
+                message: t('components.createJobForm.envRequired'),
+              },
+            ]}
+          >
+            <Select
+              placeholder={t('components.createJobForm.envPlaceholder')}
+              loading={clustersLoading}
+              allowClear
+              options={clusters.map(c => ({
+                value: c.id,
+                label: `${c.name} (${t('components.createJobForm.envSlots', { slots: c.available_slots })})`,
+              }))}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={24}>
         <Col span={12}>
           <Form.Item
             name='api_type'
@@ -2139,11 +2196,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         {({ getFieldValue }) => {
           const inputType = getFieldValue('test_data_input_type');
           const currentApiType = getFieldValue('api_type') || 'openai-chat';
-          const isChatApi = [
-            'openai-chat',
-            'openai-responses',
-            'claude-chat',
-          ].includes(currentApiType);
+          const isChatApi = isStandardChatApiType(currentApiType);
 
           const cardStyle = {
             background: token.colorFillAlter,
@@ -2827,8 +2880,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             switch (currentApiType) {
               case 'openai-chat':
                 return 'messages.0.content.-1.text';
-              case 'openai-responses':
-                return 'input';
               case 'claude-chat':
                 return 'messages.0.content.-1.text';
               case 'embeddings':
@@ -2844,8 +2895,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             switch (currentApiType) {
               case 'openai-chat':
                 return 'messages.0.content.0.image_url';
-              case 'openai-responses':
-                return 'input.0.content.-1.image_url';
               case 'claude-chat':
                 return 'messages.0.content.0.source.data';
               case 'custom-chat':
@@ -3478,11 +3527,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
   // Render tab action buttons
   const renderTabActions = () => {
-    const isStandardChatApi = [
-      'openai-chat',
-      'openai-responses',
-      'claude-chat',
-    ].includes(watchedApiType);
+    const isStandardChatApi = isStandardChatApiType(watchedApiType);
 
     if (activeTabKey === '1') {
       return (
@@ -3653,11 +3698,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               }
 
               // Update dataset settings based on API type
-              if (
-                newApiType === 'openai-chat' ||
-                newApiType === 'openai-responses' ||
-                newApiType === 'claude-chat'
-              ) {
+              if (isStandardChatApiType(newApiType)) {
                 form.setFieldsValue({
                   test_data_input_type: 'default',
                   chat_type: 2,
@@ -3840,11 +3881,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         <Form.Item noStyle shouldUpdate>
           {({ getFieldValue }) => {
             const currentApiType = getFieldValue('api_type') || 'openai-chat';
-            const isStandardChatApi = [
-              'openai-chat',
-              'openai-responses',
-              'claude-chat',
-            ].includes(currentApiType);
+            const isStandardChatApi = isStandardChatApiType(currentApiType);
 
             // Build tabs array based on API type
             const tabItems = [
@@ -3970,16 +4007,14 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               )}
             </Descriptions>
 
-            {/* Error Message — only show when no response data */}
-            {testResult.status === 'error' &&
-              testResult.error &&
-              testResult.response?.data === undefined && (
-                <Alert
-                  type='error'
-                  message={testResult.error}
-                  style={{ marginTop: 12 }}
-                />
-              )}
+            {/* Error Message — show when testResult.status === 'error' */}
+            {testResult.status === 'error' && testResult.error && (
+              <Alert
+                type='error'
+                message={testResult.error}
+                style={{ marginTop: 12 }}
+              />
+            )}
 
             {/* Response Data Section */}
             {testResult.response?.data !== undefined && (
@@ -4008,11 +4043,23 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                     size='small'
                     icon={<CopyOutlined />}
                     onClick={() => {
-                      copyToClipboard(
-                        formatTestResponse(
+                      let textToCopy = '';
+                      if (
+                        testResult.response.is_stream &&
+                        Array.isArray(testResult.response.data)
+                      ) {
+                        textToCopy = joinStreamChunks(testResult.response.data);
+                      } else if (typeof testResult.response.data === 'string') {
+                        textToCopy = testResult.response.data;
+                      } else {
+                        textToCopy = JSON.stringify(
                           testResult.response.data,
-                          testResult.response.is_stream
-                        ),
+                          null,
+                          2
+                        );
+                      }
+                      copyToClipboard(
+                        textToCopy,
                         t('common.copySuccess'),
                         t('common.copyFailed')
                       );
@@ -4024,10 +4071,14 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
                 <TextArea
                   readOnly
-                  value={formatTestResponse(
-                    testResult.response.data,
-                    testResult.response.is_stream
-                  )}
+                  value={
+                    testResult.response.is_stream &&
+                    Array.isArray(testResult.response.data)
+                      ? joinStreamChunks(testResult.response.data)
+                      : typeof testResult.response.data === 'string'
+                        ? testResult.response.data
+                        : JSON.stringify(testResult.response.data, null, 2)
+                  }
                   style={{
                     flex: 1,
                     minHeight: 300,

@@ -4,50 +4,102 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import os
-import socket
+import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
 import requests
 
+from utils.engine_identity import resolve_engine_id
 from utils.logger import logger
 
 # VictoriaMetrics endpoint (configurable via environment variable)
 _VM_URL: str = os.environ.get("VICTORIA_METRICS_URL", "http://localhost:8428")
 _IMPORT_PATH: str = "/api/v1/import/prometheus"
 _PUSH_TIMEOUT: float = 3.0  # seconds
+_PUSH_MAX_ATTEMPTS: int = 2  # initial request plus one retry
+_PUSH_RETRY_BACKOFF: float = 0.2  # seconds
 
 
-def _resolve_engine_id() -> str:
-    """Resolve engine identity from environment or system hostname.
-
-    Priority:
-        1. ENGINE_ID env var (Docker Compose / manual override)
-        2. ENGINE_POD_NAME env var (Kubernetes)
-        3. HOSTNAME env var (Docker container hostname — unique per container)
-        4. socket.gethostname() — reliable fallback for local development
-
-    When falling back to HOSTNAME or socket.gethostname(), the value is
-    prefixed with ``engine-`` so that auto-generated IDs are easily
-    recognisable in the monitoring dashboard.
-    """
-    # Explicit ENGINE_ID always wins (user-controlled)
-    explicit_id = os.environ.get("ENGINE_ID")
-    if explicit_id:
-        return explicit_id
-
-    # Kubernetes pod name (already contains a meaningful identifier)
-    pod_name = os.environ.get("ENGINE_POD_NAME")
-    if pod_name:
-        return pod_name
-
-    # Fallback: use hostname with a readable prefix
-    hostname = os.environ.get("HOSTNAME") or socket.gethostname()
-    return f"engine-{hostname}" if hostname else "engine-local"
+# requests.Session is not guaranteed to be thread-safe. Keep one persistent
+# session per calling thread (or greenlet when threading.local is monkey-patched
+# by gevent) so normal pushes reuse TCP connections without sharing mutable
+# session state across concurrent collectors.
+_SESSION_LOCAL = threading.local()
 
 
 # Engine identity
-ENGINE_ID: str = _resolve_engine_id()
+ENGINE_ID: str = resolve_engine_id()
+
+
+def _get_session() -> requests.Session:
+    """Return the persistent requests session for the current execution context."""
+    session = getattr(_SESSION_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        _SESSION_LOCAL.session = session
+    return session
+
+
+def _discard_session(session: requests.Session) -> None:
+    """Close and forget a session after a connection-level failure."""
+    try:
+        session.close()
+    except Exception as error:  # pragma: no cover - defensive cleanup
+        logger.debug(
+            "Failed to close VM push session: "
+            f"type={type(error).__name__}, error={error!r}"
+        )
+    finally:
+        if getattr(_SESSION_LOCAL, "session", None) is session:
+            delattr(_SESSION_LOCAL, "session")
+
+
+def _extract_errno(error: BaseException) -> Optional[int]:
+    """Find a nested OS errno inside requests/urllib3 exception wrappers."""
+    pending = [error]
+    visited = set()
+
+    while pending:
+        current = pending.pop()
+        current_id = id(current)
+        if current_id in visited:
+            continue
+        visited.add(current_id)
+
+        error_number = getattr(current, "errno", None)
+        if error_number is not None:
+            return error_number
+
+        for attribute in ("__cause__", "__context__", "reason"):
+            nested = getattr(current, attribute, None)
+            if isinstance(nested, BaseException):
+                pending.append(nested)
+
+        for argument in getattr(current, "args", ()):
+            if isinstance(argument, BaseException):
+                pending.append(argument)
+
+    return None
+
+
+def _log_connection_error(
+    error: requests.exceptions.ConnectionError,
+    *,
+    url: str,
+    attempt: int,
+) -> None:
+    """Log the original connection exception and retry state."""
+    will_retry = attempt < _PUSH_MAX_ATTEMPTS
+    logger.warning(
+        "VM push connection error: "
+        f"type={type(error).__name__}, "
+        f"errno={_extract_errno(error)!r}, "
+        f"url={url}, "
+        f"attempt={attempt}/{_PUSH_MAX_ATTEMPTS}, "
+        f"will_retry={will_retry}, "
+        f"error={error!r}"
+    )
 
 
 def push_metrics(
@@ -74,27 +126,37 @@ def push_metrics(
     url = f"{_VM_URL}{_IMPORT_PATH}"
     body = "\n".join(lines) + "\n"
 
-    try:
-        resp = requests.post(
-            url,
-            data=body.encode("utf-8"),
-            headers={"Content-Type": "text/plain"},
-            timeout=_PUSH_TIMEOUT,
-        )
-        if resp.status_code >= 400:
+    for attempt in range(1, _PUSH_MAX_ATTEMPTS + 1):
+        session = None
+        try:
+            session = _get_session()
+            resp = session.post(
+                url,
+                data=body.encode("utf-8"),
+                headers={"Content-Type": "text/plain"},
+                timeout=_PUSH_TIMEOUT,
+            )
+            if resp.status_code >= 400:
+                logger.warning(
+                    f"VM push failed: HTTP {resp.status_code} - {resp.text[:200]}"
+                )
+                return False
+            return True
+        except requests.exceptions.ConnectionError as error:
+            _log_connection_error(error, url=url, attempt=attempt)
+            if session is not None:
+                _discard_session(session)
+            if attempt >= _PUSH_MAX_ATTEMPTS:
+                return False
+            time.sleep(_PUSH_RETRY_BACKOFF)
+        except Exception as error:
             logger.warning(
-                f"VM push failed: HTTP {resp.status_code} - {resp.text[:200]}"
+                "VM push error: "
+                f"type={type(error).__name__}, url={url}, error={error!r}"
             )
             return False
-        return True
-    except requests.exceptions.ConnectionError:
-        logger.warning(
-            "VM push connection error (VictoriaMetrics may not be available)"
-        )
-        return False
-    except Exception as e:
-        logger.warning(f"VM push error: {e}")
-        return False
+
+    return False  # pragma: no cover - the loop always returns on its final attempt
 
 
 def _escape_label_value(value: str) -> str:

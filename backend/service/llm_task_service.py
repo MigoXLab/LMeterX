@@ -36,6 +36,7 @@ from model.llm_task import (
     TaskTestReq,
 )
 from service.analysis_service import extract_multiple_task_metrics
+from service.task_dispatch_service import add_dispatch_entry, cancel_dispatch_entry
 from utils.auth import get_current_user, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.be_config import UPLOAD_FOLDER
@@ -122,6 +123,7 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
             task.warmup_duration if task.warmup_duration is not None else 120
         ),
         "engine_id": task.engine_id,
+        "cluster_id": task.cluster_id or "local",
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -169,6 +171,7 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
             task.warmup_duration if task.warmup_duration is not None else 120
         ),
         "engine_id": task.engine_id,
+        "cluster_id": task.cluster_id or "local",
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -199,6 +202,7 @@ def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
         "test_data": task.request_body or "",
         "error_message": task.error_message,
         "engine_id": getattr(task, "engine_id", None),
+        "cluster_id": getattr(task, "cluster_id", None) or "local",
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -443,6 +447,7 @@ async def stop_task_svc(request: Request, task_id: str):
 
         if task.status == "queuing":
             task.status = "stopped"
+            await cancel_dispatch_entry(db, task_type="llm", task_id=task_id)
             await db.commit()
             return TaskCreateRsp(
                 status="stopped",
@@ -503,7 +508,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             created_by = created_by or "-"
 
         # Convert field_mapping to JSON string if provided
-        # Standard OpenAI/Claude protocols can use engine-generated field mappings.
+        # For standard chat APIs (openai-chat, claude-chat), empty field_mapping is acceptable
         # as st_engine will auto-generate it based on api_type
         api_type = body.api_type or DEFAULT_API_TYPE
         field_mapping_data = body.field_mapping or {}
@@ -541,6 +546,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             field_mapping=field_mapping_json,
             api_type=api_type,
             test_data=test_data,
+            cluster_id=getattr(body, "cluster_id", None) or "local",
             # Stepped load configuration
             load_mode=body.load_mode,
             step_start_users=body.step_start_users,
@@ -551,6 +557,12 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
         )
 
         db.add(new_task)
+        add_dispatch_entry(
+            db,
+            task_type="llm",
+            task_id=task_id,
+            cluster_id=new_task.cluster_id,
+        )
         await db.flush()
         await db.commit()
         logger.info("Task created successfully: {}", new_task.id)
@@ -654,6 +666,7 @@ async def delete_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
 
         # Soft delete: mark as deleted instead of physically removing
         task.is_deleted = 1
+        await cancel_dispatch_entry(db, task_type="llm", task_id=task_id)
         await db.commit()
         return {"status": "success", "task_id": task_id, "message": "Task deleted"}
     except ErrorResponse:
@@ -1041,20 +1054,22 @@ def _prepare_request_payload(body: Union[TaskCreateReq, TaskTestReq]) -> Dict:
 
     # If request_payload is empty or None, generate default
     if not body.request_payload or not body.request_payload.strip():
-        # Generate default payload for any API
+        if body.api_type == "openai-responses":
+            return {
+                "model": body.model or "your-model-name",
+                "stream": body.stream_mode,
+                "input": "Hi",
+            }
         default_payload = {
             "model": body.model or "your-model-name",
             "stream": body.stream_mode,
-        }
-        if body.api_type == "openai-responses":
-            default_payload["input"] = "Hi"
-        else:
-            default_payload["messages"] = [
+            "messages": [
                 {
                     "role": "user",
                     "content": "Hi",
                 }
-            ]
+            ],
+        }
         return default_payload
 
     # Use provided request_payload
@@ -1191,17 +1206,48 @@ async def _handle_non_streaming_response(response) -> Dict:
     }
 
 
+async def _test_llm_via_probe(request: Request, body: TaskTestReq):
+    """Dispatch LLM connectivity test to an engine in the target cluster."""
+    from service import probe_service
+
+    db = request.state.db
+
+    request_config = {
+        "target_host": body.target_host,
+        "api_path": body.api_path,
+        "model": body.model or "",
+        "stream_mode": body.stream_mode,
+        "headers": [
+            {"key": h.key, "value": h.value} for h in body.headers if h.key and h.value
+        ],
+        "cookies": [
+            {"key": c.key, "value": c.value} for c in body.cookies if c.key and c.value
+        ],
+        "request_payload": body.request_payload or "",
+        "api_type": body.api_type or "openai-chat",
+    }
+
+    probe_id = await probe_service.create_probe(
+        db=db,
+        cluster_id=body.cluster_id,
+        probe_type="llm",
+        request_config=request_config,
+    )
+
+    result = await probe_service.wait_for_probe_result(probe_id)
+    return result
+
+
 async def test_llm_api_svc(request: Request, body: TaskTestReq):
     """
     Test a custom API endpoint with the provided configuration.
-
-    Args:
-        request: The FastAPI request object.
-        body: The request body containing the test parameters.
-
-    Returns:
-        A dictionary containing the test result.
+    If cluster_id is provided, dispatches the test as a probe to the target engine cluster.
+    Otherwise, tests directly from the backend.
     """
+    # If cluster_id is provided, proxy through engine cluster
+    if body.cluster_id:
+        return await _test_llm_via_probe(request, body)
+
     try:
         # Prepare headers
         headers = {
@@ -1281,6 +1327,14 @@ async def test_llm_api_svc(request: Request, body: TaskTestReq):
             "error": "Operation timeout, please check network connection and target server status",
             "response": None,
         }
+    except ErrorResponse as e:
+        logger.error("Validation error when testing API endpoint: {}", e.error)
+        return {
+            "status": "error",
+            "error": e.error,
+            "details": e.details,
+            "response": None,
+        }
     except Exception as e:
         logger.error("Error testing API endpoint: {}", e, exc_info=True)
         return {
@@ -1306,22 +1360,18 @@ async def _handle_streaming_response(
     Returns:
         A dictionary containing the streaming response.
     """
-    # Transport chunks do not align with SSE events or even UTF-8/text lines. Keep
-    # the unfinished tail between reads and expose one continuous response body.
-    # This also preserves blank lines between SSE events.
     stream_data: List[str] = []
-    pending_text = ""
+    append_chunk = stream_data.append
     test_note = "Streaming connection test completed, only collected partial data for verification"
 
     def _build_stream_result(
         note: str, warning: Optional[str] = None
     ) -> Dict[str, Any]:
-        response_text = "".join(stream_data)
-        test_successful = bool(response_text)
+        test_successful = len(stream_data) > 0
         response_payload: Dict[str, Any] = {
             "status_code": response.status_code,
             "headers": dict(response.headers),
-            "data": response_text,
+            "data": stream_data,
             "is_stream": True,
             "test_note": note,
         }
@@ -1362,35 +1412,31 @@ async def _handle_streaming_response(
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max_duration
 
-        # Process raw decoded text instead of treating each network chunk as one
-        # event. A chunk may contain several SSE events or end halfway through a
-        # data line, so only commit complete lines while the stream is active.
-        async for chunk in response.aiter_text():
-            if not chunk:
-                continue
+        # Process streaming data with time limit and chunk count limit
+        async for chunk in response.aiter_lines():
+            if chunk:
+                chunk_str = chunk.strip()
+                if chunk_str:
+                    append_chunk(chunk_str)
 
-            pending_text += chunk
-            last_line_break = max(pending_text.rfind("\n"), pending_text.rfind("\r"))
-            if last_line_break >= 0:
-                stream_data.append(pending_text[: last_line_break + 1])
-                pending_text = pending_text[last_line_break + 1 :]
+                    if len(stream_data) >= 500:
+                        test_note = (
+                            "Streaming connection test completed after reaching the "
+                            "500-chunk limit"
+                        )
+                        logger.info("Stopped streaming test after reaching 500 chunks")
+                        break
 
-            # Check if we've spent too much time. Do not publish pending_text
-            # here because it may be an incomplete SSE data line.
-            if loop.time() >= deadline:
-                test_note = (
-                    "Streaming connection test completed after reaching the "
-                    f"{max_duration}-second limit"
-                )
-                logger.info(
-                    f"Stopped streaming test after {max_duration} seconds",
-                )
-                break
-        else:
-            # EOF is a valid line terminator, so retain a final line even when
-            # the upstream response does not end with a newline.
-            if pending_text:
-                stream_data.append(pending_text)
+                    # Check if we've spent too much time
+                    if loop.time() >= deadline:
+                        test_note = (
+                            "Streaming connection test completed after reaching the "
+                            f"{max_duration}-second limit"
+                        )
+                        logger.info(
+                            f"Stopped streaming test after {max_duration} seconds",
+                        )
+                        break
 
         return _build_stream_result(test_note)
 

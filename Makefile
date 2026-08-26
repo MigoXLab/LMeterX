@@ -1,7 +1,9 @@
-.PHONY: help install install-dev format lint type-check security test clean all ci frontend-install frontend-lint frontend-format backend-install backend-dev backend-format backend-lint backend-type-check backend-security backend-test backend-clean backend-all backend-ci st-engine-install st-engine-dev st-engine-format st-engine-lint st-engine-type-check st-engine-security st-engine-test st-engine-clean st-engine-all st-engine-ci docker-base-backend docker-base-engine docker-base-all docker-push-base-backend docker-push-base-engine docker-push-base-all docker-build-backend docker-build-engine docker-build-all
+.PHONY: help install install-dev format lint type-check security test clean all ci frontend-install frontend-lint frontend-format frontend-test backend-install backend-dev backend-format backend-lint backend-type-check backend-security backend-test backend-clean backend-all backend-ci st-engine-install st-engine-dev st-engine-format st-engine-lint st-engine-type-check st-engine-security st-engine-test st-engine-clean st-engine-all st-engine-ci docker-base-backend docker-base-engine docker-base-agent docker-base-all docker-push-base-backend docker-push-base-engine docker-push-base-agent docker-push-base-all docker-build-backend docker-build-engine docker-build-all
 
 # Docker Hub username (can be overridden via environment variable)
 DOCKER_USER ?= charmy1220
+BACKEND_PYTHON ?= $(if $(CONDA_PREFIX),$(CONDA_PREFIX)/bin/python,python)
+ST_ENGINE_PYTHON ?= $(BACKEND_PYTHON)
 
 # 默认目标
 help:
@@ -21,10 +23,12 @@ help:
 	@echo "Docker 镜像构建命令:"
 	@echo "  docker-base-backend      - 构建后端基础镜像 (含所有依赖+Playwright)"
 	@echo "  docker-base-engine       - 构建引擎基础镜像 (含所有依赖)"
+	@echo "  docker-base-agent        - 构建 Agent 基础镜像 (含所有依赖)"
 	@echo "  docker-base-all          - 构建所有基础镜像"
 	@echo "  docker-push-base-backend - 推送后端基础镜像到 Docker Hub"
 	@echo "  docker-push-base-engine  - 推送引擎基础镜像到 Docker Hub"
-	@echo "  docker-push-base-all     - 推送所有基础镜像到 Docker Hub"
+	@echo "  docker-push-base-agent   - 推送 Agent 基础镜像到阿里云仓库"
+	@echo "  docker-push-base-all     - 推送所有基础镜像"
 	@echo "  docker-build-backend     - 构建后端应用镜像 (基于基础镜像，极快)"
 	@echo "  docker-build-engine      - 构建引擎应用镜像 (基于基础镜像，极快)"
 	@echo "  docker-build-all         - 构建所有应用镜像"
@@ -33,6 +37,7 @@ help:
 	@echo "  frontend-install - 安装前端依赖"
 	@echo "  frontend-lint    - 检查前端代码质量"
 	@echo "  frontend-format  - 格式化前端代码"
+	@echo "  frontend-test    - 运行前端测试"
 	@echo ""
 	@echo "Backend 命令:"
 	@echo "  backend-install     - 安装后端生产依赖"
@@ -77,7 +82,7 @@ type-check: backend-type-check st-engine-type-check
 security: backend-security st-engine-security
 	@echo "所有项目安全检查完成!"
 
-test: backend-test st-engine-test
+test: frontend-test backend-test st-engine-test
 	@echo "所有项目测试完成!"
 
 clean: backend-clean st-engine-clean
@@ -86,7 +91,7 @@ clean: backend-clean st-engine-clean
 all: format lint type-check security test
 	@echo "所有项目完整检查完成!"
 
-ci: frontend-lint backend-ci st-engine-ci
+ci: frontend-lint frontend-test backend-ci st-engine-ci
 	@echo "所有项目 CI/CD 检查完成!"
 
 # Frontend 命令
@@ -102,14 +107,18 @@ frontend-format:
 	@echo "正在格式化前端代码..."
 	cd frontend && npm run format
 
+frontend-test:
+	@echo "正在运行前端测试..."
+	cd frontend && npm test
+
 # Backend 命令
 backend-install:
 	@echo "正在安装后端生产依赖..."
-	cd backend && pip install -r requirements.txt
+	cd backend && $(BACKEND_PYTHON) -m pip install -r requirements.txt
 
 backend-dev:
 	@echo "正在安装后端开发依赖..."
-	cd backend && pip install -r requirements-dev.txt
+	cd backend && $(BACKEND_PYTHON) -m pip install -r requirements-dev.txt
 
 backend-format:
 	@echo "正在格式化后端代码..."
@@ -129,7 +138,7 @@ backend-security:
 
 backend-test:
 	@echo "正在运行后端测试..."
-	cd backend && TESTING=1 python -m pytest --cov=. --cov-report=html --cov-report=term-missing
+	cd backend && TESTING=1 $(BACKEND_PYTHON) -m pytest --cov=. --cov-report=html --cov-report=term-missing
 
 backend-clean:
 	@echo "正在清理后端缓存..."
@@ -152,16 +161,16 @@ backend-ci:
 	flake8 . && \
 	mypy . && \
 	(bandit -r . -c pyproject.toml -f json -o bandit-report.json || bandit -r . -c pyproject.toml) && \
-	TESTING=1 python -m pytest --cov=. --cov-report=term-missing
+	TESTING=1 $(BACKEND_PYTHON) -m pytest --cov=. --cov-report=term-missing
 
 # ST Engine 命令
 st-engine-install:
 	@echo "正在安装引擎生产依赖..."
-	cd st_engine && pip install -r requirements.txt
+	cd st_engine && $(ST_ENGINE_PYTHON) -m pip install -r requirements.txt
 
 st-engine-dev:
 	@echo "正在安装引擎开发依赖..."
-	cd st_engine && pip install -r requirements.txt && pip install -r requirements-dev.txt
+	cd st_engine && $(ST_ENGINE_PYTHON) -m pip install -r requirements.txt && $(ST_ENGINE_PYTHON) -m pip install -r requirements-dev.txt
 
 st-engine-format:
 	@echo "正在格式化引擎代码..."
@@ -181,7 +190,7 @@ st-engine-security:
 
 st-engine-test:
 	@echo "正在运行引擎测试..."
-	cd st_engine && python -m pytest
+	cd st_engine && $(ST_ENGINE_PYTHON) -m pytest
 
 st-engine-clean:
 	@echo "正在清理引擎缓存..."
@@ -204,7 +213,7 @@ st-engine-ci:
 	flake8 . && \
 	mypy . && \
 	bandit -r . -c pyproject.toml && \
-	python -m pytest
+	$(ST_ENGINE_PYTHON) -m pytest
 
 # ============================================================
 # Docker 镜像构建命令
@@ -221,10 +230,15 @@ docker-base-engine:
 	docker build -t $(DOCKER_USER)/lmeterx-eng-base:latest -f st_engine/Dockerfile.base st_engine/
 	@echo "引擎基础镜像构建完成: $(DOCKER_USER)/lmeterx-eng-base:latest"
 
-docker-base-all: docker-base-backend docker-base-engine
+docker-base-agent:
+	@echo "正在构建 Agent 基础镜像 (含 Python 依赖)..."
+	docker build -t eng-center-registry.cn-shanghai.cr.aliyuncs.com/qa/llmeter-agent:base -f cluster-agent/Dockerfile.base cluster-agent/
+	@echo "Agent 基础镜像构建完成: eng-center-registry.cn-shanghai.cr.aliyuncs.com/qa/llmeter-agent:base"
+
+docker-base-all: docker-base-backend docker-base-engine docker-base-agent
 	@echo "所有基础镜像构建完成!"
 
-# --- 推送基础镜像到 Docker Hub ---
+# --- 推送基础镜像到 Docker Hub / 阿里云仓库 ---
 docker-push-base-backend:
 	@echo "正在推送后端基础镜像到 Docker Hub..."
 	docker push $(DOCKER_USER)/lmeterx-be-base:latest
@@ -235,18 +249,23 @@ docker-push-base-engine:
 	docker push $(DOCKER_USER)/lmeterx-eng-base:latest
 	@echo "引擎基础镜像推送完成!"
 
-docker-push-base-all: docker-push-base-backend docker-push-base-engine
+docker-push-base-agent:
+	@echo "正在推送 Agent 基础镜像到阿里云仓库..."
+	docker push eng-center-registry.cn-shanghai.cr.aliyuncs.com/qa/llmeter-agent:base
+	@echo "Agent 基础镜像推送完成!"
+
+docker-push-base-all: docker-push-base-backend docker-push-base-engine docker-push-base-agent
 	@echo "所有基础镜像推送完成!"
 
 # --- 应用镜像构建 (日常开发，基于基础镜像，极快) ---
 docker-build-backend:
 	@echo "正在构建后端应用镜像 (基于基础镜像)..."
-	docker build -t $(DOCKER_USER)/lmeterx-be:latest backend/
+	docker build -t $(DOCKER_USER)/lmeterx-be:latest -f backend/Dockerfile .
 	@echo "后端应用镜像构建完成: $(DOCKER_USER)/lmeterx-be:latest"
 
 docker-build-engine:
 	@echo "正在构建引擎应用镜像 (基于基础镜像)..."
-	docker build -t $(DOCKER_USER)/lmeterx-eng:latest st_engine/
+	docker build -t $(DOCKER_USER)/lmeterx-eng:latest -f st_engine/Dockerfile .
 	@echo "引擎应用镜像构建完成: $(DOCKER_USER)/lmeterx-eng:latest"
 
 docker-build-all: docker-build-backend docker-build-engine

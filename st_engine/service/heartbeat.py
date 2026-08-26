@@ -1,5 +1,7 @@
 """
-Engine heartbeat service.
+Deprecated: Use ENGINE_MODE=api instead.
+
+Engine heartbeat service (DB mode only).
 
 Provides liveness tracking for engine instances so that surviving instances
 can detect dead peers and reconcile their orphaned tasks.

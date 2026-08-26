@@ -8,6 +8,9 @@ LMeterX offers multiple deployment methods:
 
 1. **One-Click Deployment**: Suitable for quick experience and testing
 2. **Development Deployment**: Suitable for development and custom requirements
+3. **Multi-Cluster Deployment**: A central Backend schedules local or Kubernetes Engine clusters
+
+For this topology, also read the [Multi-Cluster Engine Guide](MULTI_CLUSTER_GUIDE.md).
 
 ## 🚀 One-Click Deployment (For Users)
 
@@ -38,10 +41,10 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 
 | Service | Docker Hub Image | Size | Description |
 |---------|------------------|------|-------------|
-| Frontend | `luckyyc/lmeterx-frontend:latest` | ~20MB | React + Nginx |
-| Backend | `luckyyc/lmeterx-backend:latest` | ~80MB | FastAPI + Python |
-| Engine | `luckyyc/lmeterx-engine:latest` | ~130MB | Locust + Python |
-| Database | `luckyyc/lmeterx-mysql:latest`  | ~130MB | Official MySQL image + Database initialization |
+| Frontend | `charmy1220/lmeterx-fe:latest` | ~20MB | React + Nginx |
+| Backend | `charmy1220/lmeterx-be:latest` | ~80MB | FastAPI + Python |
+| Engine | `charmy1220/lmeterx-eng:latest` | ~130MB | Locust + Python |
+| Database | `charmy1220/lmeterx-mysql:latest`  | ~130MB | Official MySQL image + database initialization |
 
 ## ⚙️ Development Deployment (For Developers)
 
@@ -98,8 +101,9 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure database (MySQL): Edit .env file or config/db_config.py
-# Import initialization script: init_db.sql
+# Copy the example and configure Backend settings such as MySQL and LDAP
+cp .env.example .env
+# For a fresh install, import init_db.sql. For upgrades, apply mysql/migrations/ in order.
 
 # Start service
 python app.py
@@ -117,12 +121,15 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure database (MySQL): Edit .env file or config/db_config.py
-# Import initialization script: init_db.sql
+# Engines use the Backend API and do not need a direct MySQL connection
+cp .env.example .env
+# Verify at least: ENGINE_MODE=api, BACKEND_URL=http://localhost:5001, CLUSTER_ID=local
 
 # Start service
 python app.py
 ```
+
+> `ENGINE_MODE=db` is deprecated and retained only for older deployments. Use `api` mode for new installations.
 
 #### Start Frontend
 
@@ -141,6 +148,12 @@ npm run preview
 ```
 #### Access URLs
 - Frontend Interface: http://localhost:5173
+
+### Multi-Cluster Engines
+
+Docker Compose includes the default `local` cluster. To attach a remote cluster, register it with the central Backend and configure its Engines with `ENGINE_MODE=api`, `BACKEND_URL`, `CLUSTER_ID`, and the optional `ENGINE_API_TOKEN`. Add a Cluster Agent only when the control plane should scale a Kubernetes Engine Deployment.
+
+See the [Multi-Cluster Engine Guide](MULTI_CLUSTER_GUIDE.md) for complete setup, Kubernetes environment variables, OSS/SLS choices, and troubleshooting.
 
 ## 🔍 Deployment Verification
 
@@ -497,6 +510,8 @@ docker stats $(docker-compose ps -q)
    - `POST /api/skills/analyze-url`
    - `POST /api/http-tasks/test`
    - `POST /api/http-tasks`
+   - `POST /api/llm-tasks/test`
+   - `POST /api/llm-tasks`
 
    **Step 1: Generate a strong random token**
    ```bash
@@ -528,7 +543,7 @@ docker stats $(docker-compose ps -q)
    docker-compose restart backend
    ```
 
-   > **Note**: `LMETERX_AUTH_TOKEN` only takes effect when `LDAP_ENABLED=on`. When LDAP is disabled, all APIs are open and the token has no effect. Even with a valid token, the agent can only access the three whitelisted paths — all other paths remain protected.
+   > **Note**: `LMETERX_AUTH_TOKEN` only takes effect when `LDAP_ENABLED=on`. When LDAP is disabled, all APIs are open and the token has no effect. Even with a valid token, the agent can only access the paths above; all other paths remain protected.
 
 4. **Configure Admin Users (`ADMIN_USERNAMES`)**:
 
@@ -577,8 +592,8 @@ LMeterX embeds [VictoriaMetrics](https://victoriametrics.com/) as a lightweight,
 |----------|---------|-------------|
 | `VICTORIA_METRICS_URL` | `http://victoria-metrics:8428` | VictoriaMetrics endpoint (set on both backend and engine) |
 | `RESOURCE_COLLECT_INTERVAL` | `2` | Engine resource collection interval in seconds |
-| `ENGINE_ID` | auto (from hostname) | Fixed engine identity label; useful for single-instance setups |
-| `ENGINE_POD_NAME` | — | Kubernetes Pod name; takes priority over hostname when set |
+| `ENGINE_ID` | auto (from hostname) | Unique Engine identity; use the Pod UID for Kubernetes replicas |
+| `ENGINE_POD_NAME` | — | Kubernetes Pod name; used for identity only when `ENGINE_ID` is unset |
 
 #### Docker Compose Service Definition
 
@@ -652,7 +667,7 @@ curl "http://localhost:8428/api/v1/label/__name__/values"
 | `lmeterx_total_requests` | `task_id`, `task_type`, `engine_id` | Cumulative request count |
 | `lmeterx_total_failures` | `task_id`, `task_type`, `engine_id` | Cumulative failure count |
 
-> **Multi-engine deployments**: Each engine instance automatically resolves a unique `engine_id` from its container hostname. Override with `ENGINE_ID` (Docker Compose) or `ENGINE_POD_NAME` (Kubernetes) for a fixed, human-readable identifier.
+> **Multi-engine deployments**: `engine_id` must be globally unique. Docker Compose can use the generated container hostname. For Kubernetes replicas, set `ENGINE_ID` to the Pod UID through the Downward API; do not assign one fixed value to an entire Deployment.
 
 ### Log Management
 

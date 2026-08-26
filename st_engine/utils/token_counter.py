@@ -110,15 +110,35 @@ class TokenCounter(ABC):
 
 
 class TikTokenCounter(TokenCounter):
-    """Token counter backed by tiktoken encoders."""
+    """Token counter backed by tiktoken encoders.
+
+    The encoding is loaded lazily on first use to avoid ~100-200MB memory
+    allocation at import time — critical for subprocess memory budgets.
+    """
 
     def __init__(self, model_name: str):
-        """Initialize the counter with a resolved tiktoken encoding."""
+        """Initialize the counter (encoding is loaded lazily on first use)."""
         if tiktoken is None:
             raise ValueError("tiktoken not installed")
 
         self.model_name = model_name
-        self.encoding = self._load_encoding(model_name)
+        self._encoding = None
+        self._load_failed = False
+
+    @property
+    def encoding(self):
+        """The resolved tiktoken encoding instance, loaded lazily on first access."""
+        if self._encoding is None:
+            if self._load_failed:
+                raise RuntimeError(
+                    f"tiktoken encoding for '{self.model_name}' unavailable"
+                )
+            try:
+                self._encoding = self._load_encoding(self.model_name)
+            except Exception:
+                self._load_failed = True
+                raise
+        return self._encoding
 
     @staticmethod
     def _load_encoding(model_name: str):
@@ -156,6 +176,8 @@ class TikTokenCounter(TokenCounter):
         return self.encoding.encode(text, disallowed_special=())
 
     def _count_tokens(self, text: str) -> int:
+        if self._load_failed:
+            return self._fallback_token_estimate(text)
         return len(self.encode(text))
 
 
@@ -422,7 +444,9 @@ class AsyncTokenCounter:
         self._pool_size = pool_size
         self._pool = None  # lazily created
         self._pending = None  # lazily created
-        self._pending_inputs: Dict[int, Tuple[Callable, str, str, str]] = {}
+        # Store (callback, prompt_bytes, reasoning_bytes, content_bytes) instead of
+        # full strings to avoid holding tens of KB per pending greenlet in memory.
+        self._pending_inputs: Dict[int, Tuple[Callable, int, int, int]] = {}
 
     def _get_pool(self):
         """Get or lazily create the OS thread pool."""
@@ -485,9 +509,8 @@ class AsyncTokenCounter:
                 total_tokens = extract_token_from_usage(usage, ["total", "all"])
 
             # Step 2: Determine whether CPU-bound tiktoken is needed.
-            # Do not estimate input tokens from the prompt alone: that path
-            # is typical of failed requests (empty content, zero usage) and
-            # would inflate Input_tokens with failures.
+            # A prompt by itself with empty/zero usage is the normal shape of
+            # a failed request, so do not estimate input tokens for it.
             needs_tiktoken = False
             has_response_text = bool(content or reasoning_content)
             if (
@@ -531,9 +554,13 @@ class AsyncTokenCounter:
                     gid = id(g)
                     self._pending_inputs[gid] = (
                         on_complete,
-                        user_prompt,
-                        reasoning_content,
-                        content,
+                        len(user_prompt.encode("utf-8")) if user_prompt else 0,
+                        (
+                            len(reasoning_content.encode("utf-8"))
+                            if reasoning_content
+                            else 0
+                        ),
+                        len(content.encode("utf-8")) if content else 0,
                     )
                     g.link(lambda _g: self._pending_inputs.pop(id(_g), None))
                     pending.add(g)
@@ -631,24 +658,32 @@ class AsyncTokenCounter:
         return 0
 
     def _fallback_remaining(self) -> None:
-        """Synchronously estimate tokens for any greenlets that didn't finish."""
+        """Synchronously estimate tokens for any greenlets that didn't finish.
+
+        Uses pre-stored byte lengths (not original strings) to avoid holding
+        large text data in memory while greenlets are pending.
+        """
         stale = dict(self._pending_inputs)
         self._pending_inputs.clear()
         for _gid, (
             on_complete,
-            user_prompt,
-            reasoning_content,
-            content,
+            prompt_bytes,
+            reasoning_bytes,
+            content_bytes,
         ) in stale.items():
             try:
                 input_tokens = (
-                    estimate_tokens_via_bytes(user_prompt) if user_prompt else 0
+                    max(1, prompt_bytes // DEFAULT_TOKEN_RATIO_EN)
+                    if prompt_bytes
+                    else 0
                 )
                 completion_tokens = 0
-                if reasoning_content:
-                    completion_tokens += estimate_tokens_via_bytes(reasoning_content)
-                if content:
-                    completion_tokens += estimate_tokens_via_bytes(content)
+                if reasoning_bytes:
+                    completion_tokens += max(
+                        1, reasoning_bytes // DEFAULT_TOKEN_RATIO_EN
+                    )
+                if content_bytes:
+                    completion_tokens += max(1, content_bytes // DEFAULT_TOKEN_RATIO_EN)
                 total_tokens = input_tokens + completion_tokens
                 if completion_tokens > 0 or total_tokens > 0:
                     on_complete(input_tokens, completion_tokens, total_tokens)

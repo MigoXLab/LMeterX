@@ -27,7 +27,7 @@ include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
-known_first_party = ["config", "db", "engine", "model", "service", "utils"]
+known_first_party = ["common", "config", "db", "engine", "model", "service", "utils"]
 known_third_party = ["locust", "sqlalchemy", "pymysql", "tiktoken", "loguru", "fastapi", "uvicorn"]
 
 [tool.flake8]
@@ -103,12 +103,14 @@ per-file-ignores = [
     # __init__.py files can have unused imports and be empty
     "__init__.py:F401,D104,W391,E261",
     # Test files can have unused imports, long lines, and omit method docstrings
-    "test_*.py:F401,E501,D100,D102,D103,D209",
-    "*_test.py:F401,E501,D100,D102,D103,D209",
+    "tests/test_*.py:F401,E501,D100,D102,D103,D209,E402",
+    "tests/*_test.py:F401,E501,D100,D102,D103,D209,E402",
     # Engine files can use star imports and function calls in defaults
-    "engine/*.py:F403,F405,B008,C901",
-    # Service files can use star imports
-    "service/*.py:F403,F405",
+    "engine/*.py:F403,F405,B008,C901,D102,D103,D107",
+    # Service files can use star imports and skip verbose docstrings
+    "service/*.py:F403,F405,D102,D103,D105,D107",
+    # Client files can skip verbose docstrings
+    "client/*.py:D102,D103,D105,D107",
     # Utils files can be complex
     "utils/*.py:C901",
 ]
@@ -190,6 +192,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = [".."]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -207,5 +210,5 @@ markers = [
 ]
 
 [tool.bandit]
-exclude_dirs = ["tests"]
+exclude_dirs = ["tests", ".venv", "venv", "__pycache__", "htmlcov", ".mypy_cache", ".pytest_cache"]
 skips = ["B101", "B601"]

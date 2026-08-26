@@ -14,18 +14,83 @@ import {
   SyncOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Input, Select, Space, Switch, theme } from 'antd';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  Button,
+  Input,
+  Select,
+  Space,
+  Switch,
+  message,
+  theme,
+} from 'antd';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { logApi } from '../api/services';
 import { LoadingSpinner } from './ui/LoadingState';
+import { decodeUnicodeEscapes } from '../utils/data';
+import {
+  buildSlsLogLine,
+  normalizeLogTimestamp,
+  stripNestedLogPrefix,
+} from '../utils/logFormat';
 
 const { Search } = Input;
+const ALL_LOG_LOOKBACK_SECONDS = 60 * 60;
+const INCREMENTAL_LOG_LIMIT = 100;
+const HISTORY_LOG_PAGE_SIZE = 1000;
+const HISTORY_LOAD_SCROLL_THRESHOLD = 240;
+const VIRTUAL_LOG_LINE_THRESHOLD = 1000;
+const SLS_UNAVAILABLE_BACKOFF_MS = 60 * 1000;
+
+const isSlsUnavailableError = (err: any): boolean => {
+  const statusCode = err?.status || err?.response?.status;
+  const code = err?.data?.code || err?.response?.data?.code;
+  const details = String(
+    err?.data?.details || err?.response?.data?.details || err?.message || ''
+  ).toLowerCase();
+  return (
+    code === 'sls_temporarily_unavailable' ||
+    (statusCode === 503 && details.includes('sls')) ||
+    details.includes('nameresolutionerror') ||
+    details.includes('failed to resolve') ||
+    details.includes('temporary failure in name resolution')
+  );
+};
+
+const getRenderedLogTimestampSortKey = (line: string): string => {
+  const separatorIndex = line.indexOf(' | ');
+  if (separatorIndex < 0) {
+    return '';
+  }
+  return line.slice(0, separatorIndex);
+};
+
+const sortRenderedLogLines = (lines: string[]): string[] =>
+  lines
+    .map((line, index) => ({
+      line,
+      index,
+      timestampSortKey: getRenderedLogTimestampSortKey(line),
+    }))
+    .sort((a, b) => {
+      if (a.timestampSortKey !== b.timestampSortKey) {
+        return a.timestampSortKey < b.timestampSortKey ? -1 : 1;
+      }
+      return a.index - b.index;
+    })
+    .map(item => item.line);
 
 // Pre-compiled regexes for log line parsing (created once at module load)
 // Pattern 1: Structured log with pipe separators (3 or 4 segments)
 const STRUCTURED_LOG_REGEX =
-  /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*\|\s*(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\s*\|\s*(?:\S+:\d+\s*\|\s*)?(.*)/i;
+  /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d{1,6})?(?:Z|[+-]\d{2}:?\d{2})?)\s*\|\s*(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\s*\|\s*(?:\S+:\d+\s*\|\s*)?(.*)/i;
 // Pattern 2: Locust-style log
 const LOCUST_LOG_REGEX =
   /^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\]\s+(?:.+?)\/(INFO|ERROR|WARN|WARNING|DEBUG|CRITICAL|FATAL)\/(?:[^:]+):\s*(.*)/i;
@@ -37,15 +102,21 @@ interface SystemLogsProps {
   serviceName: string;
   displayName: string;
   isActive: boolean;
+  engineId?: string;
+  clusterId?: string;
 }
 
 const SystemLogs: React.FC<SystemLogsProps> = ({
   serviceName,
   displayName,
   isActive,
+  engineId,
+  clusterId,
 }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
+  const [logLoading, setLogLoading] = useState(false);
+  const [hasLogLoadCompleted, setHasLogLoadCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string>('');
   const [filteredLogs, setFilteredLogs] = useState<string>('');
@@ -55,16 +126,126 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
   const [tailLines, setTailLines] = useState<number>(100);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(480);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const lastLogScrollTopRef = useRef(0);
   const autoRefreshTimerRef = useRef<number | null>(null);
   const { token } = theme.useToken();
 
   // Track if it should scroll to the bottom
   const shouldScrollToBottom = useRef(true);
-  // Keep latest logs string to guard against flicker caused by transient empty responses
-  const logsRef = useRef<string>('');
   const fetchErrorRef = useRef<string | null>(null);
-  const fetchLogsRef = useRef<() => Promise<void>>(null!);
+  const fetchLogsRef = useRef<(showLoading?: boolean) => Promise<void>>(null!);
+  const fetchOlderLogsRef = useRef<() => Promise<void>>(null!);
+  const fetchLogsInFlightRef = useRef(false);
+  const historyFetchInFlightRef = useRef(false);
+  const historyOffsetRef = useRef(0);
+  const historyStartTimeRef = useRef<number | null>(null);
+  const historyEndTimeRef = useRef<number | null>(null);
+  const hasMoreHistoryRef = useRef(false);
+  const logEntryKeysRef = useRef<Set<string>>(new Set());
+  const logRequestGenerationRef = useRef(0);
+  const slsCursorRef = useRef<number | null>(null);
+  const slsPausedUntilRef = useRef(0);
+  const searchTermRef = useRef('');
+  const lineHeight = 24;
+
+  const resetSlsLogState = () => {
+    logRequestGenerationRef.current += 1;
+    fetchLogsInFlightRef.current = false;
+    historyFetchInFlightRef.current = false;
+    historyOffsetRef.current = 0;
+    historyStartTimeRef.current = null;
+    historyEndTimeRef.current = null;
+    hasMoreHistoryRef.current = false;
+    slsCursorRef.current = null;
+    logEntryKeysRef.current.clear();
+    setHasLogLoadCompleted(false);
+    setIsHistoryLoading(false);
+    setHasMoreHistory(false);
+    setLogs('');
+    setFilteredLogs('');
+    setScrollTop(0);
+    lastLogScrollTopRef.current = 0;
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = 0;
+      setViewportHeight(logContainerRef.current.clientHeight || 480);
+    }
+  };
+
+  const getSlsLogEntryKey = (entry: any): string => {
+    const timestamp = entry.raw?.time || String(entry.timestamp || '');
+    const level = entry.level || entry.raw?.level || '';
+    const message = entry.message || entry.raw?.message || '';
+    const service = entry.service || entry.raw?.service || '';
+    const taskId = entry.task_id || entry.raw?.task_id || '';
+    const engineEntryId = entry.engine_id || entry.raw?.engine_id || '';
+    const clusterEntryId = entry.cluster_id || entry.raw?.cluster_id || '';
+    return [
+      timestamp,
+      level,
+      service,
+      taskId,
+      engineEntryId,
+      clusterEntryId,
+      message,
+    ].join('|');
+  };
+
+  const filterLocalLogContent = (content: string): string => {
+    const keyword = searchTermRef.current.trim();
+    if (!keyword) {
+      return content;
+    }
+    return content
+      .split('\n')
+      .filter(line => line.includes(keyword))
+      .join('\n');
+  };
+
+  const limitRenderedLogContent = (content: string): string => {
+    if (tailLines === 0) {
+      return content;
+    }
+
+    return content.split('\n').filter(Boolean).slice(-tailLines).join('\n');
+  };
+
+  const getInitialSlsLimit = (): number => {
+    if (tailLines === 0) {
+      return 1000;
+    }
+
+    return Math.min(1000, Math.max(tailLines * 3, tailLines));
+  };
+
+  const fetchLocalSystemLogs = async (
+    requestGeneration = logRequestGenerationRef.current
+  ): Promise<string> => {
+    const response =
+      engineId && clusterId
+        ? await logApi.getEngineLogContent(engineId, clusterId, 0, tailLines)
+        : await logApi.getServiceLogContent(serviceName, 0, tailLines);
+    const content = limitRenderedLogContent(
+      filterLocalLogContent(response.data?.content || '')
+    );
+    if (requestGeneration !== logRequestGenerationRef.current) {
+      return '';
+    }
+    slsCursorRef.current = null;
+    historyOffsetRef.current = 0;
+    historyStartTimeRef.current = null;
+    historyEndTimeRef.current = null;
+    hasMoreHistoryRef.current = false;
+    logEntryKeysRef.current.clear();
+    setHasMoreHistory(false);
+    setLogs(content);
+    setFilteredLogs(content);
+    return content;
+  };
 
   // Automatically calculate height
   const getLogContainerHeight = () => {
@@ -75,129 +256,273 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
   };
 
   // Scroll to bottom
-  const scrollToBottom = () => {
-    if (shouldScrollToBottom.current && logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+  const scrollToBottom = (force = false) => {
+    const container = logContainerRef.current;
+    if ((force || shouldScrollToBottom.current) && container) {
+      container.scrollTop = container.scrollHeight;
+      setScrollTop(container.scrollTop);
+      setViewportHeight(container.clientHeight || 480);
     }
   };
 
-  // Listen for scroll events
-  useEffect(() => {
+  const detachFromBottomFollow = useCallback(() => {
+    shouldScrollToBottom.current = false;
+    setShowScrollToBottom(prev => {
+      if (prev === false) return true;
+      return prev;
+    });
+  }, []);
+
+  const handleLogContainerRef = useCallback((node: HTMLDivElement | null) => {
+    logContainerRef.current = node;
+    if (node) {
+      const currentScrollTop = node.scrollTop;
+      lastLogScrollTopRef.current = currentScrollTop;
+      setScrollTop(currentScrollTop);
+      setViewportHeight(node.clientHeight || 480);
+    }
+  }, []);
+
+  const handleLogWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      if (event.deltaY < 0) {
+        detachFromBottomFollow();
+      }
+    },
+    [detachFromBottomFollow]
+  );
+
+  const handleLogScroll = useCallback(() => {
     const container = logContainerRef.current;
-    // Make sure to add the event listener after the container is rendered and loaded
-    if (!container || loading) {
+    if (!container) {
       return;
     }
 
-    let lastScrollTop = container.scrollTop;
+    const currentScrollTop = container.scrollTop;
+    setScrollTop(currentScrollTop);
+    setViewportHeight(container.clientHeight || 480);
 
-    const handleScroll = () => {
-      const currentScrollTop = container.scrollTop;
-      const scrollDirection = currentScrollTop > lastScrollTop ? 'down' : 'up';
-      // Handle the case where scrollTop may be negative when scrolling to the top
-      lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop;
+    const scrollDirection =
+      currentScrollTop > lastLogScrollTopRef.current ? 'down' : 'up';
+    lastLogScrollTopRef.current = currentScrollTop <= 0 ? 0 : currentScrollTop;
 
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
 
-      // When the user scrolls up, pause auto-refresh and show the button
-      if (scrollDirection === 'up' && distanceFromBottom > 50) {
-        shouldScrollToBottom.current = false;
+    if (scrollDirection === 'up' && distanceFromBottom > 50) {
+      detachFromBottomFollow();
+    }
 
-        // Use functional updates to avoid making state variables a dependency of the effect
-        setShowScrollToBottom(prev => {
-          if (prev === false) return true; // Only update the state when necessary
-          return prev;
-        });
+    if (distanceFromBottom < 10) {
+      shouldScrollToBottom.current = true;
+      setShowScrollToBottom(prev => {
+        if (prev === true) return false;
+        return prev;
+      });
+    }
 
-        setAutoRefresh(prev => {
-          if (prev === true) {
-            return false;
-          }
-          return prev;
-        });
-      }
-
-      // When the user manually scrolls back to the bottom, hide the button
-      if (distanceFromBottom < 10) {
-        shouldScrollToBottom.current = true;
-        setShowScrollToBottom(prev => {
-          if (prev === true) return false; // Only update the state when necessary
-          return prev;
-        });
-      }
-    };
-
-    container.addEventListener('scroll', handleScroll);
-    // Remove the event listener during effect cleanup
-    return () => container.removeEventListener('scroll', handleScroll);
-    // The dependency array includes loading to ensure correct execution after the loading state changes
-  }, [serviceName, loading]);
+    if (
+      tailLines === 0 &&
+      scrollDirection === 'up' &&
+      currentScrollTop <= HISTORY_LOAD_SCROLL_THRESHOLD
+    ) {
+      fetchOlderLogsRef.current?.();
+    }
+  }, [detachFromBottomFollow, tailLines]);
 
   // Unified log acquisition function
-  const fetchLogs = async () => {
+  const fetchLogs = async (showLoading = false) => {
     // This function is called by initial load and polling
     // It does not directly manage the `loading` state
+    if (fetchLogsInFlightRef.current) return;
+
+    fetchLogsInFlightRef.current = true;
+    const requestGeneration = logRequestGenerationRef.current;
+    if (showLoading) {
+      setLogLoading(true);
+    }
+
     try {
       // A new fetch attempt will clear old polling errors
       if (fetchError) setFetchError(null);
 
-      const contentResponse = await logApi.getServiceLogContent(
-        serviceName,
-        0,
-        tailLines
+      const cursor = slsCursorRef.current;
+      const now = Math.floor(Date.now() / 1000);
+      const lookbackSeconds = ALL_LOG_LOOKBACK_SECONDS;
+      const startTime = cursor
+        ? Math.max(0, cursor - 1)
+        : now - lookbackSeconds;
+      const isInitialLoad = !cursor;
+      const queryStartTime =
+        isInitialLoad && tailLines === 0
+          ? historyStartTimeRef.current || startTime
+          : startTime;
+      // Freeze the history window so newly appended logs cannot shift
+      // reverse-offset pages while the user scrolls toward older entries.
+      const queryEndTime =
+        isInitialLoad && tailLines === 0
+          ? historyEndTimeRef.current || now
+          : now + 5;
+      if (isInitialLoad && tailLines === 0) {
+        historyStartTimeRef.current = queryStartTime;
+        historyEndTimeRef.current = queryEndTime;
+      }
+      let pageOffset = 0;
+      let nextCursor = cursor;
+      let hasSlsLines = false;
+      const lines: string[] = [];
+
+      if (Date.now() < slsPausedUntilRef.current) {
+        return;
+      }
+
+      do {
+        const requestParams = {
+          start_time: queryStartTime,
+          end_time: queryEndTime,
+          limit: cursor ? INCREMENTAL_LOG_LIMIT : getInitialSlsLimit(),
+          offset: isInitialLoad ? pageOffset : undefined,
+          keyword: searchTermRef.current.trim() || undefined,
+          reverse: !cursor,
+        };
+        const contentResponse =
+          engineId && clusterId
+            ? // eslint-disable-next-line no-await-in-loop -- SLS pagination must follow the previous page cursor.
+              await logApi.queryRealtimeEngineLogs(
+                engineId,
+                clusterId,
+                requestParams
+              )
+            : // eslint-disable-next-line no-await-in-loop -- SLS pagination must follow the previous page cursor.
+              await logApi.queryRealtimeServiceLogs(serviceName, requestParams);
+
+        if (requestGeneration !== logRequestGenerationRef.current) {
+          return;
+        }
+
+        if (!contentResponse.data) {
+          resetSlsLogState();
+          return;
+        }
+
+        const lineCountBeforePage = lines.length;
+        (contentResponse.data.logs || []).reduce(
+          (acc: string[], entry: any) => {
+            const key = getSlsLogEntryKey(entry);
+            if (logEntryKeysRef.current.has(key)) {
+              return acc;
+            }
+            logEntryKeysRef.current.add(key);
+
+            acc.push(
+              ...buildSlsLogLine(entry, decodeUnicodeEscapes)
+                .split('\n')
+                .filter(Boolean)
+            );
+            return acc;
+          },
+          lines
+        );
+        if (lines.length > lineCountBeforePage) {
+          hasSlsLines = true;
+        }
+        if (contentResponse.data.next_cursor) {
+          nextCursor = Math.max(
+            nextCursor || 0,
+            contentResponse.data.next_cursor
+          );
+        }
+        pageOffset = contentResponse.data.next_offset || 0;
+      } while (
+        isInitialLoad &&
+        tailLines !== 0 &&
+        pageOffset > 0 &&
+        lines.length < tailLines
       );
 
-      if (
-        contentResponse.data &&
-        typeof contentResponse.data.content === 'string'
-      ) {
-        const newLogs = contentResponse.data.content;
+      if (isInitialLoad && tailLines === 0) {
+        historyOffsetRef.current = pageOffset;
+        hasMoreHistoryRef.current = pageOffset > 0;
+        setHasMoreHistory(pageOffset > 0);
+      }
 
-        // Guard 1: avoid replacing with transient empty content which causes flicker
-        if (newLogs.trim() === '' && logsRef.current.trim() !== '') {
-          // keep existing logs; treat as a temporary backend empty read
-          return;
-        }
-        // Guard 2: skip state updates if content hasn't changed
-        if (newLogs === logsRef.current) {
-          return;
-        }
-
-        setLogs(newLogs);
-
-        // If a search term exists, reapply the filter on the new logs
-        if (searchTerm.trim()) {
-          const lines = newLogs.split('\n');
-          const filtered = lines
-            .filter(line =>
-              line.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-            .join('\n');
-          setFilteredLogs(filtered);
-        } else {
-          setFilteredLogs(newLogs);
-        }
+      if (hasSlsLines) {
+        slsCursorRef.current = nextCursor;
+        setLogs(prev => {
+          const baseLines = cursor ? prev.split('\n').filter(Boolean) : [];
+          const next = Array.from(new Set([...baseLines, ...lines]));
+          const sortedLines = sortRenderedLogLines(next);
+          const trimmed = (
+            tailLines === 0 ? sortedLines : sortedLines.slice(-tailLines)
+          ).join('\n');
+          setFilteredLogs(trimmed);
+          return trimmed;
+        });
+      } else if (cursor) {
+        slsCursorRef.current = nextCursor;
       } else {
-        setLogs('');
-        setFilteredLogs('');
+        const fallbackContent = await fetchLocalSystemLogs(requestGeneration);
+        if (requestGeneration !== logRequestGenerationRef.current) {
+          return;
+        }
+        if (fallbackContent) {
+          if (error) setError(null);
+          if (fetchError) setFetchError(null);
+          return;
+        }
       }
       // Clear serious errors after successful acquisition
       if (error) setError(null);
     } catch (err: any) {
+      const slsUnavailable = isSlsUnavailableError(err);
+      if (slsUnavailable) {
+        slsPausedUntilRef.current = Date.now() + SLS_UNAVAILABLE_BACKOFF_MS;
+      }
+
       // If 404 (log file not found), treat as "no logs" instead of error
       const statusCode = err?.status || err?.response?.status;
       if (statusCode === 404) {
+        try {
+          await fetchLocalSystemLogs(requestGeneration);
+          if (requestGeneration !== logRequestGenerationRef.current) {
+            return;
+          }
+          if (error) setError(null);
+          if (fetchError) setFetchError(null);
+          return;
+        } catch (fallbackErr) {
+          setLogs('');
+          setFilteredLogs('');
+          if (error) setError(null);
+          return;
+        }
+      }
+
+      try {
+        await fetchLocalSystemLogs(requestGeneration);
+        if (requestGeneration !== logRequestGenerationRef.current) {
+          return;
+        }
+        if (error) setError(null);
+        if (fetchError) setFetchError(null);
+        return;
+      } catch (fallbackErr) {
+        // Keep the original SLS error when the local/OSS fallback is unavailable.
+      }
+
+      if (slsUnavailable) {
         setLogs('');
         setFilteredLogs('');
         if (error) setError(null);
+        if (fetchError) setFetchError(null);
         return;
       }
+
       const errorMessage =
         err?.data?.error ||
         err?.response?.data?.error ||
         err?.message ||
-        `Failed to fetch logs`;
+        `Failed to fetch logs from SLS`;
       // Show serious errors on initial load, and non-blocking errors on polling
       if (loading) {
         setError(errorMessage);
@@ -205,8 +530,118 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         setFetchError(errorMessage);
       }
     } finally {
-      if (shouldScrollToBottom.current) {
+      fetchLogsInFlightRef.current = false;
+      if (requestGeneration === logRequestGenerationRef.current) {
+        setHasLogLoadCompleted(true);
+        if (showLoading) {
+          setLogLoading(false);
+        }
+      }
+      if (showLoading) {
+        shouldScrollToBottom.current = true;
+        setShowScrollToBottom(false);
+        setTimeout(() => scrollToBottom(true), 100);
+      } else if (shouldScrollToBottom.current) {
         setTimeout(scrollToBottom, 100);
+      }
+    }
+  };
+
+  const fetchOlderLogs = async () => {
+    if (
+      tailLines !== 0 ||
+      historyFetchInFlightRef.current ||
+      !hasMoreHistoryRef.current ||
+      historyStartTimeRef.current === null ||
+      historyEndTimeRef.current === null
+    ) {
+      return;
+    }
+
+    const requestGeneration = logRequestGenerationRef.current;
+    const container = logContainerRef.current;
+    const previousScrollHeight = container?.scrollHeight || 0;
+    const previousScrollTop = container?.scrollTop || 0;
+    historyFetchInFlightRef.current = true;
+    setIsHistoryLoading(true);
+
+    try {
+      const requestParams = {
+        start_time: historyStartTimeRef.current,
+        end_time: historyEndTimeRef.current,
+        limit: HISTORY_LOG_PAGE_SIZE,
+        offset: historyOffsetRef.current,
+        keyword: searchTermRef.current.trim() || undefined,
+        reverse: true,
+      };
+      const contentResponse =
+        engineId && clusterId
+          ? await logApi.queryRealtimeEngineLogs(
+              engineId,
+              clusterId,
+              requestParams
+            )
+          : await logApi.queryRealtimeServiceLogs(serviceName, requestParams);
+
+      if (
+        requestGeneration !== logRequestGenerationRef.current ||
+        !contentResponse.data
+      ) {
+        return;
+      }
+
+      const olderLines: string[] = [];
+      (contentResponse.data.logs || []).forEach((entry: any) => {
+        const key = getSlsLogEntryKey(entry);
+        if (logEntryKeysRef.current.has(key)) {
+          return;
+        }
+        logEntryKeysRef.current.add(key);
+        olderLines.push(
+          ...buildSlsLogLine(entry, decodeUnicodeEscapes)
+            .split('\n')
+            .filter(Boolean)
+        );
+      });
+
+      const nextOffset = contentResponse.data.next_offset || 0;
+      historyOffsetRef.current = nextOffset;
+      hasMoreHistoryRef.current = nextOffset > 0;
+      setHasMoreHistory(nextOffset > 0);
+
+      if (olderLines.length > 0) {
+        setLogs(prev => {
+          const next = sortRenderedLogLines([
+            ...olderLines,
+            ...prev.split('\n').filter(Boolean),
+          ]).join('\n');
+          setFilteredLogs(next);
+          return next;
+        });
+
+        requestAnimationFrame(() => {
+          const currentContainer = logContainerRef.current;
+          if (!currentContainer) {
+            return;
+          }
+          const restoredScrollTop =
+            previousScrollTop +
+            currentContainer.scrollHeight -
+            previousScrollHeight;
+          currentContainer.scrollTop = restoredScrollTop;
+          lastLogScrollTopRef.current = restoredScrollTop;
+          setScrollTop(restoredScrollTop);
+          setViewportHeight(currentContainer.clientHeight || 480);
+        });
+      }
+    } catch (err) {
+      message.error(
+        t('components.systemLogs.loadHistoryFailed', '历史日志加载失败，请重试')
+      );
+    } finally {
+      if (requestGeneration === logRequestGenerationRef.current) {
+        historyFetchInFlightRef.current = false;
+        setIsHistoryLoading(false);
       }
     }
   };
@@ -214,31 +649,33 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
   // Keep refs in sync for stable auto-refresh callbacks
   useEffect(() => {
     fetchLogsRef.current = fetchLogs;
+    fetchOlderLogsRef.current = fetchOlderLogs;
   });
 
   useEffect(() => {
     fetchErrorRef.current = fetchError;
   }, [fetchError]);
-  useEffect(() => {
-    logsRef.current = logs;
-  }, [logs]);
-
   // Effect for initial load and when service or line count settings change
   useEffect(() => {
+    if (!isActive) return;
+
     // Reset component state for the new view
     setSearchTerm('');
+    searchTermRef.current = '';
+    resetSlsLogState();
     shouldScrollToBottom.current = true;
 
     const load = async () => {
       setLoading(true);
+      setLogLoading(true);
       setError(null);
       setFetchError(null);
-      await fetchLogs();
       setLoading(false);
+      await fetchLogs(true);
     };
 
     load();
-  }, [serviceName, tailLines]);
+  }, [isActive, serviceName, tailLines, engineId, clusterId]);
 
   // Effect for auto-refresh polling
   useEffect(() => {
@@ -260,7 +697,15 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         clearInterval(autoRefreshTimerRef.current);
       }
     };
-  }, [isActive, autoRefresh, loading, serviceName, tailLines]);
+  }, [
+    isActive,
+    autoRefresh,
+    loading,
+    serviceName,
+    tailLines,
+    engineId,
+    clusterId,
+  ]);
 
   // Add window size change listener
   useEffect(() => {
@@ -283,6 +728,12 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
 
   const handleSearch = (value: string) => {
     setSearchTerm(value);
+    searchTermRef.current = value;
+    resetSlsLogState();
+    setLogLoading(true);
+    setTimeout(() => {
+      fetchLogsRef.current?.(true);
+    }, 0);
 
     // When a search is triggered, pause auto-refresh
     if (value.trim()) {
@@ -290,19 +741,6 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         setAutoRefresh(false);
       }
     }
-
-    if (!value.trim()) {
-      setFilteredLogs(logs);
-      return;
-    }
-
-    // Filter lines containing the search term
-    const lines = logs.split('\n');
-    const filtered = lines
-      .filter(line => line.toLowerCase().includes(value.toLowerCase()))
-      .join('\n');
-
-    setFilteredLogs(filtered);
   };
 
   const handleScrollToBottomClick = () => {
@@ -319,10 +757,17 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
     }, 2000);
   };
 
-  const handleDownload = () => {
-    // Create a download link using the current log content
-    if (logs) {
-      const blob = new Blob([logs], { type: 'text/plain' });
+  const handleDownload = async () => {
+    try {
+      const response =
+        engineId && clusterId
+          ? await logApi.getEngineLogContent(engineId, clusterId, 0, 0)
+          : await logApi.getServiceLogContent(serviceName, 0, 0);
+      const content = response.data?.content || logs;
+      if (!content) {
+        return;
+      }
+      const blob = new Blob([content], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -331,6 +776,13 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    } catch (err: any) {
+      message.error(
+        err?.data?.error ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'Failed to download logs'
+      );
     }
   };
 
@@ -371,7 +823,8 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
     const structuredMatch = line.match(STRUCTURED_LOG_REGEX);
 
     if (structuredMatch) {
-      const [, timestamp, level, msg] = structuredMatch;
+      const [, rawTimestamp, level, msg] = structuredMatch;
+      const timestamp = normalizeLogTimestamp(rawTimestamp);
       const levelClass = getLevelClass(level.toUpperCase());
 
       return (
@@ -384,7 +837,7 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
               {level.toUpperCase().padEnd(8)}
             </span>
             <span className='log-separator'> | </span>
-            <span className='log-message'>{msg}</span>
+            <span className='log-message'>{stripNestedLogPrefix(msg)}</span>
           </span>
         </div>
       );
@@ -393,7 +846,8 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
     const locustMatch = line.match(LOCUST_LOG_REGEX);
 
     if (locustMatch) {
-      const [, timestamp, level, msg] = locustMatch;
+      const [, rawTimestamp, level, msg] = locustMatch;
+      const timestamp = normalizeLogTimestamp(rawTimestamp);
       const levelClass = getLevelClass(level.toUpperCase());
 
       return (
@@ -448,32 +902,63 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
   const handleManualRefresh = () => {
     const refresh = async () => {
       setLoading(true);
+      setLogLoading(true);
       setError(null);
       setFetchError(null);
-      await fetchLogs();
+      resetSlsLogState();
       setLoading(false);
+      await fetchLogs(true);
     };
     refresh();
   };
 
-  // Memoize rendered log lines to prevent unnecessary re-renders during polling
-  const renderedLogLines = useMemo(
-    () =>
-      filteredLogs
-        .split('\n')
-        .map((line, index) => (
-          <React.Fragment key={index}>
-            {formatLogLine(line, index + 1)}
-          </React.Fragment>
-        )),
+  const logLines = useMemo(
+    () => filteredLogs.split('\n').filter(Boolean),
     [filteredLogs]
   );
+
+  useEffect(() => {
+    if (!loading && shouldScrollToBottom.current) {
+      requestAnimationFrame(() => scrollToBottom());
+    }
+  }, [logLines.length, loading, fullscreen]);
+
+  const virtualWindow = useMemo(() => {
+    if (logLines.length <= VIRTUAL_LOG_LINE_THRESHOLD) {
+      return {
+        start: 0,
+        end: logLines.length,
+        top: 0,
+        height: undefined,
+        visible: logLines,
+      };
+    }
+
+    const overscan = 12;
+    const visibleCount = Math.ceil(viewportHeight / lineHeight) + overscan * 2;
+    const maxStart = Math.max(0, logLines.length - visibleCount);
+    const start = Math.min(
+      maxStart,
+      Math.max(0, Math.floor(scrollTop / lineHeight) - overscan)
+    );
+    const end = Math.min(logLines.length, start + visibleCount);
+    return {
+      start,
+      end,
+      top: start * lineHeight,
+      height: logLines.length * lineHeight,
+      visible: logLines.slice(start, end),
+    };
+  }, [logLines, scrollTop, viewportHeight]);
 
   if (loading) {
     return (
       <div style={{ height: '80vh' }}>
         <LoadingSpinner
-          text={t('components.systemLogs.loadingData', { displayName })}
+          text={t('components.systemLogs.loadingData', {
+            displayName,
+            interpolation: { escapeValue: false },
+          })}
           size='large'
           className='flex justify-center align-center'
         />
@@ -490,24 +975,6 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         <Alert
           description={error}
           type='error'
-          showIcon
-          style={{ background: 'transparent', border: 'none' }}
-        />
-      </div>
-    );
-  }
-
-  if (!loading && !logs && !error) {
-    return (
-      <div
-        className='flex justify-center align-center'
-        style={{ height: '80vh' }}
-      >
-        <Alert
-          description={t('components.systemLogs.noLogsAvailable', {
-            displayName,
-          })}
-          type='info'
           showIcon
           style={{ background: 'transparent', border: 'none' }}
         />
@@ -606,7 +1073,12 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
             closable
             onClose={() => {
               setSearchTerm('');
-              setFilteredLogs(logs);
+              searchTermRef.current = '';
+              resetSlsLogState();
+              setLogLoading(true);
+              setTimeout(() => {
+                fetchLogsRef.current?.(true);
+              }, 0);
             }}
             className='mb-16'
           />
@@ -636,23 +1108,128 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
           />
         )}
 
-        <div className='log-viewer'>
+        {logLoading && logLines.length === 0 ? (
           <div
-            ref={logContainerRef}
-            className='log-viewer-scrollbar'
-            style={{
-              padding: '12px 0',
-              height: getLogContainerHeight(),
-              overflowY: 'auto',
-              fontFamily:
-                '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
-              fontSize: '13px',
-              lineHeight: '1.6',
-            }}
+            className='log-viewer flex justify-center align-center'
+            style={{ height: getLogContainerHeight() }}
           >
-            {renderedLogLines}
+            <LoadingSpinner
+              text={t('components.systemLogs.loadingLogs', {
+                displayName,
+                interpolation: { escapeValue: false },
+                defaultValue: '日志加载中...',
+              })}
+              size='large'
+            />
           </div>
-        </div>
+        ) : logLines.length === 0 && hasLogLoadCompleted ? (
+          <div
+            className='flex justify-center align-center'
+            style={{ minHeight: '240px' }}
+          >
+            <Alert
+              description={t('components.systemLogs.noLogsAvailable', {
+                displayName,
+                interpolation: { escapeValue: false },
+              })}
+              type='info'
+              showIcon
+              style={{ background: 'transparent', border: 'none' }}
+            />
+          </div>
+        ) : (
+          <div className='log-viewer'>
+            <div
+              ref={handleLogContainerRef}
+              className='log-viewer-scrollbar'
+              onScroll={handleLogScroll}
+              onWheel={handleLogWheel}
+              style={{
+                height: getLogContainerHeight(),
+                overflow: 'auto',
+                fontFamily:
+                  '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+                fontSize: '13px',
+                lineHeight: `${lineHeight}px`,
+                position: 'relative',
+              }}
+            >
+              {tailLines === 0 && (hasMoreHistory || isHistoryLoading) && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '8px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 6,
+                    padding: '4px 12px',
+                    borderRadius: '12px',
+                    color: '#cdd6f4',
+                    background: 'rgba(26, 27, 46, 0.88)',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {isHistoryLoading
+                    ? t(
+                        'components.systemLogs.loadingHistory',
+                        '正在加载历史日志...'
+                      )
+                    : t(
+                        'components.systemLogs.scrollUpForHistory',
+                        '向上滚动加载更早日志'
+                      )}
+                </div>
+              )}
+              {logLoading && (
+                <div
+                  style={{
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 5,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    padding: '8px 0',
+                    background: 'rgba(26, 27, 46, 0.88)',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                  }}
+                >
+                  <LoadingSpinner
+                    text={t('components.systemLogs.loadingLogs', {
+                      displayName,
+                      interpolation: { escapeValue: false },
+                      defaultValue: '日志加载中...',
+                    })}
+                    size='small'
+                  />
+                </div>
+              )}
+              <div
+                style={{
+                  height: virtualWindow.height,
+                  position: 'relative',
+                }}
+              >
+                <div
+                  style={{
+                    position:
+                      virtualWindow.height === undefined
+                        ? 'relative'
+                        : 'absolute',
+                    top: virtualWindow.top,
+                    left: 0,
+                    right: 0,
+                  }}
+                >
+                  {virtualWindow.visible.map((line, index) => (
+                    <React.Fragment key={virtualWindow.start + index}>
+                      {formatLogLine(line, virtualWindow.start + index + 1)}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showScrollToBottom && (
           <Button

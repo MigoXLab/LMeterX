@@ -2,38 +2,38 @@
 
 from unittest.mock import Mock
 
-from engine.llm_locustfile import _has_successful_token_usage, _report_token_stats
+from engine.llm_locustfile import _has_token_data, _report_token_stats
 from utils.token_counter import AsyncTokenCounter
 
 
-class TestHasSuccessfulTokenUsage:
+class TestHasTokenData:
     def test_failed_request_zeroed_usage_is_not_countable(self):
-        assert not _has_successful_token_usage(
+        assert not _has_token_data(
             "",
             "",
             {"completion_tokens": 0, "total_tokens": 0},
         )
 
     def test_failed_request_none_total_is_not_countable(self):
-        assert not _has_successful_token_usage(
+        assert not _has_token_data(
             "",
             "",
             {"completion_tokens": 0, "total_tokens": None},
         )
 
     def test_empty_or_missing_usage_is_not_countable(self):
-        assert not _has_successful_token_usage("", "", {})
-        assert not _has_successful_token_usage("", "", None)
+        assert not _has_token_data("", "", {})
+        assert not _has_token_data("", "", None)
 
     def test_response_text_is_countable(self):
-        assert _has_successful_token_usage("", "hello", {"completion_tokens": 0})
-        assert _has_successful_token_usage("thinking", "", {"completion_tokens": 0})
+        assert _has_token_data("", "hello", {"completion_tokens": 0})
+        assert _has_token_data("thinking", "", {"completion_tokens": 0})
 
     def test_api_usage_tokens_are_countable(self):
-        assert _has_successful_token_usage("", "", {"prompt_tokens": 12})
-        assert _has_successful_token_usage("", "", {"input_tokens": 8})
-        assert _has_successful_token_usage("", "", {"completion_tokens": 3})
-        assert _has_successful_token_usage("", "", {"total_tokens": 20})
+        assert _has_token_data("", "", {"prompt_tokens": 12})
+        assert _has_token_data("", "", {"input_tokens": 8})
+        assert _has_token_data("", "", {"completion_tokens": 3})
+        assert _has_token_data("", "", {"total_tokens": 20})
 
 
 class TestReportTokenStats:

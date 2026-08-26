@@ -8,6 +8,9 @@ LMeterX提供了多种部署方式：
 
 1. **一键部署**：适合快速体验和测试
 2. **开发部署**：适合开发和自定义需求
+3. **跨集群部署**：中心 Backend 统一调度多个本地或 Kubernetes Engine 集群
+
+跨集群场景请配合阅读[跨多集群 Engine 部署指南](MULTI_CLUSTER_GUIDE_CN.md)。
 
 ## 🚀 一键部署（面向用户）
 
@@ -38,9 +41,9 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 
 | 服务 | Docker Hub镜像 | 大小 | 说明 |
 |------|---------------|------|------|
-| Frontend | `charmy1220/lmeterx-frontend:latest` | ~20MB | React + Nginx |
-| Backend | `charmy1220/lmeterx-backend:latest` | ~80MB | FastAPI + Python |
-| Engine | `charmy1220/lmeterx-engine:latest` | ~130MB | Locust + Python |
+| Frontend | `charmy1220/lmeterx-fe:latest` | ~20MB | React + Nginx |
+| Backend | `charmy1220/lmeterx-be:latest` | ~80MB | FastAPI + Python |
+| Engine | `charmy1220/lmeterx-eng:latest` | ~130MB | Locust + Python |
 | Database | `charmy1220/lmeterx-mysql:latest`  | ~130MB | MySQL官方镜像 + 初始化数据库 |
 
 ## ⚙️ 开发部署（面向开发者）
@@ -99,8 +102,9 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 安装依赖
 pip install -r requirements.txt
 
-# 配置数据库（MySQL）: 可编辑 .env文件或者config/db_config.py
-# 导入初始化脚本: init_db.sql
+# 复制示例配置并设置 MySQL、LDAP 等 Backend 参数
+cp .env.example .env
+# 首次安装时导入 init_db.sql；旧版本升级时按顺序执行 mysql/migrations/
 
 # 启动服务
 python app.py
@@ -118,12 +122,15 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 安装依赖
 pip install -r requirements.txt
 
-# 配置数据库（MySQL）: 可编辑 .env文件或者config/db_config.py
-# 导入初始化脚本: init_db.sql
+# Engine 默认通过 API 连接 Backend，不需要直连 MySQL
+cp .env.example .env
+# 至少确认：ENGINE_MODE=api、BACKEND_URL=http://localhost:5001、CLUSTER_ID=local
 
 # 启动服务
 python app.py
 ```
+
+> `ENGINE_MODE=db` 仅用于兼容旧部署，已弃用。新部署统一使用 `api` 模式。
 
 #### 启动前端
 
@@ -142,6 +149,12 @@ npm run preview
 ```
 #### 访问地址
 - 前端界面：http://localhost:5173
+
+### 跨多集群 Engine
+
+Docker Compose 默认包含 `local` 集群。接入远端集群时，需要先在中心 Backend 注册集群，再在远端 Engine 设置 `ENGINE_MODE=api`、`BACKEND_URL`、`CLUSTER_ID` 和可选的 `ENGINE_API_TOKEN`。如需由控制面调整 Kubernetes Engine 副本数，再部署 Cluster Agent。
+
+完整步骤、Kubernetes 环境变量、OSS/SLS 选择与故障排查见[跨多集群 Engine 部署指南](MULTI_CLUSTER_GUIDE_CN.md)。
 
 ## 🔍 部署验证
 
@@ -498,6 +511,8 @@ docker stats $(docker-compose ps -q)
    - `POST /api/skills/analyze-url`
    - `POST /api/http-tasks/test`
    - `POST /api/http-tasks`
+   - `POST /api/llm-tasks/test`
+   - `POST /api/llm-tasks`
 
    **步骤 1：生成强随机令牌**
    ```bash
@@ -529,7 +544,7 @@ docker stats $(docker-compose ps -q)
    docker-compose restart backend
    ```
 
-   > **说明**：`LMETERX_AUTH_TOKEN` 仅在 `LDAP_ENABLED=on` 时生效。LDAP 关闭时所有 API 均为开放状态，令牌不生效。即使携带正确令牌，Agent 也只能访问以上三个白名单路径，其余路径由后端 `AuthMiddleware` 拦截并返回 `403 Forbidden`。
+   > **说明**：`LMETERX_AUTH_TOKEN` 仅在 `LDAP_ENABLED=on` 时生效。LDAP 关闭时所有 API 均为开放状态，令牌不生效。即使携带正确令牌，Agent 也只能访问以上白名单路径，其余路径由后端 `AuthMiddleware` 拦截并返回 `403 Forbidden`。
 
 4. **配置管理员用户（`ADMIN_USERNAMES`）**：
 
@@ -578,8 +593,8 @@ LMeterX 内置 [VictoriaMetrics](https://victoriametrics.com/) 作为轻量级�
 |--------|--------|------|
 | `VICTORIA_METRICS_URL` | `http://victoria-metrics:8428` | VictoriaMetrics 服务地址（后端与引擎服务均需配置） |
 | `RESOURCE_COLLECT_INTERVAL` | `2` | 引擎资源采集间隔（秒） |
-| `ENGINE_ID` | 自动（取自容器 hostname） | 固定引擎标识，单实例场景可手动指定 |
-| `ENGINE_POD_NAME` | — | Kubernetes Pod 名称，优先级高于 hostname |
+| `ENGINE_ID` | 自动（取自容器 hostname） | 引擎唯一标识；Kubernetes 多副本推荐设置为 Pod UID |
+| `ENGINE_POD_NAME` | — | Kubernetes Pod 名称；仅在未设置 `ENGINE_ID` 时参与标识解析 |
 
 #### Docker Compose 服务配置
 
@@ -653,7 +668,7 @@ curl "http://localhost:8428/api/v1/label/__name__/values"
 | `lmeterx_total_requests` | `task_id`, `task_type`, `engine_id` | 累计请求总数 |
 | `lmeterx_total_failures` | `task_id`, `task_type`, `engine_id` | 累计失败总数 |
 
-> **多引擎部署说明**：每个引擎实例自动从容器 hostname 派生唯一 `engine_id`。可通过 `ENGINE_ID`（Docker Compose）或 `ENGINE_POD_NAME`（Kubernetes）环境变量显式指定固定、易读的标识符。
+> **多引擎部署说明**：`engine_id` 必须全局唯一。Docker Compose 可使用自动生成的容器 hostname；Kubernetes 多副本推荐通过 Downward API 将 `ENGINE_ID` 设置为 Pod UID，不要为整个 Deployment 配置同一个固定值。
 
 ### 日志管理
 

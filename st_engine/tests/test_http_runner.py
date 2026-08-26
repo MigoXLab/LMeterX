@@ -234,6 +234,55 @@ class TestWarmupPhase:
 
 
 # =====================================================================
+# Locust summary fallback
+# =====================================================================
+class TestSummaryFallback:
+    SUMMARY_OUTPUT = """
+Type     Name                                                                          # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+GET      GET /puyu/ip/location                                                           2186     0(0.00%) |     27      23      82     27 |   36.59        0.00
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+         Aggregated                                                                      2186     0(0.00%) |     27      23      82     27 |   36.59        0.00
+Response time percentiles (approximated)
+Type     Name                                                                                  50%    66%    75%    80%    90%    95%    98%    99%  99.9% 99.99%   100% # reqs
+--------|--------------------------------------------------------------------------------|--------|------|------|------|------|------|------|------|------|------|------|------
+GET      GET /puyu/ip/location                                                                  27     27     27     28     29     31     37     45     80     82     82   2186
+--------|--------------------------------------------------------------------------------|--------|------|------|------|------|------|------|------|------|------|------|------
+         Aggregated                                                                             27     27     27     28     29     31     37     45     80     82     82   2186
+"""
+
+    def test_parse_locust_summary_recovers_http_stats(self, runner):
+        rows = runner._parse_locust_summary(self.SUMMARY_OUTPUT, "task-http-001")
+
+        assert len(rows) == 1
+        assert rows[0]["task_id"] == "task-http-001"
+        assert rows[0]["metric_type"] == "GET /puyu/ip/location"
+        assert rows[0]["num_requests"] == 2186
+        assert rows[0]["num_failures"] == 0
+        assert rows[0]["avg_latency"] == 27.0
+        assert rows[0]["p95_latency"] == 31.0
+        assert rows[0]["rps"] == 36.59
+
+    def test_finalize_recovers_when_result_file_missing(
+        self, runner, mock_task, mock_logger
+    ):
+        process = Mock()
+        process.returncode = 0
+
+        with (
+            patch.object(runner, "_cleanup_task"),
+            patch("engine.llm_runner.os.path.exists", return_value=False),
+        ):
+            result = runner._finalize_task(
+                process, mock_task, self.SUMMARY_OUTPUT, "", mock_logger
+            )
+
+        assert result["status"] == "COMPLETED"
+        stats = result["locust_result"]["locust_stats"]
+        assert stats[0]["num_requests"] == 2186
+
+
+# =====================================================================
 # HTTP methods coverage
 # =====================================================================
 class TestHttpMethods:

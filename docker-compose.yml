@@ -62,17 +62,18 @@ services:
         condition: service_healthy
     environment:
       - TZ=Asia/Shanghai
-      - DATABASE_URL=mysql://root:lmeterx123@mysql:3306/lmeterx
       - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
       - DB_PASSWORD=lmeterx123
       - DB_NAME=lmeterx
       - VICTORIA_METRICS_URL=http://victoria-metrics:8428
-      # ================= LDAP Authentication Configuration =================
-      # Set to 'on' to enable LDAP authentication
-      - LDAP_ENABLED=off
-      # Uncomment and configure the following when LDAP is enabled:
+      # Standalone defaults: no SLS, no OSS, no Kubernetes reconcile, no LDAP.
+      - SLS_ENABLED=false
+      - OSS_ENABLED=false
+      - K8S_RECONCILE_ENABLED=false
+      - LDAP_ENABLED=false
+      # Uncomment and configure the following only when LDAP_ENABLED=true:
       # - LDAP_SERVER=ldap://ldap.example.com
       # - LDAP_PORT=389
       # - LDAP_USE_SSL=false
@@ -84,14 +85,19 @@ services:
       # Method 2: Service account bind (Active Directory)
       # - LDAP_BIND_DN=cn=service,ou=users,dc=example,dc=com
       # - LDAP_BIND_PASSWORD=service_password
-      # JWT configuration
+      # Use a strong random JWT secret before enabling LDAP.
       # - JWT_SECRET_KEY=change-me-to-a-random-string
       # - JWT_EXPIRE_MINUTES=10080
-      # Service Token for Skill/Agent programmatic access (binds to "agent" user)
-      # Required when LDAP_ENABLED=on and AI Agent integration is needed
-      # - LMETERX_AUTH_TOKEN=<your-strong-random-token>
-      # Admin usernames (comma-separated). Admins can manage all tasks regardless of ownership.
-      # Leave empty for no admin accounts. Example: ADMIN_USERNAMES=admin,superuser
+      # Set secure=true when the browser accesses LMeterX over HTTPS.
+      # - JWT_COOKIE_SECURE=false
+      # - JWT_COOKIE_SAMESITE=lax
+      # - JWT_COOKIE_DOMAIN=
+      # - JWT_COOKIE_PATH=/
+      # Only checked when LDAP is on:
+      # - ENGINE_API_TOKEN=
+      # - LMETERX_AUTH_TOKEN=
+      # Admin list is only used when LDAP is on. Empty = no admins.
+      # Ignored when LDAP is off — everyone is treated as admin.
       # - ADMIN_USERNAMES=
     volumes:
       - ./logs:/app/logs
@@ -110,32 +116,47 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      backend:
+        condition: service_healthy
       victoria-metrics:
         condition: service_healthy
     environment:
       TZ: Asia/Shanghai
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: lmeterx123
-      DB_NAME: lmeterx
+      # Single-node API mode: poll the local Backend. db mode is deprecated.
+      ENGINE_MODE: api
+      BACKEND_URL: "http://backend:5001"
+      # Local Engine identity, not a remote/multi-cluster setup.
+      CLUSTER_ID: local
+      # Empty while LDAP is off. Set the same value on Backend when LDAP is on.
+      ENGINE_API_TOKEN: ""
       VICTORIA_METRICS_URL: "http://victoria-metrics:8428"
-      # automatically gets a unique ID derived from its container hostname.
-      # To use a fixed ID (single-instance only), uncomment the line below:
+      SLS_ENABLED: false
+      OSS_ENABLED: false
+      # Each replica derives a unique ENGINE_ID from its container hostname.
+      # Set a fixed ID only for a single-instance deployment:
       # ENGINE_ID: "engine-01"
+      # --- DB mode settings (deprecated, only used when ENGINE_MODE=db) ---
+      # DB_HOST: mysql
+      # DB_PORT: 3306
+      # DB_USER: root
+      # DB_PASSWORD: lmeterx123
+      # DB_NAME: lmeterx
       # Multi-process configuration
       ENABLE_MULTIPROCESS: auto
-      LOCUST_CPU_CORES: 2.0
-      MULTIPROCESS_THRESHOLD: 1000           # Enable multiprocess only for 1000+ users
-      MIN_USERS_PER_PROCESS: 500             # Each process handles at least 600 users
+      LOCUST_CPU_CORES: 2.0                  # Must match deploy.resources.limits.cpus
+      MULTIPROCESS_THRESHOLD: 1000           # Enable only when users exceed 1000
+      MIN_USERS_PER_PROCESS: 500             # Each process handles at least 500 users
+      # Engine polling and heartbeat
+      ENGINE_HEARTBEAT_INTERVAL: 10          # Backend heartbeat interval (seconds)
+      TASK_POLL_INTERVAL: 3                  # New-task polling interval (seconds)
+      STOP_POLL_INTERVAL: 5                  # Stop-request polling interval (seconds)
+      RESOURCE_COLLECT_INTERVAL: 2           # Resource metrics interval (seconds)
       # Process management and stability
       PYTHONUNBUFFERED: 1                    # Ensure immediate log output
-      LOCUST_WORKER_HEARTBEAT_INTERVAL: 3    # Worker heartbeat interval (seconds)
-      LOCUST_MASTER_HEARTBEAT_INTERVAL: 3    # Master heartbeat check interval
-      LOCUST_MASTER_HEARTBEAT_TIMEOUT: 60    # Heartbeat timeout (seconds)
       # Memory and performance tuning
       MALLOC_ARENA_MAX: 2                    # Limit memory arenas for stability
       PYTHONMALLOC: malloc                   # Use system malloc for better memory management
+      DETAIL_LOG_LEVEL: "INFO"
     ulimits:
       nofile:
         soft: 65536
@@ -149,7 +170,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'                        # Multi-process mode requires at least 2 cores
+          cpus: '2.0'                           # Must match LOCUST_CPU_CORES
           memory: 4G
         reservations:
           cpus: '1.0'
@@ -167,15 +188,15 @@ services:
     container_name: lmeterx-frontend
     restart: unless-stopped
     depends_on:
-      - backend
-      - engine
+      backend:
+        condition: service_healthy
     ports:
       - "8080:80"
     environment:
       - TZ=Asia/Shanghai
       - VITE_API_BASE_URL=/api
-      # Set to 'on' to enable LDAP login UI (must match backend LDAP_ENABLED)
-      - VITE_LDAP_ENABLED=off
+      # Must match backend LDAP_ENABLED. false/off = no login UI.
+      - VITE_LDAP_ENABLED=false
       - VITE_PERSIST_ACCESS_TOKEN=true
     healthcheck:
       test: [ "CMD", "curl", "-s", "-f", "http://localhost:80" ]

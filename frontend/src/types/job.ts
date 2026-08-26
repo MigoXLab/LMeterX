@@ -56,6 +56,7 @@ export interface LlmTask {
   warmup_duration?: number;
   created_by?: string;
   test_data?: string;
+  cluster_id?: string;
   engine_id?: string;
   status:
     | 'created'
@@ -99,6 +100,7 @@ export interface HttpTask {
   step_max_users?: number;
   step_sustain_duration?: number;
   created_by?: string;
+  cluster_id?: string;
   engine_id?: string;
   status:
     | 'created'
@@ -153,6 +155,15 @@ export interface ApiResponse<T> {
   status: number;
   statusText: string;
   pagination?: Pagination;
+}
+
+export interface Cluster {
+  id: string;
+  name: string;
+  status: 'active' | 'inactive' | 'draining';
+  online_engines: number;
+  available_slots: number;
+  running_tasks: number;
 }
 
 /** @deprecated Use LlmTask instead */

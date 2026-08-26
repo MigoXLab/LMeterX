@@ -163,14 +163,7 @@ const App: React.FC = () => {
                     element={<Navigate to='/dashboard' replace />}
                   />
                   <Route path='/dashboard' element={<Dashboard />} />
-                  <Route
-                    path='/jobs'
-                    element={
-                      <RequireAuth>
-                        <TasksPage />
-                      </RequireAuth>
-                    }
-                  />
+                  <Route path='/jobs' element={<TasksPage />} />
                   <Route path='/llm-results/:id' element={<LlmResults />} />
                   <Route
                     path='/results/:id'

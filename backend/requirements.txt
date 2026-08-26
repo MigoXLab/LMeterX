@@ -16,3 +16,6 @@ requests
 aiofiles
 ldap3
 PyJWT
+kubernetes
+boto3
+aliyun-log-python-sdk

@@ -4,11 +4,12 @@
  * @author Charm
  * @copyright 2025
  * */
-import { DashboardOutlined, MonitorOutlined } from '@ant-design/icons';
+import { MonitorOutlined } from '@ant-design/icons';
 import { Tabs } from 'antd';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import EngineLogViewer from '../components/EngineLogViewer';
 import EngineResources from '../components/EngineResources';
 import SystemLogs from '../components/SystemLogs';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -50,7 +51,6 @@ const SystemMonitor: React.FC = () => {
       key: 'engine-resources',
       label: (
         <span className='tab-label'>
-          <DashboardOutlined className='tab-icon' />
           {t('pages.systemMonitor.engineResources', {
             defaultValue: 'Engine Resources',
           })}
@@ -75,13 +75,7 @@ const SystemMonitor: React.FC = () => {
               </span>
             ),
             children: (
-              <SystemLogs
-                serviceName='engine'
-                displayName={t('components.systemLogs.engineLogs', {
-                  defaultValue: 'Engine Logs',
-                })}
-                isActive={activeTab === 'engine-logs'}
-              />
+              <EngineLogViewer isActive={activeTab === 'engine-logs'} />
             ),
           },
           {

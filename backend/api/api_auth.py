@@ -115,7 +115,6 @@ async def login(request: Request, login_request: LoginRequest, response: Respons
         raise ErrorResponse.bad_request(
             ErrorMessages.LDAP_DISABLED,
             details="LDAP is disabled. Set LDAP_ENABLED=on to enable.",
-            code="ldap_disabled",
         )
 
     payload = await login_with_ldap(request, login_request)

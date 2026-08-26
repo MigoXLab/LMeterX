@@ -284,6 +284,21 @@ async def process_dataset_files(task_id: str, files: List[UploadFile]):
             "dataset",
         )
         file_path = uploaded_files_info[-1]["path"] if uploaded_files_info else None
+
+        if file_path:
+            from service.oss_service import OSS_ENABLED, upload_file_to_oss
+
+            if OSS_ENABLED:
+                object_key = file_path.lstrip("/")
+                if not object_key.startswith("upload_files/"):
+                    object_key = f"upload_files/{object_key}"
+                logger.info(
+                    "OSS enabled, uploading dataset {} to key {}", file_path, object_key
+                )
+                uploaded = await upload_file_to_oss(file_path, object_key)
+                if not uploaded:
+                    logger.error("Failed to upload dataset to OSS: {}", file_path)
+
         return uploaded_files_info, file_path
     except ErrorResponse:
         raise

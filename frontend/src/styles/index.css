@@ -2085,11 +2085,13 @@ body {
 .log-viewer .log-line {
   display: flex;
   align-items: flex-start;
-  min-height: 1.6em;
-  line-height: 1.6;
-  padding: 1px 16px 1px 0;
-  white-space: pre-wrap;
-  word-break: break-all;
+  width: max-content;
+  min-width: 100%;
+  min-height: 24px;
+  line-height: 24px;
+  padding: 0 16px 0 0;
+  white-space: pre;
+  word-break: normal;
   border-left: 3px solid transparent;
   transition: background-color 0.15s;
 }
@@ -2130,8 +2132,9 @@ body {
 }
 
 .log-viewer .log-content {
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  min-width: max-content;
+  white-space: pre;
 }
 
 .log-viewer .log-timestamp {

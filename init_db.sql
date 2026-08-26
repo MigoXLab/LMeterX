@@ -41,6 +41,7 @@ CREATE TABLE `llm_tasks` (
   `cookies` json DEFAULT NULL,
   `error_message` text COLLATE utf8mb4_unicode_ci,
   `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Engine instance ID that executed this task',
+  `cluster_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Soft delete flag: 0=active, 1=deleted',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -53,7 +54,8 @@ CREATE TABLE `llm_tasks` (
   KEY `idx_model` (`model`),
   KEY `idx_model_concurrent_status` (`model`, `concurrent_users`, `status`, `created_at`),
   KEY `idx_is_deleted` (`is_deleted`),
-  KEY `idx_engine_id` (`engine_id`)
+  KEY `idx_engine_id` (`engine_id`),
+  KEY `idx_cluster_status` (`cluster_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -116,6 +118,7 @@ CREATE TABLE `http_tasks` (
   `result_file` longtext COLLATE utf8mb4_unicode_ci,
   `error_message` text COLLATE utf8mb4_unicode_ci,
   `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Engine instance ID that executed this task',
+  `cluster_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Soft delete flag: 0=active, 1=deleted',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -125,7 +128,8 @@ CREATE TABLE `http_tasks` (
   KEY `idx_common_name` (`name`),
   KEY `idx_common_created` (`created_at`),
   KEY `idx_is_deleted` (`is_deleted`),
-  KEY `idx_common_engine_id` (`engine_id`)
+  KEY `idx_common_engine_id` (`engine_id`),
+  KEY `idx_cluster_status` (`cluster_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -150,6 +154,24 @@ CREATE TABLE `http_task_results` (
   PRIMARY KEY (`id`),
   KEY `idx_common_task_id` (`task_id`),
   KEY `idx_common_task_metric_created` (`task_id`, `metric_type`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- Unified FIFO dispatch queue
+-- ----------------------------
+DROP TABLE IF EXISTS `task_dispatch_queue`;
+CREATE TABLE `task_dispatch_queue` (
+  `queue_seq` bigint NOT NULL AUTO_INCREMENT,
+  `task_type` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `task_id` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `cluster_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'local',
+  `status` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'created',
+  `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `claimed_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`queue_seq`),
+  UNIQUE KEY `uk_dispatch_task` (`task_type`, `task_id`),
+  KEY `idx_dispatch_cluster_status_seq` (`cluster_id`, `status`, `queue_seq`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -188,13 +210,67 @@ CREATE TABLE `system_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
+-- Table structure for clusters
+-- ----------------------------
+DROP TABLE IF EXISTS `clusters`;
+CREATE TABLE `clusters` (
+  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text COLLATE utf8mb4_unicode_ci,
+  `status` enum('active','inactive','draining') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active',
+  `desired_replicas` int(11) NOT NULL DEFAULT '1',
+  `min_replicas` int(11) NOT NULL DEFAULT '1',
+  `max_replicas` int(11) NOT NULL DEFAULT '10',
+  `current_replicas` int(11) NOT NULL DEFAULT '0',
+  `ready_replicas` int(11) NOT NULL DEFAULT '0',
+  `api_token` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Insert a default 'local' cluster for docker-compose compatibility
+INSERT IGNORE INTO `clusters` (`id`, `name`, `description`, `status`, `desired_replicas`)
+VALUES ('local', 'Local', 'Default local cluster for docker-compose deployment', 'active', 1);
+
+-- ----------------------------
 -- Table structure for engine_heartbeats
 -- ----------------------------
 DROP TABLE IF EXISTS `engine_heartbeats`;
 CREATE TABLE `engine_heartbeats` (
   `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `deployment_name` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `pod_name` varchar(253) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `cluster_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'local',
+  `status` enum('online','busy','offline') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'online',
   `last_heartbeat` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`engine_id`)
+  `running_tasks` json DEFAULT NULL,
+  `cpu_usage` float NOT NULL DEFAULT 0,
+  `memory_usage` float NOT NULL DEFAULT 0,
+  `available_slots` int(11) NOT NULL DEFAULT 1,
+  `version` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `registered_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`engine_id`),
+  KEY `idx_cluster_status` (`cluster_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- Table structure for probe_tasks
+-- ----------------------------
+DROP TABLE IF EXISTS `probe_tasks`;
+CREATE TABLE `probe_tasks` (
+  `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `cluster_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `probe_type` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '"llm" | "http"',
+  `status` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `request_config` json NOT NULL,
+  `result` json DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `completed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_probe_cluster_status` (`cluster_id`, `status`),
+  KEY `idx_probe_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------

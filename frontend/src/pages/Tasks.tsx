@@ -799,12 +799,18 @@ const Tasks: React.FC = () => {
         width: 280,
         ellipsis: true,
         filters: allModels.map(model => ({
-          text: model,
+          text: !model || model.toLowerCase() === 'none' ? '-' : model,
           value: model,
         })),
         filteredValue: modelFilter ? modelFilter.split(',') : null,
         filterSearch: true,
         filterMultiple: true,
+        render: (model?: string) => {
+          if (!model || model.toLowerCase() === 'none') {
+            return '-';
+          }
+          return model;
+        },
       },
       {
         title: t('pages.jobs.loadConfig'),
@@ -1748,16 +1754,18 @@ const Tasks: React.FC = () => {
         {/* Toolbar */}
         <div className='jobs-toolbar'>
           <div className='jobs-toolbar-left'>
-            <Button
-              type='primary'
-              className='modern-button-primary'
-              icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
-              disabled={currentLoading}
-            >
-              {t('pages.jobs.createNew')}
-            </Button>
-            {isHttpMode && (
+            {(!LDAP_ENABLED || storedUser) && (
+              <Button
+                type='primary'
+                className='modern-button-primary'
+                icon={<PlusOutlined />}
+                onClick={() => setIsModalVisible(true)}
+                disabled={currentLoading}
+              >
+                {t('pages.jobs.createNew')}
+              </Button>
+            )}
+            {isHttpMode && (!LDAP_ENABLED || storedUser) && (
               <Tooltip
                 title={t('pages.jobs.webOneClickTooltip')}
                 placement='bottom'

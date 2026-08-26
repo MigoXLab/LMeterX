@@ -44,6 +44,11 @@ class AuthSettings(BaseSettings):
     # Generate with: python -c "import secrets; print(secrets.token_urlsafe(48))"
     LMETERX_AUTH_TOKEN: str = ""
 
+    # Engine API Token for remote cluster Agent and Engine authentication.
+    # When set and LDAP is enabled, requests bearing this token are
+    # authenticated as the "engine" service user without JWT decode.
+    ENGINE_API_TOKEN: str = ""
+
     # Comma-separated list of admin usernames.
     # Admin users can manage (stop, rename, delete) ALL tasks regardless of ownership.
     # Example: ADMIN_USERNAMES=admin,superuser,john

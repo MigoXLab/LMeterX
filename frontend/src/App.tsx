@@ -14,6 +14,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import Header from './components/Header';
+import AgentResults from './pages/AgentResults';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { NavigationProvider } from './contexts/NavigationContext';
 import HttpResults from './pages/HttpResults';
@@ -164,6 +165,11 @@ const App: React.FC = () => {
                   />
                   <Route path='/dashboard' element={<Dashboard />} />
                   <Route path='/jobs' element={<TasksPage />} />
+                  <Route
+                    path='/agent-jobs'
+                    element={<Navigate to='/jobs?tab=a2a' replace />}
+                  />
+                  <Route path='/agent-results/:id' element={<AgentResults />} />
                   <Route path='/llm-results/:id' element={<LlmResults />} />
                   <Route
                     path='/results/:id'

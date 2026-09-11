@@ -15,7 +15,7 @@
 
 ## 📋 Project Overview
 
-LMeterX is a professional large language model performance testing platform that can be applied to model inference services based on large model inference frameworks (such as LiteLLM, vLLM, TensorRT-LLM, LMDeploy, and others), and also supports performance testing for cloud services like Azure OpenAI, AWS Bedrock, Google Vertex AI, and other major cloud providers. Through an intuitive Web interface, users can easily create and manage test tasks, monitor testing processes in real-time, and obtain detailed performance analysis reports, providing reliable data support for model deployment and performance optimization.
+LMeterX is a professional performance testing platform for LLM inference services, general HTTP APIs, and Agent protocols. It covers inference stacks such as LiteLLM, vLLM, TensorRT-LLM, and LMDeploy, cloud services such as Azure OpenAI, AWS Bedrock, and Google Vertex AI, plus A2A Agent collaboration and MCP tool-call workloads. Through an intuitive Web interface, users can create and manage test tasks, monitor testing in real time, and get detailed performance reports for deployment and optimization.
 
 <div align="center">
   <img src="docs/images/images.gif" alt="LMeterX Demo" width="800"/>
@@ -35,6 +35,7 @@ LMeterX is a professional large language model performance testing platform that
 - **One-stop Web Console**: Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
 - **Web parsing & Intelligent load testing**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Enter a web page URL to automatically crawl the page and discover core business APIs, complete connectivity pre-checks, and create load test tasks with zero configuration.
 - **AI Agent Integration**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Built-in MCP Server and [OpenClaw](https://github.com/openclaw) Skills with native support for AI agents such as Claude Code and Cursor — automatically generate load test configurations and launch tasks via natural language instructions.
+- **A2A & MCP Protocol Load Testing**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Load-test Agent-to-Agent (A2A 1.0) services and MCP Streamable HTTP tool servers. Mix weighted scenarios, choose sync / SSE / async-poll, and get latency, success-rate, and tool-call metrics.
 - **Cross-Cluster Engine Scheduling**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Manage local and Kubernetes load-generation clusters from one control plane, route tasks by environment, and monitor or scale Engines centrally.
 - **Enterprise-Grade Security & Scaling**: Supports distributed deployment, LDAP/AD, and separate service tokens for Engines and AI agents.
 
@@ -44,7 +45,7 @@ LMeterX is a professional large language model performance testing platform that
 | Usage                | Web UI for full-lifecycle task creation, monitoring & stop (load-test) | CLI for ModelScope ecosystem (eval & load-test)                          | CLI, Ray-based (load-test)                              |
 | Concurrency & Stress | Multi-process / multi-task, fix/stepped load, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
 | Test Report          | Multi-model / multi-version comparison, AI analysis, visual dashboard   | Basic report + visual charts (requires gradio, plotly, etc.)             | Simple report                                            |
-| Model & Data Support | OpenAI Chat/Responses, Claude, custom data & model interfaces             | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
+| Model & Data Support | OpenAI Chat/Responses, Claude, A2A, MCP, custom data & model interfaces   | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
 | Performance & Resource Monitoring | Real-time performance metrics and load-generator resource status | - | - |
 | Deployment & Scaling | Docker / K8s ready, easy horizontal scaling                             | `pip` install or source code                                             | Source code only                                         |
 
@@ -95,6 +96,8 @@ For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md
 
 ### Usage Guide
 
+The Tasks page has four tabs: **HTTP API**, **LLM Load Test**, **A2A Agent Collaboration**, and **MCP Tool Calls**. Switch to the tab that matches what you are testing.
+
 #### LLM API Load Testing
 
 1. **Access Web Interface**: Open http://localhost:8080
@@ -124,6 +127,28 @@ For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md
 7. **Result Analysis**: After testing completes, click the "Results" button to view load testing results, including RPS, response time, success rate, and other metrics
 8. **Copy Template**: To test the same API again, click "..." → "Copy Template" in the actions column. Note that the dataset needs to be re-uploaded after copying, and it's recommended to repeat steps 3-7
 9. **Performance Comparison**: To compare performance across different versions or concurrency levels, navigate to the "Performance Comparison" page
+
+#### A2A Agent Collaboration
+
+Use this tab to stress-test Agent-to-Agent (A2A 1.0) services that accept JSON-RPC messages and return task results.
+
+1. Open http://localhost:8080 and switch to **A2A Agent Collaboration**
+2. Create a task and fill in the A2A JSON-RPC URL (Agent Card URL is optional; it can be auto-discovered)
+3. Click **Test Connection** to confirm the service is reachable
+4. Add one or more message scenarios and set weights — traffic is sampled by weight
+5. Choose how results are collected: **Sync**, **Streaming SSE**, or **Async submit + poll**
+6. Optionally upload a `.jsonl` file so the same scenario can send different messages (`scenario_id` + `message`)
+7. Set concurrency and duration, then create the task; check logs and results for end-to-end latency and success rate
+
+#### MCP Tool Calls
+
+Use this tab to stress-test MCP Streamable HTTP servers by calling tools concurrently.
+
+1. Switch to **MCP Tool Calls**
+2. Fill in the MCP Streamable HTTP URL and click **Test Connection** to discover available tools
+3. Add tool-call scenarios: pick a tool name, fill in `arguments`, and set a weight
+4. Optionally upload a `.jsonl` file to vary arguments for the same tool (`scenario_id` + `arguments`)
+5. Set concurrency and duration, then create the task; review tool-call latency and success rate in results
 
 ## 🔧 Configuration
 

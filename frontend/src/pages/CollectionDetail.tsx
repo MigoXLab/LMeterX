@@ -143,29 +143,6 @@ const CollectionDetail: React.FC = () => {
 
   const { modal } = App.useApp();
 
-  const getRerunName = useCallback((name?: string): string => {
-    const baseName = name || 'Task';
-    const match = baseName.match(/^(.*)-(\d+)$/);
-    let newName = '';
-    if (match) {
-      newName = `${match[1]}-${parseInt(match[2]) + 1}`;
-    } else {
-      newName = `${baseName}-1`;
-    }
-
-    // If the new name exceeds 100 characters, truncate the base name part
-    if (newName.length > 100) {
-      const suffix = match ? `-${parseInt(match[2]) + 1}` : '-1';
-      const maxBaseLength = 100 - suffix.length;
-      const truncatedBase = (match ? match[1] : baseName).slice(
-        0,
-        maxBaseLength
-      );
-      newName = `${truncatedBase}${suffix}`;
-    }
-    return newName;
-  }, []);
-
   const fetchCollection = async () => {
     setLoading(true);
     try {
@@ -202,53 +179,7 @@ const CollectionDetail: React.FC = () => {
         return;
       }
       try {
-        const fullJobResp = await llmTaskApi.getJob(job.id);
-        const fullJob = resolveTaskDetail(fullJobResp, job as any);
-
-        let rerunData: any = {
-          ...fullJob,
-          name: getRerunName(fullJob.name),
-          id: undefined,
-          status: undefined,
-          created_at: undefined,
-          updated_at: undefined,
-          result_id: undefined,
-          temp_task_id: `temp-${Date.now()}`,
-        };
-
-        if (rerunData.headers) {
-          const headerObject =
-            typeof rerunData.headers === 'string'
-              ? safeJsonParse(rerunData.headers, [])
-              : rerunData.headers;
-          rerunData.headers = deepClone(headerObject) || [];
-        }
-
-        if (rerunData.request_payload) {
-          rerunData.request_payload =
-            typeof rerunData.request_payload === 'string'
-              ? rerunData.request_payload
-              : safeJsonStringify(rerunData.request_payload);
-        }
-
-        if (rerunData.field_mapping) {
-          const fieldMappingObject =
-            typeof rerunData.field_mapping === 'string'
-              ? safeJsonParse(rerunData.field_mapping, {})
-              : rerunData.field_mapping;
-          rerunData.field_mapping = deepClone(fieldMappingObject) || {};
-        }
-
-        if (
-          rerunData.warmup_enabled !== undefined &&
-          rerunData.warmup_enabled !== null
-        ) {
-          rerunData.warmup_enabled = Boolean(rerunData.warmup_enabled);
-        }
-
-        rerunData = withDatasetFields(rerunData, fullJob);
-
-        const resp = await llmTaskApi.createJob(rerunData);
+        const resp = await llmTaskApi.rerun(job.id);
         const newTaskId =
           (resp as any)?.data?.task_id || (resp as any)?.data?.id;
         if (newTaskId) {
@@ -276,7 +207,7 @@ const CollectionDetail: React.FC = () => {
         message.error(errorMsg);
       }
     },
-    [canEdit, getRerunName, id, t]
+    [canEdit, id, t]
   );
 
   const handleRerunHttpTask = useCallback(
@@ -286,34 +217,7 @@ const CollectionDetail: React.FC = () => {
         return;
       }
       try {
-        const fullJobResponse = await httpTaskApi.getJob(job.id);
-        const fullJob = (fullJobResponse.data as any) || job;
-
-        let rerunData: any = {
-          ...fullJob,
-          name: getRerunName(fullJob.name),
-          id: undefined,
-          status: undefined,
-          created_at: undefined,
-          updated_at: undefined,
-          temp_task_id: `temp-${Date.now()}`,
-          request_body:
-            typeof fullJob.request_body === 'string'
-              ? fullJob.request_body
-              : (fullJob.request_body ?? ''),
-        };
-
-        if (rerunData.headers) {
-          const headerObject =
-            typeof rerunData.headers === 'string'
-              ? safeJsonParse(rerunData.headers, [])
-              : rerunData.headers;
-          rerunData.headers = deepClone(headerObject) || [];
-        }
-
-        rerunData = withDatasetFields(rerunData, fullJob);
-
-        const resp = await httpTaskApi.createJob(rerunData);
+        const resp = await httpTaskApi.rerun(job.id);
         const newTaskId =
           (resp as any)?.data?.task_id || (resp as any)?.data?.id;
         if (newTaskId) {
@@ -341,7 +245,7 @@ const CollectionDetail: React.FC = () => {
         message.error(errorMsg);
       }
     },
-    [canEdit, getRerunName, id, t]
+    [canEdit, id, t]
   );
 
   const showRerunConfirm = useCallback(
@@ -375,7 +279,7 @@ const CollectionDetail: React.FC = () => {
           ? `${job.name} (Copy)`
           : `Copy Task ${job.id.substring(0, 8)}`;
 
-        const fullJobResp = await llmTaskApi.getJob(job.id);
+        const fullJobResp = await llmTaskApi.getCopyTemplate(job.id);
         const fullJob = resolveTaskDetail(fullJobResp, job as any);
 
         let jobToCopyData: Partial<LlmTask> = {
@@ -454,7 +358,7 @@ const CollectionDetail: React.FC = () => {
         return;
       }
       try {
-        const fullJobResponse = await httpTaskApi.getJob(job.id);
+        const fullJobResponse = await httpTaskApi.getCopyTemplate(job.id);
         const fullJob = (fullJobResponse.data as any) || job;
 
         const copiedName = job.name

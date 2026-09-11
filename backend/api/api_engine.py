@@ -8,7 +8,7 @@ These endpoints are called by Engine instances (not by frontend users).
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from service import engine_service
@@ -50,7 +50,7 @@ class HeartbeatReq(BaseModel):
 class ClaimReq(BaseModel):
     engine_id: str = Field(..., max_length=64)
     cluster_id: str = Field(..., max_length=64)
-    task_types: List[str] = Field(default_factory=lambda: ["llm", "http"])
+    task_types: List[str] = Field(default_factory=lambda: ["llm", "http", "agent"])
 
 
 class TaskStatusReq(BaseModel):

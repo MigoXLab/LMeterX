@@ -10,6 +10,7 @@ them so later modules can load the real code cleanly.
 """
 
 import asyncio
+import json
 import sys
 import types
 from unittest.mock import MagicMock, Mock, patch
@@ -41,6 +42,7 @@ from service.api_poller import (  # noqa: E402
     _probe_http,
     _probe_llm,
     _regular_task_is_running,
+    _run_regular_task_pipeline,
     _start_probe_thread,
     _start_regular_task_thread,
     api_log_push_loop,
@@ -275,6 +277,44 @@ class TestExecuteHttpTask:
 # Regular task threading
 # =====================================================================
 class TestRegularTaskThreading:
+    @patch("service.api_poller.cleanup_task_files")
+    @patch("service.api_poller._execute_agent_task")
+    @patch(
+        "service.api_poller.download_test_data",
+        return_value="/tmp/agent-001/a2a.jsonl",
+    )
+    def test_localizes_agent_jsonl_dataset(
+        self, mock_download, mock_execute, mock_cleanup
+    ):
+        task_data = {
+            "id": "agent-001",
+            "type": "agent",
+            "test_data_url": "https://storage.example.com/a2a.jsonl",
+            "config": {
+                "id": "agent-001",
+                "name": "A2A dataset",
+                "protocol_config": json.dumps(
+                    {
+                        "dataset_file": "/upload_files/temp/a2a.jsonl",
+                    }
+                ),
+            },
+        }
+        agent_service = Mock()
+
+        _run_regular_task_pipeline(
+            task_data, Mock(), Mock(), agent_service=agent_service
+        )
+
+        task_proxy = mock_execute.call_args.args[1]
+        protocol_config = json.loads(task_proxy.protocol_config)
+        assert protocol_config["dataset_file"] == "/tmp/agent-001/a2a.jsonl"
+        mock_execute.assert_called_once_with(agent_service, task_proxy, "agent-001")
+        mock_download.assert_called_once_with(
+            "agent-001", "https://storage.example.com/a2a.jsonl"
+        )
+        mock_cleanup.assert_called_once_with("agent-001")
+
     def test_regular_task_is_running_false_without_thread(self, monkeypatch):
         import service.api_poller as api_poller
 

@@ -15,7 +15,7 @@
 
 ## 📋 项目简介
 
-LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模型推理框架（如 LiteLLM、vLLM、TensorRT-LLM、LMDeploy 等）的模型推理服务，同时也支持对 Azure OpenAI、AWS Bedrock、Google Vertex AI 等主流云服务进行性能测试。通过直观的 Web 界面，可以轻松创建和管理测试任务，实时监控测试过程，并获得详细的性能分析报告，为模型部署和性能优化提供可靠的数据支撑。
+LMeterX 是一个专业的性能测试平台，覆盖大模型推理服务、通用 HTTP 接口，以及 Agent 协议压测。既支持 LiteLLM、vLLM、TensorRT-LLM、LMDeploy 等推理框架，也支持 Azure OpenAI、AWS Bedrock、Google Vertex AI 等云服务，同时支持 A2A Agent 协作与 MCP 工具调用压测。通过直观的 Web 界面，可以创建和管理测试任务，实时监控过程，并获得详细性能报告，为部署和优化提供数据支撑。
 
 
 <div align="center">
@@ -36,6 +36,7 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 - **一站式 Web 控制台**：直观管理任务调度、监控与实时日志，显著降低上手门槛与运维成本。
 - **Web 解析和智能压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：输入网页 URL 自动爬取页面、识别核心业务 API，一键完成连通性预检与压测任务创建，零配置启动压测。
 - **AI Agent 集成**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：内置 MCP Server 与 [OpenClaw](https://github.com/openclaw) Skills，原生支持 Claude Code、Cursor 等 AI Agent 通过自然语言指令自动生成压测配置并快速启动任务。
+- **A2A / MCP 协议压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持对 Agent 协作服务（A2A 1.0）和 MCP 工具服务压测。可按权重混合多种业务场景，覆盖同步、流式 SSE、异步轮询，并统计耗时、成功率与工具调用指标。
 - **跨集群 Engine 调度**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：一个控制面统一管理多个本地或 Kubernetes 压测集群，任务可按压测环境路由，并支持 Engine 心跳、资源监控与弹性扩缩容。
 - **企业级架构安全**：支持分布式部署、LDAP/AD 集成，以及 Engine 与 AI Agent 的独立服务令牌，满足企业级扩展与认证需求。
 
@@ -46,7 +47,7 @@ LMeterX 是一个专业的大语言模型性能测试平台，支持基于大模
 | 使用 | 提供 Web UI：任务创建、监控、停止全生命周期管理（压测） | CLI 命令行，面向 ModelScope 生态（效果评测和压测）| CLI 命令行，依赖 Ray 框架（压测） |
 | 并发与压测 | 支持多进程、多任务、固定和阶梯式并发模式，企业级规模化压测 | 支持命令参数并发 | 支持命令参数并发 |
 | 测试报告 | 支持多模型/多版本对比，AI 分析，提供可视化页面 | 基础报告 + 可视化图表（需额外安装 gradio, plotly等） | 简易报告 |
-| 模型与数据支持 | 支持 OpenAI Chat/Responses、Claude、自定义数据和模型接口 | 默认支持 OpenAI 格式，扩展新 API 需自行实现代码 | 支持 OpenAI 格式 |
+| 模型与数据支持 | 支持 OpenAI Chat/Responses、Claude、A2A、MCP、自定义数据和模型接口 | 默认支持 OpenAI 格式，扩展新 API 需自行实现代码 | 支持 OpenAI 格式 |
 | 性能与资源监控| 支持实时监控性能指标和压测机资源情况 | - | - |
 | 部署与扩展 | 提供 Docker / K8s 部署方案，易于弹性伸缩 | `pip` 或源码 | 源码 |
 
@@ -95,7 +96,11 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 
 ### 使用指南
 
-1. **访问界面**: 打开 http://localhost:8080
+任务页提供四个标签：**HTTP API**、**大模型压测**、**A2A Agent 协作**、**MCP 工具调用**。按被测对象切换即可。
+
+#### 大模型接口压测
+
+1. **访问界面**: 打开 http://localhost:8080，切换到「大模型压测」
 2. **创建任务**: 导航至 测试任务 → 创建任务，配置 API 请求信息、测试数据以及请求响应字段映射
    - 2.1 压测环境: 选择任务要运行的 Engine 集群；单机部署选择默认的 `Local`
    - 2.2 基础信息: 对于 OpenAI 与 Claude 接口，只需填写 API 类型、路径、模型与响应模式，也可在请求参数中补充完整 payload
@@ -108,6 +113,28 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 5. **结果分析**: 进入 测试任务 → 结果，查看详细性能指标并导出报告
 6. **结果对比**: 在 模型擂台 模块选择多个模型/版本，进行多维度性能对比
 7. **AI 分析**: 在 测试任务 → 结果/模型擂台 中配置 AI 分析服务后，可对单个或多任务进行智能评估
+
+#### A2A Agent 协作压测
+
+用于压测遵循 A2A 1.0 的 Agent 服务：向对方发送消息，等待任务完成并统计端到端性能。
+
+1. 打开 http://localhost:8080，切换到 **A2A Agent 协作**
+2. 创建任务，填写 A2A JSON-RPC 地址（Agent Card 地址可选，留空时自动发现）
+3. 点击「测试连接」，确认服务可达
+4. 添加消息场景并设置权重，压测时按权重随机发送
+5. 选择执行方式：**同步**、**流式 SSE**，或 **异步提交 + 轮询**
+6. （可选）上传 `.jsonl` 数据集，为同一场景提供不同 `message`（每行需带 `scenario_id`）
+7. 配置并发与时长后创建任务，在日志和结果中查看耗时与成功率
+
+#### MCP 工具调用压测
+
+用于压测 MCP Streamable HTTP 服务：并发调用工具，统计调用延迟与成功率。
+
+1. 切换到 **MCP 工具调用**
+2. 填写 MCP Streamable HTTP 地址，点击「测试连接」发现可用工具
+3. 添加工具调用场景：选择工具名、填写 `arguments`，并设置权重
+4. （可选）上传 `.jsonl` 数据集，为同一工具提供不同参数（每行需带 `scenario_id`）
+5. 配置并发与时长后创建任务，在结果中查看工具调用延迟与成功率
 
 ## 🔧 配置说明
 

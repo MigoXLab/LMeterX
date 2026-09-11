@@ -31,6 +31,7 @@ _scheduler_task: asyncio.Task = None
 
 async def _enqueue_created_tasks():
     """Move all 'created' tasks to 'queuing' status."""
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task as LlmTask
     from model.task_dispatch_queue import TaskDispatchQueue
@@ -38,7 +39,11 @@ async def _enqueue_created_tasks():
     async with async_session_factory() as session:
         try:
             total = 0
-            for task_type, TaskModel in [("llm", LlmTask), ("http", HttpTask)]:
+            for task_type, TaskModel in [
+                ("llm", LlmTask),
+                ("http", HttpTask),
+                ("agent", AgentTask),
+            ]:
                 result = await session.execute(
                     update(TaskModel)
                     .where(
@@ -79,6 +84,7 @@ async def _enqueue_created_tasks():
 
 async def _reconcile_dead_engines():
     """Detect dead engines and fail their running tasks."""
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task as LlmTask
 
@@ -99,7 +105,7 @@ async def _reconcile_dead_engines():
                 return
 
             count = 0
-            for TaskModel in [LlmTask, HttpTask]:
+            for TaskModel in [LlmTask, HttpTask, AgentTask]:
                 result = await session.execute(
                     update(TaskModel)
                     .where(

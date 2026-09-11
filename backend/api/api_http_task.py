@@ -23,6 +23,7 @@ from service.http_task_service import (
     compare_http_performance_svc,
     create_http_task_svc,
     delete_http_task_svc,
+    get_http_task_copy_template_svc,
     get_http_task_realtime_metrics_svc,
     get_http_task_result_svc,
     get_http_task_status_svc,
@@ -30,6 +31,7 @@ from service.http_task_service import (
     get_http_tasks_for_comparison_svc,
     get_http_tasks_status_svc,
     get_http_tasks_svc,
+    rerun_http_task_svc,
     stop_http_task_svc,
     update_http_task_svc,
 )
@@ -112,6 +114,16 @@ async def update_http_task(request: Request, task_id: str, payload: Dict[str, An
 async def delete_http_task(request: Request, task_id: str):
     """Delete an HTTP task. Only creator can delete."""
     return await delete_http_task_svc(request, task_id)
+
+
+@router.get("/{task_id}/copy-template", response_model=Dict[str, Any])
+async def get_http_task_copy_template(request: Request, task_id: str):
+    return await get_http_task_copy_template_svc(request, task_id)
+
+
+@router.post("/{task_id}/rerun", response_model=HttpTaskCreateRsp)
+async def rerun_http_task(request: Request, task_id: str):
+    return await rerun_http_task_svc(request, task_id)
 
 
 @router.get("/{task_id}", response_model=Dict[str, Any])

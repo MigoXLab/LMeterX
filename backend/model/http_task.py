@@ -126,6 +126,8 @@ class HttpTaskCreateReq(BaseModel):
         max_length=64,
         description="Target cluster ID for task execution. If None, uses default cluster.",
     )
+    copy_source_task_id: Optional[str] = Field(default=None, max_length=40)
+    inherit_source_headers: bool = False
 
     @validator("load_mode")
     def validate_load_mode(cls, v: str) -> str:
@@ -309,6 +311,8 @@ class HttpTaskTestReq(BaseModel):
         max_length=64,
         description="Cluster to proxy test through (if omitted, test runs from backend directly)",
     )
+    copy_source_task_id: Optional[str] = Field(default=None, max_length=40)
+    inherit_source_headers: bool = False
 
     @validator("method")
     def validate_method(cls, v: str) -> str:

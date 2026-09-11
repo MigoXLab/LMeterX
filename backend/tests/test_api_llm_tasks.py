@@ -177,6 +177,34 @@ class TestTaskAPI:
         assert data["id"] == "task_123"
         assert data["name"] == "Test Task"
 
+    @patch("api.api_llm_task.get_task_copy_template_svc")
+    def test_get_copy_template_redacts_headers(self, mock_copy):
+        mock_copy.return_value = {
+            "id": "task_123",
+            "headers": [
+                {
+                    "key": "Authorization",
+                    "value": None,
+                    "configured": True,
+                    "sensitive": True,
+                }
+            ],
+            "copy_source_task_id": "task_123",
+            "inherit_source_headers": True,
+        }
+        response = client.get("/api/llm-tasks/task_123/copy-template")
+        assert response.status_code == 200
+        assert response.json()["headers"][0]["value"] is None
+
+    @patch("api.api_llm_task.rerun_task_svc")
+    def test_rerun_uses_server_side_clone(self, mock_rerun):
+        mock_rerun.return_value = TaskCreateRsp(
+            task_id="task_copy", status="created", message="ok"
+        )
+        response = client.post("/api/llm-tasks/task_123/rerun")
+        assert response.status_code == 200
+        assert response.json()["task_id"] == "task_copy"
+
 
 class TestTaskErrors:
     """Task API error handling tests."""

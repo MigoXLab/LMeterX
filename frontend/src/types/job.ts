@@ -34,8 +34,20 @@ export interface LlmTask {
   stream_mode?: boolean;
   headers?: Array<{
     key: string;
-    value: string;
+    value: string | null;
+    fixed?: boolean;
+    sensitive?: boolean;
+    configured?: boolean;
   }>;
+  redacted_header_keys?: string[];
+  has_configured_headers?: boolean;
+  copy_source_task_id?: string;
+  inherit_source_headers?: boolean;
+  copy_policy?: {
+    credentials_removed: boolean;
+    credential_reuse_allowed: boolean;
+    credentials_inherited_on_start?: boolean;
+  };
   cookies?: Array<{
     key: string;
     value: string;
@@ -79,8 +91,20 @@ export interface HttpTask {
   target_url: string;
   headers?: Array<{
     key: string;
-    value: string;
+    value: string | null;
+    fixed?: boolean;
+    sensitive?: boolean;
+    configured?: boolean;
   }>;
+  redacted_header_keys?: string[];
+  has_configured_headers?: boolean;
+  copy_source_task_id?: string;
+  inherit_source_headers?: boolean;
+  copy_policy?: {
+    credentials_removed: boolean;
+    credential_reuse_allowed: boolean;
+    credentials_inherited_on_start?: boolean;
+  };
   cookies?: Array<{
     key: string;
     value: string;
@@ -114,6 +138,91 @@ export interface HttpTask {
   created_at: string;
   updated_at: string;
   error_message?: string;
+}
+
+export interface AgentTask {
+  id: string;
+  name: string;
+  protocol: 'a2a' | 'mcp';
+  protocol_version: string;
+  target_url: string;
+  concurrent_users: number;
+  spawn_rate: number;
+  duration: number;
+  created_by?: string;
+  cluster_id?: string;
+  engine_id?: string;
+  status:
+    | 'created'
+    | 'queuing'
+    | 'running'
+    | 'stopping'
+    | 'stopped'
+    | 'completed'
+    | 'failed'
+    | 'failed_requests';
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+  headers?: Array<{
+    key: string;
+    value: string | null;
+    sensitive?: boolean;
+    configured?: boolean;
+    required_on_copy?: boolean;
+    inherited_on_start?: boolean;
+  }>;
+  redacted_header_keys?: string[];
+  has_configured_headers?: boolean;
+  dataset_configured?: boolean;
+  dataset_file_name?: string | null;
+  dataset_reupload_required?: boolean;
+  copy_source_task_id?: string;
+  inherit_source_headers?: boolean;
+  inherit_source_dataset?: boolean;
+  copy_policy?: {
+    credentials_removed: boolean;
+    credential_reuse_allowed: boolean;
+    credentials_inherited_on_start?: boolean;
+    dataset_inherited_on_start?: boolean;
+  };
+  request_timeout?: number;
+  dataset_file?: string;
+  a2a_mode?: 'sync' | 'stream' | 'async_poll';
+  agent_card_url?: string;
+  a2a_tenant?: string;
+  poll_interval?: number;
+  task_timeout?: number;
+  a2a_scenarios?: Array<Record<string, unknown>>;
+  cascade_count_paths?: string[];
+  mcp_calls?: Array<Record<string, unknown>>;
+  token_count_path?: string;
+}
+
+export interface AgentTaskPayload {
+  name: string;
+  protocol: 'a2a' | 'mcp';
+  target_url: string;
+  protocol_version?: string;
+  headers: Array<{ key: string; value: string }>;
+  duration: number;
+  concurrent_users: number;
+  spawn_rate: number;
+  request_timeout: number;
+  cluster_id: string;
+  dataset_file?: string;
+  copy_source_task_id?: string;
+  inherit_source_headers?: boolean;
+  inherit_source_dataset?: boolean;
+  a2a_mode?: 'sync' | 'stream' | 'async_poll';
+  agent_card_url?: string;
+  a2a_tenant?: string;
+  poll_interval?: number;
+  task_timeout?: number;
+  a2a_scenarios?: Array<Record<string, unknown>>;
+  cascade_count_paths?: string[];
+  mcp_calls?: Array<Record<string, unknown>>;
+  token_count_path?: string;
 }
 
 /**

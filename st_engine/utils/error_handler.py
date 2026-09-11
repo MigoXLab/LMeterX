@@ -125,9 +125,7 @@ class ErrorResponse:
         log_msg = full_error_msg
         if req_id:
             log_msg = f"[{req_id}] {log_msg}"
-        traceparent = self._extract_traceparent(response)
-        if traceparent:
-            log_msg += f" | traceparent: {traceparent}"
+        log_msg += self._correlation_header_suffix(response)
         if response_time > 0:
             log_msg += f" | Request elapsed: {response_time:.2f} ms"
         if payload_data is not None:
@@ -281,7 +279,6 @@ class ErrorResponse:
         """Handle specific stream processing errors."""
         error_msg = str(e)
         response_time = (time.perf_counter() - start_time) * 1000
-        traceparent = self._extract_traceparent(response)
 
         if "Read timed out" in error_msg or "timed out" in error_msg.lower():
             error_msg = (
@@ -289,10 +286,9 @@ class ErrorResponse:
                 f"{DEFAULT_STREAM_IDLE_TIMEOUT} seconds, client triggered fallback "
                 f"timeout mechanism. Original error: {error_msg}"
             )
-            warning_msg = error_msg
-            if traceparent:
-                warning_msg = f"{warning_msg} | traceparent: {traceparent}"
-            self.task_logger.warning(warning_msg)
+            self.task_logger.warning(
+                f"{error_msg}{self._correlation_header_suffix(response)}"
+            )
         elif "Connection" in error_msg:
             error_msg = f"Network connection error: {error_msg}"
         else:
@@ -307,16 +303,38 @@ class ErrorResponse:
             request_name=request_name,
         )
 
+    @classmethod
+    def _correlation_header_suffix(cls, response) -> str:
+        """Format log-safe correlation headers present on the response."""
+        parts = []
+        for header_name in ("traceparent", "x-request-id"):
+            value = cls._extract_response_header(response, header_name)
+            if value:
+                parts.append(f"{header_name}: {value}")
+        return "".join(f" | {part}" for part in parts)
+
     @staticmethod
-    def _extract_traceparent(response) -> Optional[str]:
-        """Return a log-safe traceparent response header when present."""
+    def _extract_response_header(response, header_name: str) -> Optional[str]:
+        """Return a log-safe response header value when present."""
         headers = getattr(response, "headers", None)
         if not headers:
             return None
+        value = None
         try:
-            traceparent = headers.get("traceparent")
+            value = headers.get(header_name)
+            if value is None and hasattr(headers, "items"):
+                target = header_name.lower()
+                for key, candidate in headers.items():
+                    if str(key).lower() == target:
+                        value = candidate
+                        break
         except (AttributeError, TypeError):
             return None
-        if not traceparent:
+        if not value:
             return None
-        return str(traceparent).replace("\r", "").replace("\n", "")
+        return str(value).replace("\r", "").replace("\n", "")
+
+    @classmethod
+    def _extract_traceparent(cls, response) -> Optional[str]:
+        """Return a log-safe traceparent response header when present."""
+        return cls._extract_response_header(response, "traceparent")

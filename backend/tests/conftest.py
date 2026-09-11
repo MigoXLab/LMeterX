@@ -11,9 +11,16 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-# Set testing environment variables before any imports
+# Set testing environment variables before any application imports.  Use a
+# deliberately non-service local endpoint so an incomplete mock can never fall
+# through to database credentials from backend/.env (which may point at RDS).
 os.environ["TESTING"] = "1"
 os.environ.setdefault("LDAP_ENABLED", "0")
+os.environ["DB_USER"] = "lmeterx_unit_test"
+os.environ["DB_PASSWORD"] = "lmeterx_unit_test"
+os.environ["DB_HOST"] = "127.0.0.1"
+os.environ["DB_PORT"] = "1"
+os.environ["DB_NAME"] = "lmeterx_unit_test"
 
 # Ensure backend package is importable when tests run from project root
 BACKEND_ROOT = Path(__file__).resolve().parents[1]

@@ -3,15 +3,16 @@ Engine service tests: registration, heartbeat, task claim, status/results,
 stopping tasks, and dead-engine reconciliation.
 """
 
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
+from model.agent_task import AgentTaskResult
 from model.cluster import Cluster
 from model.engine import EngineHeartbeat
 from service.engine_service import (
-    HEARTBEAT_STALE_SECONDS,
     claim_task,
     get_stopping_tasks,
     process_heartbeat,
@@ -260,6 +261,58 @@ class TestClaimTask:
         assert "task_dispatch_queue.queue_seq ASC" in str(statement)
         assert "FOR UPDATE" in str(statement)
 
+    async def test_claim_agent_task_without_http_only_cookie_field(self, db):
+        from utils.credential_crypto import encrypt_headers
+
+        dispatch_entry = SimpleNamespace(
+            queue_seq=1,
+            task_type="agent",
+            task_id="agent-001",
+            status="queued",
+            engine_id=None,
+            claimed_at=None,
+        )
+        task = SimpleNamespace(
+            id="agent-001",
+            name="A2A Test",
+            status="queuing",
+            cluster_id="gpu-prod",
+            is_deleted=0,
+            target_host="https://agent.example.com",
+            target_url="https://agent.example.com/rpc",
+            api_path="/rpc",
+            duration=60,
+            concurrent_users=2,
+            spawn_rate=1,
+            headers=encrypt_headers({"SCP-HUB-API-KEY": "sk-runtime"}),
+            protocol="a2a",
+            protocol_version="1.0",
+            protocol_config=(
+                '{"a2a_mode":"async_poll",' '"dataset_file":"/uploads/a2a.jsonl"}'
+            ),
+            engine_id=None,
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = dispatch_entry
+        db.execute = AsyncMock(return_value=mock_result)
+        db.get = AsyncMock(return_value=task)
+
+        result = await claim_task(
+            db=db,
+            engine_id="eng-001",
+            cluster_id="gpu-prod",
+            task_types=["agent"],
+        )
+
+        assert result["type"] == "agent"
+        assert result["config"]["cookies"] is None
+        assert json.loads(result["config"]["headers"]) == {
+            "SCP-HUB-API-KEY": "sk-runtime"
+        }
+        assert result["config"]["protocol"] == "a2a"
+        assert result["test_data_url"] == "/uploads/a2a.jsonl"
+        assert task.status == "running"
+
     async def test_claim_skips_stale_queue_entry(self, db):
         stale_entry = MagicMock()
         stale_entry.task_type = "http"
@@ -361,6 +414,55 @@ class TestUpdateTaskStatus:
 
 @pytest.mark.asyncio
 class TestSubmitResults:
+    async def test_submit_agent_protocol_metrics(self, db):
+        task = MagicMock()
+        task.id = "task-agent-001"
+        task.engine_id = "eng-001"
+        task.status = "running"
+        db.get = AsyncMock(side_effect=[None, None, task])
+        locust_results = {
+            "locust_stats": [
+                {
+                    "metric_type": "A2A end-to-end [order]",
+                    "num_requests": 10,
+                    "num_failures": 1,
+                    "avg_latency": 1250,
+                    "p95_latency": 1800,
+                    "rps": 2,
+                }
+            ],
+            "custom_metrics": {
+                "protocol": "a2a",
+                "top_level_requests": 10,
+                "failed_requests": 1,
+                "top_level_rps": 2,
+                "task_submission_success_rate": 0.9,
+                "end_to_end_latency_ms": {
+                    "avg": 1250,
+                    "min": 800,
+                    "p50": 1200,
+                    "p95": 1800,
+                    "max": 2000,
+                },
+            },
+        }
+
+        result = await submit_task_results(
+            db=db,
+            task_id="task-agent-001",
+            engine_id="eng-001",
+            locust_results=locust_results,
+            final_status="completed",
+        )
+
+        assert result is True
+        assert db.add.call_count == 2
+        protocol_summary = db.add.call_args_list[1].args[0]
+        assert isinstance(protocol_summary, AgentTaskResult)
+        assert protocol_summary.metric_type == "protocol_summary"
+        assert protocol_summary.p95_latency == 1800
+        assert '"task_submission_success_rate": 0.9' in protocol_summary.metric_data
+
     async def test_submit_llm_results(self, db):
         task = MagicMock()
         task.id = "task-001"
@@ -535,8 +637,14 @@ class TestReconcileDeadEngines:
         update_result.rowcount = 2
 
         db.execute = AsyncMock(
-            side_effect=[stale_result, update_result, update_result, MagicMock()]
+            side_effect=[
+                stale_result,
+                update_result,
+                update_result,
+                update_result,
+                MagicMock(),
+            ]
         )
 
         count = await reconcile_dead_engines(db)
-        assert count == 4
+        assert count == 6

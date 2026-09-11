@@ -279,6 +279,29 @@ class TestErrorHandlerStreamTimeout:
         assert "\r" not in warning_msg
         assert "\n" not in warning_msg
 
+    def test_read_timeout_warning_includes_x_request_id(self, error_handler):
+        """Read timeout warning should include x-request-id when present."""
+        handler, task_logger = error_handler
+        error = OSError("Read timed out. (read timeout=1800)")
+        mock_response = MagicMock()
+        mock_response.headers = {
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+            "X-Request-Id": "gw-req-789\r\n",
+        }
+
+        handler._handle_stream_error(
+            error, mock_response, time.perf_counter(), "/v1/chat/completions"
+        )
+
+        warning_msg = task_logger.warning.call_args[0][0]
+        assert (
+            "traceparent: "
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" in warning_msg
+        )
+        assert "x-request-id: gw-req-789" in warning_msg
+        error_log = task_logger.error.call_args[0][0]
+        assert "x-request-id: gw-req-789" in error_log
+
     def test_connection_reset_not_flagged_as_timeout(self, error_handler):
         """OSError with 'Connection reset' should NOT trigger timeout warning."""
         handler, task_logger = error_handler

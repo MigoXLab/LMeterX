@@ -124,7 +124,7 @@ class BackendClient:
         task_types: List[str] = None,
     ) -> Optional[dict]:
         if task_types is None:
-            task_types = ["llm", "http"]
+            task_types = ["llm", "http", "agent"]
         try:
             resp = self.client.post(
                 f"{_base_url()}/tasks/claim",

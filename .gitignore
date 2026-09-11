@@ -62,3 +62,6 @@ st_engine/.env
 # dependencies & artifacts
 .claude/skills/*/scripts/.deps/
 .openclaw/skills/.artifacts/
+
+#test
+st_engine/tests/test_e2e_agent_comprehensive.py

@@ -43,27 +43,41 @@ class AuthMiddleware(BaseHTTPMiddleware):
         app,
         exempt_paths: Optional[Iterable[str]] = None,
         exempt_prefixes: Optional[Iterable[str]] = None,
+        auth_required_suffixes: Optional[Iterable[str]] = None,
     ):
         """Initialize the AuthMiddleware."""
         super().__init__(app)
         self.exempt_paths = set(exempt_paths or [])
         self.exempt_prefixes = tuple(exempt_prefixes or [])
+        self.auth_required_suffixes = tuple(auth_required_suffixes or [])
 
     def _should_skip_auth(self, request: Request, path: str) -> bool:
         if not settings.LDAP_ENABLED:
             return True
 
-        # Skip auth for OPTIONS, public, and docs endpoints
+        # Skip auth for OPTIONS, public, and docs endpoints.
+        # Some authenticated endpoints live below historically public GET
+        # prefixes. Check those suffixes before applying the prefix exemption so
+        # downstream handlers can safely rely on request.state.user.
         if (
             request.method == "OPTIONS"
             or path in self.exempt_paths
             or path.startswith("/docs")
             or path.startswith("/openapi")
-            or (
-                request.method == "GET"
-                and self.exempt_prefixes
-                and path.startswith(self.exempt_prefixes)
-            )
+        ):
+            return True
+
+        if (
+            request.method == "GET"
+            and self.auth_required_suffixes
+            and path.endswith(self.auth_required_suffixes)
+        ):
+            return False
+
+        if (
+            request.method == "GET"
+            and self.exempt_prefixes
+            and path.startswith(self.exempt_prefixes)
         ):
             return True
         return False

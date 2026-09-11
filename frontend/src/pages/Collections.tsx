@@ -29,6 +29,7 @@ import { api } from '../api/apiClient';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Collection } from '../types/collection';
 import { getStoredUser } from '../utils/auth';
+import { getLdapEnabled } from '../utils/runtimeConfig';
 
 const { Text, Paragraph } = Typography;
 const { TextArea, Search } = Input;
@@ -41,15 +42,16 @@ const Collections: React.FC = () => {
   const [form] = Form.useForm();
   const [pagination, setPagination] = useState({
     current: 1,
-    pageSize: 10,
+    pageSize: 12,
     total: 0,
   });
   const [search, setSearch] = useState('');
   const currentUser = getStoredUser();
+  const LDAP_ENABLED = getLdapEnabled();
 
   const fetchCollections = async (
     page = 1,
-    pageSize = 10,
+    pageSize = 12,
     searchKey = search
   ) => {
     setLoading(true);
@@ -139,15 +141,17 @@ const Collections: React.FC = () => {
       <div className='jobs-content-wrapper' style={{ padding: '0 24px' }}>
         <div className='jobs-toolbar'>
           <div className='jobs-toolbar-left'>
-            <Button
-              type='primary'
-              className='modern-button-primary'
-              icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
-              disabled={loading}
-            >
-              {t('pages.collections.create')}
-            </Button>
+            {(!LDAP_ENABLED || currentUser) && (
+              <Button
+                type='primary'
+                className='modern-button-primary'
+                icon={<PlusOutlined />}
+                onClick={() => setIsModalVisible(true)}
+                disabled={loading}
+              >
+                {t('pages.collections.create')}
+              </Button>
+            )}
           </div>
           <div className='jobs-toolbar-right'>
             <Search
@@ -325,7 +329,7 @@ const Collections: React.FC = () => {
           )}
         </div>
 
-        {pagination.total > 10 && (
+        {pagination.total > 12 && (
           <div
             style={{
               display: 'flex',
@@ -337,6 +341,7 @@ const Collections: React.FC = () => {
               current={pagination.current}
               pageSize={pagination.pageSize}
               total={pagination.total}
+              pageSizeOptions={[12, 24, 36, 48]}
               showSizeChanger
               hideOnSinglePage
               onChange={(page, pageSize) => fetchCollections(page, pageSize)}

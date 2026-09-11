@@ -16,3 +16,7 @@ requests
 aiofiles
 ldap3
 PyJWT
+cryptography>=42,<47
+kubernetes
+boto3
+aliyun-log-python-sdk

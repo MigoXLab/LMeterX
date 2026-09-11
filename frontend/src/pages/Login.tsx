@@ -10,13 +10,6 @@ import { clearAuth, saveAuth } from '../utils/auth';
 
 const { Paragraph } = Typography;
 
-type LoginApiError = {
-  data?: {
-    code?: string;
-  };
-  status?: number;
-};
-
 const cardStyle: React.CSSProperties = {
   maxWidth: 420,
   width: '100%',
@@ -55,27 +48,13 @@ const Login: React.FC = () => {
       saveAuth(payload.access_token, payload.user);
       message.success(t('pages.login.loginSuccess'));
       navigate(redirectTo, { replace: true });
-    } catch (error: unknown) {
-      const apiError = error as LoginApiError;
-      const errorCode = apiError.data?.code;
-      let errorMessage = t('pages.login.loginFailedDefault');
-
-      if (errorCode === 'invalid_credentials' || apiError.status === 401) {
-        errorMessage = t('pages.login.invalidCredentials');
-      } else if (errorCode === 'ldap_connection_failed') {
-        errorMessage = t('pages.login.ldapConnectionFailed');
-      } else if (
-        errorCode === 'ldap_config_incomplete' ||
-        errorCode === 'ldap_disabled'
-      ) {
-        errorMessage = t('pages.login.ldapConfigurationError');
-      } else if (apiError.status === 0) {
-        errorMessage = t('pages.login.networkError');
-      } else if (apiError.status && apiError.status >= 500) {
-        errorMessage = t('pages.login.authenticationServiceError');
-      }
-
-      message.error(errorMessage);
+    } catch (error: any) {
+      const msg =
+        error?.data?.message ||
+        error?.data?.error ||
+        error?.statusText ||
+        t('pages.login.loginFailedDefault');
+      message.error(msg);
     } finally {
       setLoading(false);
     }

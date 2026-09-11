@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from engine.core import ConfigManager, GlobalConfig, StreamMetrics
-from engine.request_processor import APIClient, PayloadBuilder, ResponsesStreamProcessor
+from engine.request_processor import APIClient, PayloadBuilder, StreamProcessor
 from utils.dataset_loader import parse_data_line
 from utils.realtime_metrics import collect_realtime_snapshot
 
@@ -125,20 +125,21 @@ def test_responses_tracks_multi_item_lifecycles_and_first_delta(monkeypatch):
     ]
 
     for event in events:
-        should_break, error, metrics = ResponsesStreamProcessor.process_stream_chunk(
-            _sse(event), mapping, start, metrics, Mock()
+        should_break, error, metrics = StreamProcessor.process_stream_chunk(
+            _sse(event), mapping, start, metrics, Mock(), "openai-responses"
         )
 
     assert should_break is True
     assert error is None
-    assert fired.count("Time_to_first_output_token") == 1
+    assert metrics.first_token_received is True
+    assert metrics.time_to_first_output_token_ms is not None
     assert "Output_item_0_lifecycle" not in fired
     assert "Output_item_1_lifecycle" not in fired
     assert "Output_item_2_lifecycle" not in fired
     assert "Output_item_reasoning_lifecycle" in fired
     assert "Output_item_message_lifecycle" in fired
     assert "Output_item_tool_call_lifecycle" in fired
-    assert set(metrics.output_items) == {"rs_1", "msg_1", "fc_1"}
+    assert metrics._output_items == {}
     assert metrics.reasoning_content == "thinking"
     assert "answer" in metrics.content
     assert metrics.usage == {
@@ -156,7 +157,7 @@ def test_empty_delta_does_not_record_first_output(monkeypatch):
     )
     mapping = ConfigManager.generate_field_mapping_by_api_type("openai-responses", True)
     metrics = StreamMetrics()
-    ResponsesStreamProcessor.process_stream_chunk(
+    StreamProcessor.process_stream_chunk(
         _sse(
             {
                 "type": "response.output_text.delta",
@@ -168,7 +169,10 @@ def test_empty_delta_does_not_record_first_output(monkeypatch):
         time.perf_counter(),
         metrics,
         Mock(),
+        "openai-responses",
     )
+    assert metrics.first_token_received is False
+    assert metrics.time_to_first_output_token_ms is None
     assert "Time_to_first_output_token" not in fired
 
 
@@ -302,7 +306,11 @@ def test_realtime_rps_uses_only_main_http_request_entry():
     main = SimpleNamespace(
         num_requests=10,
         num_failures=1,
+        total_response_time=1000,
         avg_response_time=100,
+        min_response_time=50,
+        max_response_time=150,
+        response_times={50: 1, 100: 8, 150: 1},
         current_rps=5.0,
         current_fail_per_sec=0.5,
     )

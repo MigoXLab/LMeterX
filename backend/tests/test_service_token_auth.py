@@ -3,9 +3,9 @@ Service Token (LMETERX_AUTH_TOKEN) 鉴权集成测试。
 
 测试矩阵：
   1. LDAP_ENABLED=off, Token 为空    → 所有 API 无需鉴权即可调用
-  2. LDAP_ENABLED=on,  Token 为空    → 调用 白名单API 返回 401，非白名单API 返回 403
+  2. LDAP_ENABLED=on,  Token 为空    → 调用 白名单API 返回 401，非白名单API 返回 401
   3. LDAP_ENABLED=on,  Token 一致    → 白名单 API 可以调用，非白名单 → 403
-  4. LDAP_ENABLED=on,  Token 不一致  → 调用 白名单API 返回 401，非白名单API 返回 403
+  4. LDAP_ENABLED=on,  Token 不一致  → 调用 白名单API 返回 401，非白名单API 返回 401
   5. Skill 脚本白名单               → 非白名单路径在客户端被拦截（纵深防御）
   6. 边界情况                       → exempt_paths、X-Authorization、OPTIONS 等
 
@@ -175,7 +175,7 @@ class TestLdapDisabledNoToken:
 # ═════════════════════════════════════════════════════════════════════════════
 # 场景 2: LDAP_ENABLED=on, Token 为空
 #   白名单 API → 401 (需要提供凭证)
-#   非白名单 API → 403 (该路径不允许 Service Token 访问)
+#   非白名单 API → 401 (需要提供凭证)
 # ═════════════════════════════════════════════════════════════════════════════
 
 
@@ -183,7 +183,7 @@ class TestLdapEnabledNoToken:
     """LDAP 开启 + Token 为空。
 
     白名单 API → 401 (Unauthorized — 需要提供凭证)
-    非白名单 API → 403 (Forbidden — 该路径对 Service Token 永远不可达)
+    非白名单 API → 401 (Unauthorized — 需要提供凭证)
     """
 
     @pytest.fixture(autouse=True)
@@ -215,17 +215,17 @@ class TestLdapEnabledNoToken:
         resp = self.client.post("/api/http-tasks")
         assert resp.status_code == 401
 
-    # ── 非白名单路径: 403 ──
+    # ── 非白名单路径: 401 ──
 
-    def test_non_whitelist_system_returns_403(self):
-        """非白名单接口无 Token → 403。"""
+    def test_non_whitelist_system_returns_401(self):
+        """非白名单接口无 Token → 401。"""
         resp = self.client.get("/api/system")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
-    def test_non_whitelist_profile_returns_403(self):
-        """非白名单接口无 Token → 403。"""
+    def test_non_whitelist_profile_returns_401(self):
+        """非白名单接口无 Token → 401。"""
         resp = self.client.get("/api/auth/profile")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_whitelist_llm_tasks_returns_401(self):
         """白名单接口无 Token → 401。"""
@@ -305,7 +305,7 @@ class TestLdapEnabledMatchingToken:
 # ═════════════════════════════════════════════════════════════════════════════
 # 场景 4: LDAP_ENABLED=on, Token 不一致
 #   白名单 API → 401 (Token 错误，请检查)
-#   非白名单 API → 403 (该路径不允许 Service Token 访问)
+#   非白名单 API → 401 (Token 错误，请检查)
 # ═════════════════════════════════════════════════════════════════════════════
 
 
@@ -313,7 +313,7 @@ class TestLdapEnabledWrongToken:
     """LDAP 开启 + 错误的 Token。
 
     白名单 API → 401 (Unauthorized — Token 不匹配)
-    非白名单 API → 403 (Forbidden — 该路径对 Service Token 永远不可达)
+    非白名单 API → 401 (Unauthorized — Token 不匹配)
     """
 
     @pytest.fixture(autouse=True)
@@ -341,12 +341,12 @@ class TestLdapEnabledWrongToken:
         resp = self.client.post("/api/http-tasks", headers=self.wrong_header)
         assert resp.status_code == 401
 
-    # ── 非白名单路径: 403 ──
+    # ── 非白名单路径: 401 ──
 
-    def test_non_whitelist_wrong_token_returns_403(self):
-        """非白名单接口 + 错误 Token → 403。"""
+    def test_non_whitelist_wrong_token_returns_401(self):
+        """非白名单接口 + 错误 Token → 401。"""
         resp = self.client.get("/api/system", headers=self.wrong_header)
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_whitelist_llm_tasks_wrong_token_401(self):
         """白名单接口 /api/llm-tasks + 错误 Token → 401。"""
@@ -360,10 +360,10 @@ class TestLdapEnabledWrongToken:
         resp = self.client.post("/api/skills/analyze-url")
         assert resp.status_code == 401
 
-    def test_no_token_non_whitelist_returns_403(self):
-        """非白名单接口 + 完全不带 Token → 403。"""
+    def test_no_token_non_whitelist_returns_401(self):
+        """非白名单接口 + 完全不带 Token → 401。"""
         resp = self.client.get("/api/system")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -498,8 +498,8 @@ class TestEdgeCases:
             )
             assert resp.status_code == 401
 
-    def test_empty_service_token_config_non_whitelist_path_403(self):
-        """后端未配置 LMETERX_AUTH_TOKEN 时，非白名单路径走 JWT decode 失败 → 403。"""
+    def test_empty_service_token_config_non_whitelist_path_401(self):
+        """后端未配置 LMETERX_AUTH_TOKEN 时，非白名单路径走 JWT decode 失败 → 401。"""
         mock = _make_settings(ldap_enabled=True, service_token="")
         with patch("middleware.auth_middleware.settings", mock):
             client = TestClient(_test_app, raise_server_exceptions=False)
@@ -507,7 +507,7 @@ class TestEdgeCases:
                 "/api/system",
                 headers={"Authorization": f"Bearer {SERVICE_TOKEN}"},
             )
-            assert resp.status_code == 403
+            assert resp.status_code == 401
 
     def test_options_request_always_passes(self):
         """OPTIONS 请求（CORS preflight）始终通过。"""

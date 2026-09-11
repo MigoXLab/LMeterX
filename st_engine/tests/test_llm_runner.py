@@ -3,14 +3,18 @@ Tests for LlmLocustRunner duraton consistency, extra environment variables
 initialization, and command building.
 """
 
+import io
+import json
 import math
 import os
+import subprocess
 from unittest.mock import Mock, patch
 
 import pytest
 
 from engine.http_runner import HttpLocustRunner
 from engine.llm_runner import LlmLocustRunner
+from utils.logger import SUBPROCESS_LOG_PROTOCOL, SUBPROCESS_LOG_PROTOCOL_ENV
 
 
 # =====================================================================
@@ -247,6 +251,10 @@ class TestExtraEnvInitialization:
             call_env_1 = mock_popen.call_args[1]["env"]
             assert "LOAD_MODE" in call_env_1
             assert call_env_1["LOAD_MODE"] == "stepped"
+            assert call_env_1["SLS_ENABLED"] == "false"
+            assert call_env_1[SUBPROCESS_LOG_PROTOCOL_ENV] == SUBPROCESS_LOG_PROTOCOL
+            assert mock_popen.call_args.kwargs["stdout"] is subprocess.PIPE
+            assert mock_popen.call_args.kwargs["stderr"] is subprocess.STDOUT
 
             # Run a second task (e.g. non-stepped/fixed) to ensure no accumulation
             mock_llm_task_fixed = Mock()
@@ -267,6 +275,9 @@ class TestExtraEnvInitialization:
             call_env_2 = mock_popen.call_args[1]["env"]
             assert "LOAD_MODE" not in call_env_2
             assert call_env_2["TASK_DURATION"] == "60"
+            assert call_env_2["SLS_ENABLED"] == "false"
+            assert call_env_2[SUBPROCESS_LOG_PROTOCOL_ENV] == SUBPROCESS_LOG_PROTOCOL
+            assert mock_popen.call_args.kwargs["stderr"] is subprocess.STDOUT
 
 
 # =====================================================================
@@ -363,3 +374,63 @@ class TestLlmRunnerSteppedModeAndWarmup:
             assert "--processes" in cmd
             idx = cmd.index("--processes")
             assert cmd[idx + 1] == "4"
+
+
+class TestJsonLineLogCapture:
+    SUMMARY_OUTPUT = """Type     Name                                                                          # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+GET      GET /v1/chat/completions                                                       20     0(0.00%) |     50      20      90     45 |    2.00        0.00
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+         Aggregated                                                                    20     0(0.00%) |     50      20      90     45 |    2.00        0.00"""
+
+    @staticmethod
+    def _encoded_event(message):
+        return (
+            json.dumps(
+                {
+                    "protocol": SUBPROCESS_LOG_PROTOCOL,
+                    "level": "INFO",
+                    "message": message,
+                    "logger": "locust.stats_logger",
+                    "time": "2026-08-03T14:07:41.440",
+                    "file": "stats.py",
+                    "line": 789,
+                    "function": "print_stats",
+                    "process": 123,
+                    "thread": 456,
+                },
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
+
+    def test_monitor_forwards_table_once_and_retains_decoded_summary(self, llm_runner):
+        process = Mock()
+        process.pid = 12345
+        process.returncode = 0
+        process.stdout = io.StringIO(self._encoded_event(self.SUMMARY_OUTPUT))
+        # Production Popen redirects stderr to stdout, so no separate stderr
+        # stream exists and the captured summary must still be parseable.
+        process.stderr = None
+
+        task = Mock()
+        task.id = "jsonl-task"
+        task.duration = 10
+        task.load_mode = "fixed"
+
+        task_logger = Mock()
+        bound_logger = Mock()
+        task_logger.bind.return_value = bound_logger
+
+        stdout, stderr = llm_runner._monitor_and_capture(process, task, task_logger)
+
+        assert stdout == f"{self.SUMMARY_OUTPUT}\n"
+        assert stderr == ""
+        task_logger.bind.assert_called_once()
+        assert task_logger.bind.call_args.kwargs["subprocess_stream"] == "stdout"
+        bound_logger.log.assert_called_once_with("INFO", self.SUMMARY_OUTPUT)
+
+        rows = llm_runner._parse_locust_summary(stdout, task.id)
+        assert len(rows) == 1
+        assert rows[0]["metric_type"] == "GET /v1/chat/completions"
+        assert rows[0]["num_requests"] == 20

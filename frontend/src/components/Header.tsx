@@ -193,7 +193,11 @@ const Header: React.FC = () => {
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
           <Menu
             mode='horizontal'
-            selectedKeys={[location.pathname]}
+            selectedKeys={[
+              location.pathname.startsWith('/agent-results')
+                ? '/jobs'
+                : location.pathname,
+            ]}
             items={menuItems}
             style={menuStyle}
             onClick={({ key }) => navigate(key)}

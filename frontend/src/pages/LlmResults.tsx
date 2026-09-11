@@ -42,6 +42,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import {
   analysisApi,
+  clusterApi,
   llmTaskApi,
   monitoringApi,
   resultApi,
@@ -52,7 +53,7 @@ import { LoadingSpinner } from '../components/ui/LoadingState';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useLanguage } from '../contexts/LanguageContext';
-import { RealtimeMetricPoint } from '../types/job';
+import { Cluster, RealtimeMetricPoint } from '../types/job';
 import { getStoredUser } from '../utils/auth';
 import { formatDate } from '../utils/date';
 
@@ -70,14 +71,11 @@ const SUMMARY_METRIC_TYPES = new Set([
   'Completion_tokens',
 ]);
 
-const isOutputItemMetric = (name?: string) =>
-  Boolean(
-    name &&
-    /^Output_item_(?:message|reasoning|tool_call|other)_lifecycle$/.test(name)
+const isSummaryMetricType = (metricType: string): boolean =>
+  SUMMARY_METRIC_TYPES.has(metricType) ||
+  /^Output_item_(?:message|reasoning|tool_call|other)_lifecycle$/.test(
+    metricType
   );
-
-const isIndexedOutputItemMetric = (name?: string) =>
-  Boolean(name && /^Output_item_\d+_lifecycle$/.test(name));
 
 const statisticWrapperStyle: React.CSSProperties = {
   textAlign: 'left',
@@ -88,6 +86,23 @@ const statisticValueStyle: React.CSSProperties = {
   justifyContent: 'flex-start',
   width: '100%',
   textAlign: 'left',
+};
+
+const parseNetworkFailureSummary = (message?: string | null) => {
+  if (!message?.startsWith('Network error (no HTTP response):')) {
+    return null;
+  }
+
+  const countMatch = message.match(/:\s*(\d+) request\(s\) failed/);
+  const detailsMarker = ' Details: ';
+  const detailsIndex = message.indexOf(detailsMarker);
+  return {
+    count: countMatch ? Number(countMatch[1]) : 0,
+    details:
+      detailsIndex >= 0
+        ? message.slice(detailsIndex + detailsMarker.length)
+        : '',
+  };
 };
 
 const LlmResults: React.FC = () => {
@@ -117,6 +132,7 @@ const LlmResults: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<any[]>([]);
   const [taskInfo, setTaskInfo] = useState<any>(null);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisModalVisible, setAnalysisModalVisible] = useState(false);
@@ -139,6 +155,9 @@ const LlmResults: React.FC = () => {
   const metricsDetailCardRef = useRef<HTMLDivElement | null>(null);
   const chartsRef = useRef<HTMLDivElement | null>(null);
   const tokenLengthCardRef = useRef<HTMLDivElement | null>(null);
+  const networkFailureSummary = parseNetworkFailureSummary(
+    taskInfo?.error_message
+  );
 
   const getNumericValue = (item: any, fields: string[]): number | undefined => {
     if (!item) {
@@ -293,6 +312,32 @@ const LlmResults: React.FC = () => {
       cancelled = true;
     };
   }, [taskInfo?.engine_id]);
+
+  // Fetch clusters list to resolve cluster names.
+  useEffect(() => {
+    const fetchClusters = async () => {
+      try {
+        const res = await clusterApi.getAllClusters();
+        const list = Array.isArray(res)
+          ? res
+          : Array.isArray((res as any)?.data)
+            ? (res as any).data
+            : Array.isArray((res as any)?.data?.clusters)
+              ? (res as any).data.clusters
+              : [];
+        setClusters(list);
+      } catch (err) {
+        console.error('Failed to fetch clusters:', err);
+      }
+    };
+    fetchClusters();
+  }, []);
+
+  const clusterName = useMemo(() => {
+    if (!taskInfo?.cluster_id) return '';
+    const cluster = clusters.find(c => c.id === taskInfo.cluster_id);
+    return cluster ? cluster.name : taskInfo.cluster_id;
+  }, [clusters, taskInfo?.cluster_id]);
 
   // Fetch real-time metrics incrementally (with lock to prevent concurrent fetches)
   const fetchMetrics = useCallback(async () => {
@@ -508,7 +553,14 @@ const LlmResults: React.FC = () => {
   );
 
   // --- LLM per-metric names and color palette for response time chart ---
-  const LLM_METRIC_NAMES = [
+  type LLMMetricName =
+    | 'Total_time'
+    | 'Time_to_first_reasoning_token'
+    | 'Time_to_first_output_token'
+    | 'Time_to_reasoning_completion'
+    | 'Time_to_output_completion';
+
+  const LLM_METRIC_NAMES: LLMMetricName[] = [
     'Total_time',
     'Time_to_first_reasoning_token',
     'Time_to_first_output_token',
@@ -516,7 +568,7 @@ const LlmResults: React.FC = () => {
     'Time_to_output_completion',
   ];
 
-  const LLM_METRIC_COLORS: Record<string, string> = {
+  const LLM_METRIC_COLORS: Record<LLMMetricName, string> = {
     Total_time: '#1890ff',
     Time_to_first_reasoning_token: '#faad14',
     Time_to_first_output_token: '#52c41a',
@@ -529,18 +581,14 @@ const LlmResults: React.FC = () => {
     const found = new Set<string>();
     metricsData.forEach(p => {
       if (p.metrics) {
-        Object.keys(p.metrics).forEach(name => {
-          if (LLM_METRIC_NAMES.includes(name) || isOutputItemMetric(name)) {
+        LLM_METRIC_NAMES.forEach(name => {
+          if (p.metrics![name]) {
             found.add(name);
           }
         });
       }
     });
-    const baseMetrics = LLM_METRIC_NAMES.filter(n => found.has(n));
-    const itemMetrics = [...found]
-      .filter(isOutputItemMetric)
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    return [...baseMetrics, ...itemMetrics];
+    return LLM_METRIC_NAMES.filter(n => found.has(n));
   }, [metricsData]);
 
   // ECharts: Response Time chart
@@ -572,28 +620,8 @@ const LlmResults: React.FC = () => {
       symbolSize: 4,
       showSymbol: false,
       connectNulls: true,
-      itemStyle: {
-        color:
-          LLM_METRIC_COLORS[metricName] ??
-          (metricName.includes('message')
-            ? '#13c2c2'
-            : metricName.includes('reasoning')
-              ? '#fa8c16'
-              : metricName.includes('tool_call')
-                ? '#9254de'
-                : '#597ef7'),
-      },
-      lineStyle: {
-        color:
-          LLM_METRIC_COLORS[metricName] ??
-          (metricName.includes('message')
-            ? '#13c2c2'
-            : metricName.includes('reasoning')
-              ? '#fa8c16'
-              : metricName.includes('tool_call')
-                ? '#9254de'
-                : '#597ef7'),
-      },
+      itemStyle: { color: LLM_METRIC_COLORS[metricName] ?? '#1890ff' },
+      lineStyle: { color: LLM_METRIC_COLORS[metricName] ?? '#1890ff' },
     }));
 
     // Fallback if no per-metric detail: show aggregate avg (backward compat)
@@ -639,7 +667,7 @@ const LlmResults: React.FC = () => {
   }, [metricsData, formatChartTime, chartTooltip, t, availableMetricNames]);
 
   // ECharts: RPS & Failures chart
-  // RPS: use the Locust HTTP request entry so item metrics never inflate it.
+  // RPS: prefer Total_time metric, fallback to api_path metric, then aggregate
   // Failures/s: prefer failure metric, fallback to api_path metric, then aggregate
   const rpsOption = useMemo(() => {
     if (metricsData.length === 0) return {};
@@ -650,6 +678,12 @@ const LlmResults: React.FC = () => {
 
     const rpsData = metricsData.map(p => {
       if (p.metrics) {
+        // Prefer Total_time's rps
+        const totalEntry = p.metrics.Total_time;
+        if (totalEntry?.current_rps != null) {
+          return Number(totalEntry.current_rps.toFixed(2));
+        }
+        // Fallback: api_path metric
         const apiEntry = apiPath ? p.metrics[apiPath] : undefined;
         if (apiEntry?.current_rps != null) {
           return Number(apiEntry.current_rps.toFixed(2));
@@ -927,9 +961,7 @@ const LlmResults: React.FC = () => {
 
       if (
         item?.metric_type &&
-        !SUMMARY_METRIC_TYPES.has(item.metric_type) &&
-        !isOutputItemMetric(item.metric_type) &&
-        !isIndexedOutputItemMetric(item.metric_type) &&
+        !isSummaryMetricType(item.metric_type) &&
         hasRequestStats
       ) {
         typeSet.add(item.metric_type);
@@ -941,17 +973,21 @@ const LlmResults: React.FC = () => {
 
   const calculateFailedRequests = (apiPathMetric?: any) => {
     const apiPathFailures = getFailureCountValue(apiPathMetric);
-    const failureRequests = getRequestCountValue(failResult);
-    const fallbackFailures = getFailureCountValue(failResult);
+    if (apiPathFailures !== undefined) {
+      return apiPathFailures;
+    }
 
-    // The API-path row is the canonical Locust request metric, while the
-    // dedicated failure row may contain the same failures. Use the largest
-    // available count to avoid both omissions and double-counting.
-    return Math.max(
-      apiPathFailures ?? 0,
-      failureRequests ?? 0,
-      fallbackFailures ?? 0
-    );
+    const failureRequests = getRequestCountValue(failResult);
+    if (failureRequests !== undefined) {
+      return failureRequests;
+    }
+
+    const fallbackFailures = getFailureCountValue(failResult);
+    if (fallbackFailures !== undefined) {
+      return fallbackFailures;
+    }
+
+    return 0;
   };
 
   // Check if we have any valid test results
@@ -1289,8 +1325,7 @@ const LlmResults: React.FC = () => {
       isMeaningfulValue(ttftDisplay) &&
       isMeaningfulValue(firstTokenResult?.avg_response_time);
 
-    const rpsValue =
-      apiPathMetric?.rps ?? CompletionResult?.rps ?? firstTokenResult?.rps;
+    const rpsValue = CompletionResult?.rps ?? firstTokenResult?.rps;
     const qpmValue =
       rpsValue !== null && rpsValue !== undefined
         ? Number(rpsValue) * 60
@@ -1643,6 +1678,28 @@ const LlmResults: React.FC = () => {
         <span className='section-title'>{t('pages.results.taskInfo')}</span>
       </div>
       <div className='section-content'>
+        {networkFailureSummary && (
+          <Alert
+            type='error'
+            showIcon
+            message={t('pages.results.networkErrorNoHttpResponse')}
+            description={
+              <div>
+                <div>
+                  {t('pages.results.networkErrorRequestCount', {
+                    count: networkFailureSummary.count,
+                  })}
+                </div>
+                {networkFailureSummary.details && (
+                  <div style={{ marginTop: 4, wordBreak: 'break-word' }}>
+                    {networkFailureSummary.details}
+                  </div>
+                )}
+              </div>
+            }
+            style={{ marginBottom: 16 }}
+          />
+        )}
         <div className='info-grid'>
           <div className='info-grid-item'>
             <span className='info-label'>{t('pages.results.taskId')}</span>
@@ -1705,7 +1762,11 @@ const LlmResults: React.FC = () => {
           </div>
           <div className='info-grid-item'>
             <span className='info-label'>{t('pages.results.modelName')}</span>
-            <span className='info-value'>{taskInfo?.model || 'none'}</span>
+            <span className='info-value'>
+              {!taskInfo?.model || taskInfo.model.toLowerCase() === 'none'
+                ? '-'
+                : taskInfo.model}
+            </span>
           </div>
           {(taskInfo?.load_mode || 'fixed') === 'fixed' ? (
             <>
@@ -1777,6 +1838,12 @@ const LlmResults: React.FC = () => {
               ) : (
                 '-'
               )}
+            </span>
+          </div>
+          <div className='info-grid-item'>
+            <span className='info-label'>{t('pages.results.env')}</span>
+            <span className='info-value'>
+              {clusterName || taskInfo?.cluster_id || '-'}
             </span>
           </div>
         </div>
@@ -2025,9 +2092,6 @@ const LlmResults: React.FC = () => {
                                   item.metric_type !== 'token_metrics' &&
                                   item.metric_type !== 'Input_tokens' &&
                                   item.metric_type !== 'Completion_tokens' &&
-                                  !isIndexedOutputItemMetric(
-                                    item.metric_type
-                                  ) &&
                                   (results.length <= 1 ||
                                     !requestMetricTypeSet.has(item.metric_type))
                               )}

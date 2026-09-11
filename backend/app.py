@@ -4,31 +4,73 @@ Copyright (c) 2025, All Rights Reserved.
 """
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from api.api_agent_task import router as agent_task
 from api.api_analysis import router as analysis
 from api.api_auth import router as auth
+from api.api_cluster import router as cluster
 from api.api_collection import router as collection
+from api.api_engine import router as engine
 from api.api_http_task import router as http_task
 from api.api_llm_task import router as llm_task
 from api.api_log import router as log
 from api.api_monitoring import router as monitoring
 from api.api_skill import router as skill
 from api.api_system import router as system
+from api.api_task import router as task
 from api.api_upload import router as upload
 from middleware.auth_middleware import AuthMiddleware
 from middleware.db_middleware import DBSessionMiddleware
+from service.scheduler import start_scheduler, stop_scheduler
 from utils.auth_settings import get_auth_settings
 from utils.error_handler import ErrorResponse
 from utils.logger import logger
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup/shutdown lifecycle."""
+    # Unit tests must not run production startup side effects.  In particular,
+    # entering TestClient as a context manager executes this lifespan hook; if
+    # it reaches the code below, the test suite connects to the database from
+    # backend/.env and starts the background scheduler.
+    if os.getenv("TESTING") == "1":
+        yield
+        return
+
+    from db.mysql import async_session_factory
+    from service.agent_task_service import migrate_legacy_agent_headers
+    from service.engine_service import reset_all_engines_heartbeat
+    from utils.credential_crypto import CredentialEncryptionError
+
+    # Reset engine heartbeats to epoch to avoid stale engines on startup
+    async with async_session_factory() as session:
+        await reset_all_engines_heartbeat(session)
+        try:
+            await migrate_legacy_agent_headers(session)
+        except CredentialEncryptionError as exc:
+            await session.rollback()
+            logger.warning(
+                "Legacy Agent credentials remain plaintext until encryption is "
+                "configured: {}",
+                exc,
+            )
+
+    start_scheduler()
+    yield
+    stop_scheduler()
+
 
 app = FastAPI(
     title="LMeterX Backend API",
     description="LMeterX Backend",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 auth_settings = get_auth_settings()
@@ -62,7 +104,7 @@ async def handle_http_exception(request: Request, exc: HTTPException):
     leaking stack traces.
     """
     logger.warning(
-        "HTTP error %s on %s %s: %s",
+        "HTTP error {} on {} {}: {}",
         exc.status_code,
         request.method,
         request.url.path,
@@ -74,7 +116,7 @@ async def handle_http_exception(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def handle_unexpected_exception(request: Request, exc: Exception):
     """Catch-all for unexpected errors with structured logging."""
-    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    logger.exception("Unhandled error on {} {}", request.method, request.url.path)
     return ErrorResponse.internal_server_error().to_response()
 
 
@@ -98,12 +140,19 @@ if auth_settings.LDAP_ENABLED and not os.getenv("TESTING"):
             "/api/system/dashboard-stats",
         },
         exempt_prefixes=[
-            "/api/llm-tasks/",
-            "/api/http-tasks/",
-            "/api/logs/",
+            "/api/tasks",
+            "/api/llm-tasks",
+            "/api/http-tasks",
+            "/api/logs",
             "/api/analyze",
             "/api/monitoring/engines",
+            "/api/engine",
+            "/api/clusters",
         ],
+        # Copy-template handlers perform owner checks and therefore require
+        # AuthMiddleware to populate request.state.user, even though their
+        # parent GET prefixes are public for shared result pages.
+        auth_required_suffixes=["/copy-template"],
     )
 
 # Add database middleware
@@ -135,10 +184,14 @@ def read_root():
 # add api routers
 app.include_router(analysis, prefix="/api/analyze", tags=["analysis"])
 app.include_router(auth, prefix="/api/auth", tags=["auth"])
+app.include_router(cluster, prefix="/api/clusters", tags=["clusters"])
 app.include_router(collection, prefix="/api/collections", tags=["collections"])
+app.include_router(engine, prefix="/api/engine", tags=["engine"])
 app.include_router(system, prefix="/api/system", tags=["system"])
+app.include_router(task, prefix="/api/tasks", tags=["tasks"])
 app.include_router(llm_task, prefix="/api/llm-tasks", tags=["llm-tasks"])
 app.include_router(http_task, prefix="/api/http-tasks", tags=["http-tasks"])
+app.include_router(agent_task, prefix="/api/agent-tasks", tags=["agent-tasks"])
 app.include_router(log, prefix="/api/logs", tags=["logs"])
 app.include_router(monitoring, prefix="/api/monitoring", tags=["monitoring"])
 app.include_router(skill, prefix="/api/skills", tags=["skills"])

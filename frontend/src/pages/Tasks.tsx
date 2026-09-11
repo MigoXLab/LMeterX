@@ -5,9 +5,11 @@
  * @copyright 2025
  * */
 import {
+  ApiOutlined,
   BarChartOutlined,
   ClockCircleOutlined,
   CloseOutlined,
+  ClusterOutlined,
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -21,7 +23,9 @@ import {
   PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
+  RobotOutlined,
   StopOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import {
   App,
@@ -41,7 +45,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { httpTaskApi, llmTaskApi } from '../api/services';
 import AddToCollectionModal from '../components/AddToCollectionModal';
@@ -60,12 +64,14 @@ import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
 import { formatDate, getTimestamp } from '../utils/date';
 import { formatValidationError } from '../utils/error';
 import { getLdapEnabled } from '../utils/runtimeConfig';
+import AgentJobs from './AgentJobs';
 
 const { Search } = Input;
 const { Text } = Typography;
 
 const MODE_STORAGE_KEY = 'jobsActiveMode';
 const LDAP_ENABLED = getLdapEnabled();
+type TaskMode = 'http' | 'llm' | 'a2a' | 'mcp';
 
 const resolveTaskDetail = <T extends Record<string, any>>(
   response: any,
@@ -143,14 +149,22 @@ const withDatasetFields = <T extends Record<string, any>>(
 const Tasks: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   // State managed by the component
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [taskToCopy, setTaskToCopy] = useState<Partial<LlmTask> | null>(null);
   const [httpTaskToCopy, setHttpTaskToCopy] =
     useState<Partial<HttpTask> | null>(null);
-  const [activeMode, setActiveMode] = useState<'llm' | 'http'>(() => {
+  const [activeMode, setActiveMode] = useState<TaskMode>(() => {
+    const requested = searchParams.get('tab');
+    if (['http', 'llm', 'a2a', 'mcp'].includes(requested || '')) {
+      return requested as TaskMode;
+    }
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
-    return stored === 'http' || stored === 'common' ? 'http' : 'llm';
+    if (['http', 'llm', 'a2a', 'mcp'].includes(stored || '')) {
+      return stored as TaskMode;
+    }
+    return stored === 'common' ? 'http' : 'llm';
   });
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
@@ -257,8 +271,8 @@ const Tasks: React.FC = () => {
           ? `${job.name} (Copy)`
           : `Copy Task ${job.id.substring(0, 8)}`;
 
-        // Always fetch full task detail to preserve headers, datasets and mapping
-        const fullJobResp = await llmTaskApi.getJob(job.id);
+        // Copy endpoint preserves configuration while never returning secrets.
+        const fullJobResp = await llmTaskApi.getCopyTemplate(job.id);
         const fullJob = resolveTaskDetail(fullJobResp, job);
 
         let jobToCopyData: Partial<LlmTask> = {
@@ -347,8 +361,8 @@ const Tasks: React.FC = () => {
           messageApi.warning(t('pages.jobs.ownerOnly'));
           return;
         }
-        // Fetch full task details to get request_body and other fields
-        const fullJobResponse = await httpTaskApi.getJob(job.id);
+        // Copy endpoint preserves configuration while never returning secrets.
+        const fullJobResponse = await httpTaskApi.getCopyTemplate(job.id);
         const fullJob = (fullJobResponse.data as HttpTask) || job;
 
         const copiedName = fullJob.name
@@ -383,32 +397,6 @@ const Tasks: React.FC = () => {
   );
 
   /**
-   * Generate a rerun task name with incrementing suffix (-1, -2, ...)
-   */
-  const getRerunName = useCallback((name?: string): string => {
-    const baseName = name || 'Task';
-    const match = baseName.match(/^(.*)-(\d+)$/);
-    let newName = '';
-    if (match) {
-      newName = `${match[1]}-${parseInt(match[2]) + 1}`;
-    } else {
-      newName = `${baseName}-1`;
-    }
-
-    // If the new name exceeds 100 characters, truncate the base name part
-    if (newName.length > 100) {
-      const suffix = match ? `-${parseInt(match[2]) + 1}` : '-1';
-      const maxBaseLength = 100 - suffix.length;
-      const truncatedBase = (match ? match[1] : baseName).slice(
-        0,
-        maxBaseLength
-      );
-      newName = `${truncatedBase}${suffix}`;
-    }
-    return newName;
-  }, []);
-
-  /**
    * Handle rerun an LLM job (create a new task based on existing config)
    */
   const handleRerunJob = useCallback(
@@ -418,57 +406,7 @@ const Tasks: React.FC = () => {
         return;
       }
       try {
-        const fullJobResp = await llmTaskApi.getJob(job.id);
-        const fullJob = resolveTaskDetail(fullJobResp, job);
-
-        let rerunData: any = {
-          ...fullJob,
-          name: getRerunName(fullJob.name),
-          id: undefined,
-          status: undefined,
-          created_at: undefined,
-          updated_at: undefined,
-          result_id: undefined,
-          temp_task_id: `temp-${Date.now()}`,
-        };
-
-        // Handle headers
-        if (rerunData.headers) {
-          const headerObject =
-            typeof rerunData.headers === 'string'
-              ? safeJsonParse(rerunData.headers, [])
-              : rerunData.headers;
-          rerunData.headers = deepClone(headerObject) || [];
-        }
-
-        // Handle request_payload
-        if (rerunData.request_payload) {
-          rerunData.request_payload =
-            typeof rerunData.request_payload === 'string'
-              ? rerunData.request_payload
-              : safeJsonStringify(rerunData.request_payload);
-        }
-
-        // Handle field_mapping
-        if (rerunData.field_mapping) {
-          const fieldMappingObject =
-            typeof rerunData.field_mapping === 'string'
-              ? safeJsonParse(rerunData.field_mapping, {})
-              : rerunData.field_mapping;
-          rerunData.field_mapping = deepClone(fieldMappingObject) || {};
-        }
-
-        // Preserve warmup configuration
-        if (
-          rerunData.warmup_enabled !== undefined &&
-          rerunData.warmup_enabled !== null
-        ) {
-          rerunData.warmup_enabled = Boolean(rerunData.warmup_enabled);
-        }
-
-        rerunData = withDatasetFields(rerunData, fullJob);
-
-        const resp = await llmTaskApi.createJob(rerunData);
+        const resp = await llmTaskApi.rerun(job.id);
         const success = !!(resp as any)?.data?.task_id;
         if (success) {
           manualRefresh();
@@ -490,7 +428,7 @@ const Tasks: React.FC = () => {
         messageApi.error(errorMsg);
       }
     },
-    [canManage, getRerunName, manualRefresh, messageApi, t]
+    [canManage, manualRefresh, messageApi, t]
   );
 
   /**
@@ -503,24 +441,7 @@ const Tasks: React.FC = () => {
         return;
       }
       try {
-        const fullJobResponse = await httpTaskApi.getJob(job.id);
-        const fullJob = (fullJobResponse.data as HttpTask) || job;
-
-        const rerunData: any = {
-          ...fullJob,
-          name: getRerunName(fullJob.name),
-          id: undefined,
-          status: undefined,
-          created_at: undefined,
-          updated_at: undefined,
-          temp_task_id: `temp-${Date.now()}`,
-          request_body:
-            typeof fullJob.request_body === 'string'
-              ? fullJob.request_body
-              : (fullJob.request_body ?? ''),
-        };
-
-        const resp = await httpTaskApi.createJob(rerunData);
+        const resp = await httpTaskApi.rerun(job.id);
         const success = resp.status === 200 || resp.status === 201;
         if (success) {
           httpManualRefresh();
@@ -542,7 +463,7 @@ const Tasks: React.FC = () => {
         messageApi.error(errorMsg);
       }
     },
-    [canManage, getRerunName, httpManualRefresh, messageApi, t]
+    [canManage, httpManualRefresh, messageApi, t]
   );
 
   /**
@@ -799,12 +720,18 @@ const Tasks: React.FC = () => {
         width: 280,
         ellipsis: true,
         filters: allModels.map(model => ({
-          text: model,
+          text: !model || model.toLowerCase() === 'none' ? '-' : model,
           value: model,
         })),
         filteredValue: modelFilter ? modelFilter.split(',') : null,
         filterSearch: true,
         filterMultiple: true,
+        render: (model?: string) => {
+          if (!model || model.toLowerCase() === 'none') {
+            return '-';
+          }
+          return model;
+        },
       },
       {
         title: t('pages.jobs.loadConfig'),
@@ -1535,68 +1462,10 @@ const Tasks: React.FC = () => {
         const results = await Promise.allSettled(
           manageableTasks.map(async task => {
             if (useHttp) {
-              const fullJobResponse = await httpTaskApi.getJob(task.id);
-              const fullJob =
-                (fullJobResponse.data as HttpTask) || (task as HttpTask);
-              const rerunData: any = {
-                ...fullJob,
-                name: getRerunName(fullJob.name),
-                id: undefined,
-                status: undefined,
-                created_at: undefined,
-                updated_at: undefined,
-                temp_task_id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                request_body:
-                  typeof fullJob.request_body === 'string'
-                    ? fullJob.request_body
-                    : (fullJob.request_body ?? ''),
-              };
-              // Call API directly to avoid per-task toast from hook
-              const resp = await httpTaskApi.createJob(rerunData);
+              const resp = await httpTaskApi.rerun(task.id);
               return resp.status === 200 || resp.status === 201;
             }
-            const fullJobResp = await llmTaskApi.getJob(task.id);
-            const fullJob = resolveTaskDetail(fullJobResp, task as any);
-            let rerunData: any = {
-              ...fullJob,
-              name: getRerunName(fullJob.name),
-              id: undefined,
-              status: undefined,
-              created_at: undefined,
-              updated_at: undefined,
-              result_id: undefined,
-              temp_task_id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            };
-            if (rerunData.headers) {
-              const headerObject =
-                typeof rerunData.headers === 'string'
-                  ? safeJsonParse(rerunData.headers, [])
-                  : rerunData.headers;
-              rerunData.headers = deepClone(headerObject) || [];
-            }
-            if (rerunData.request_payload) {
-              rerunData.request_payload =
-                typeof rerunData.request_payload === 'string'
-                  ? rerunData.request_payload
-                  : safeJsonStringify(rerunData.request_payload);
-            }
-            if (rerunData.field_mapping) {
-              const fieldMappingObject =
-                typeof rerunData.field_mapping === 'string'
-                  ? safeJsonParse(rerunData.field_mapping, {})
-                  : rerunData.field_mapping;
-              rerunData.field_mapping = deepClone(fieldMappingObject) || {};
-            }
-            // Preserve warmup configuration
-            if (
-              rerunData.warmup_enabled !== undefined &&
-              rerunData.warmup_enabled !== null
-            ) {
-              rerunData.warmup_enabled = Boolean(rerunData.warmup_enabled);
-            }
-            rerunData = withDatasetFields(rerunData, fullJob);
-            // Call API directly to avoid per-task toast from hook
-            const resp = await llmTaskApi.createJob(rerunData);
+            const resp = await llmTaskApi.rerun(task.id);
             return !!(resp as any)?.data?.task_id;
           })
         );
@@ -1639,7 +1508,6 @@ const Tasks: React.FC = () => {
     messageApi,
     modal,
     t,
-    getRerunName,
     httpManualRefresh,
     manualRefresh,
   ]);
@@ -1661,6 +1529,10 @@ const Tasks: React.FC = () => {
     () => ['completed', 'failed_requests'],
     []
   );
+  const SELECTABLE_STATUSES = useMemo(
+    () => ['completed', 'failed_requests', 'stopped'],
+    []
+  );
 
   const rowSelection = useMemo(
     () => ({
@@ -1669,15 +1541,16 @@ const Tasks: React.FC = () => {
       preserveSelectedRowKeys: true,
       columnTitle: ' ',
       getCheckboxProps: (record: LlmTask | HttpTask) => ({
-        disabled: !COMPARABLE_STATUSES.includes(
+        disabled: !SELECTABLE_STATUSES.includes(
           record.status?.toLowerCase() ?? ''
         ),
       }),
     }),
-    [selectedRowKeys, handleSelectionChange, COMPARABLE_STATUSES]
+    [selectedRowKeys, handleSelectionChange, SELECTABLE_STATUSES]
   );
 
   const isHttpMode = activeMode === 'http';
+  const isAgentMode = activeMode === 'a2a' || activeMode === 'mcp';
   const currentJobs = isHttpMode ? httpFilteredJobs : filteredJobs;
 
   // Check if all selected tasks can be managed by the current user
@@ -1691,6 +1564,28 @@ const Tasks: React.FC = () => {
     );
     return selectedTasks.every(job => canManage(job.created_by));
   }, [selectedRowKeys, isHttpMode, httpFilteredJobs, filteredJobs, canManage]);
+
+  const allSelectedComparable = useMemo(() => {
+    if (selectedRowKeys.length === 0) return false;
+    const currentData = (isHttpMode ? httpFilteredJobs : filteredJobs) as Array<
+      LlmTask | HttpTask
+    >;
+    const selectedTasks = currentData.filter(job =>
+      selectedRowKeys.includes(job.id)
+    );
+    return (
+      selectedTasks.length > 0 &&
+      selectedTasks.every(job =>
+        COMPARABLE_STATUSES.includes(job.status?.toLowerCase() ?? '')
+      )
+    );
+  }, [
+    selectedRowKeys,
+    isHttpMode,
+    httpFilteredJobs,
+    filteredJobs,
+    COMPARABLE_STATUSES,
+  ]);
   const currentPagination = isHttpMode ? httpPagination : pagination;
   const currentLoading = isHttpMode ? httpLoading : loading;
   const currentRefreshing = isHttpMode ? httpRefreshing : refreshing;
@@ -1720,8 +1615,9 @@ const Tasks: React.FC = () => {
         <Tabs
           activeKey={activeMode}
           onChange={key => {
-            setActiveMode(key as 'llm' | 'http');
+            setActiveMode(key as TaskMode);
             localStorage.setItem(MODE_STORAGE_KEY, key);
+            setSearchParams({ tab: key }, { replace: true });
             setSelectedRowKeys([]);
           }}
           items={[
@@ -1729,6 +1625,9 @@ const Tasks: React.FC = () => {
               key: 'http',
               label: (
                 <span className='tab-label'>
+                  <span className='tab-icon'>
+                    <ApiOutlined />
+                  </span>
                   {t('pages.jobs.httpApiTab') || 'HTTP API Load Test'}
                 </span>
               ),
@@ -1737,241 +1636,285 @@ const Tasks: React.FC = () => {
               key: 'llm',
               label: (
                 <span className='tab-label'>
+                  <span className='tab-icon'>
+                    <RobotOutlined />
+                  </span>
                   {t('pages.jobs.llmTab') || 'LLM Load Test'}
                 </span>
               ),
             },
-          ]}
-          className='unified-tabs'
-        />
-
-        {/* Toolbar */}
-        <div className='jobs-toolbar'>
-          <div className='jobs-toolbar-left'>
-            <Button
-              type='primary'
-              className='modern-button-primary'
-              icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
-              disabled={currentLoading}
-            >
-              {t('pages.jobs.createNew')}
-            </Button>
-            {isHttpMode && (
-              <Tooltip
-                title={t('pages.jobs.webOneClickTooltip')}
-                placement='bottom'
-                styles={{ root: { maxWidth: 280 } }}
-              >
-                <Button
-                  icon={<GlobalOutlined />}
-                  onClick={() => setWebOneClickOpen(true)}
-                  disabled={currentLoading}
-                  className='modern-button-web-quick-test'
-                >
-                  {t('pages.jobs.webOneClick')}
-                </Button>
-              </Tooltip>
-            )}
-            {selectedRowKeys.length > 0 && (
-              <>
-                <Divider
-                  type='vertical'
-                  style={{ height: 24, margin: '0 4px' }}
-                />
-                <span
-                  style={{
-                    margin: '0 8px',
-                    fontSize: 14,
-                    color: '#000',
-                  }}
-                >
-                  {t('pages.jobs.selectedCount', {
-                    count: selectedRowKeys.length,
-                  })}
+            {
+              key: 'a2a',
+              label: (
+                <span className='tab-label'>
+                  <span className='tab-icon'>
+                    <ClusterOutlined />
+                  </span>
+                  {t('pages.jobs.a2aTab') || 'A2A Agent 协作'}
                 </span>
-                <Tooltip
-                  title={
-                    !allSelectedManageable
-                      ? t('pages.jobs.batchRerunOwnerOnly')
-                      : undefined
-                  }
-                >
-                  <Button
-                    icon={<PlayCircleOutlined />}
-                    onClick={handleBatchRerun}
-                    loading={batchRerunning}
-                    disabled={!allSelectedManageable}
-                    className='btn-purple-dark'
-                  >
-                    {t('pages.jobs.batchRerun')}
-                  </Button>
-                </Tooltip>
-                {selectedRowKeys.length >= 2 && selectedRowKeys.length <= 5 && (
-                  <Button
-                    icon={<BarChartOutlined />}
-                    onClick={handleGoToCompare}
-                    className='btn-purple-medium'
-                  >
-                    {t('pages.jobs.goToCompare')}
-                  </Button>
-                )}
-                <Button
-                  icon={<FolderAddOutlined />}
-                  onClick={() => {
-                    setSingleAddTaskId(null);
-                    setCollectionModalOpen(true);
-                  }}
-                  className='btn-purple-light'
-                >
-                  {t('pages.jobs.addToCollection')}
-                </Button>
-                <Button
-                  icon={<CloseOutlined />}
-                  onClick={() => setSelectedRowKeys([])}
-                  className='modern-button'
-                  style={{ color: 'var(--color-text-secondary)' }}
-                >
-                  {t('pages.jobs.clearSelection')}
-                </Button>
-              </>
-            )}
-          </div>
-          <div className='jobs-toolbar-right'>
-            {currentRefreshing && <Badge status='processing' />}
-            {renderLastRefreshTime(currentLastRefresh)}
-            <Search
-              placeholder={t('pages.jobs.searchPlaceholder')}
-              value={currentSearchInput}
-              onSearch={currentPerformSearch}
-              onChange={e => currentUpdateSearchInput(e.target.value)}
-              onClear={() => currentPerformSearch('')}
-              className='w-300 modern-search'
-              allowClear
-              enterButton
-            />
-            <Button
-              onClick={handleResetFilters}
-              disabled={currentLoading}
-              className='modern-button'
-            >
-              {t('common.reset')}
-            </Button>
-            <Tooltip
-              title={`${t('pages.jobs.lastRefresh')}: ${currentLastRefresh ? formatDate(currentLastRefresh) : '-'}`}
-            >
-              <Button
-                type='text'
-                icon={<ReloadOutlined spin={currentRefreshing} />}
-                onClick={currentManualRefresh}
-                disabled={currentLoading || currentRefreshing}
-                className='modern-button'
-              />
-            </Tooltip>
-          </div>
-        </div>
-
-        <Table<any>
-          columns={currentColumns as any}
-          rowKey='id'
-          dataSource={currentJobs as any}
-          loading={currentLoading}
-          pagination={currentPagination}
-          rowSelection={rowSelection}
-          onChange={(pag, filters) => {
-            // Only handle table change, let handleTableChange manage pagination updates
-            handleTableChange(pag, filters);
-          }}
-          scroll={{ x: UI_CONFIG.TABLE_SCROLL_X }}
-          className='modern-table unified-table'
-          rowClassName={record =>
-            record.status?.toLowerCase() === 'running'
-              ? 'table-highlight-row'
-              : ''
-          }
-          locale={{
-            emptyText: currentError ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={<Text type='danger'>{currentError}</Text>}
-              />
-            ) : (
-              <Empty description={t('common.noData')} />
-            ),
-          }}
+              ),
+            },
+            {
+              key: 'mcp',
+              label: (
+                <span className='tab-label'>
+                  <span className='tab-icon'>
+                    <ToolOutlined />
+                  </span>
+                  {t('pages.jobs.mcpTab') || 'MCP 工具调用'}
+                </span>
+              ),
+            },
+          ]}
+          className='unified-tabs task-mode-tabs'
         />
-      </div>
 
-      <Modal
-        title={t('pages.jobs.renameTitle')}
-        open={!!renameTarget}
-        onCancel={closeRenameModal}
-        onOk={handleRenameSubmit}
-        confirmLoading={renaming}
-        destroyOnHidden
-        maskClosable={false}
-      >
-        <Input
-          value={renameValue}
-          onChange={e => setRenameValue(e.target.value)}
-          maxLength={100}
-          placeholder={t('pages.jobs.renamePlaceholder')}
-        />
-      </Modal>
-
-      <Modal
-        title={
-          taskToCopy || httpTaskToCopy
-            ? t('pages.jobs.edit')
-            : t('pages.jobs.createNew')
-        }
-        open={isModalVisible}
-        onCancel={handleModalCancel}
-        footer={null}
-        width={900}
-        destroyOnHidden
-        maskClosable={false}
-      >
-        {activeMode === 'llm' ? (
-          <CreateLlmTaskForm
-            onSubmit={handleCreateTask}
-            onCancel={handleModalCancel}
-            loading={currentLoading}
-            initialData={taskToCopy}
-            suppressCopyWarning={!!taskToCopy}
+        {isAgentMode ? (
+          <AgentJobs
+            key={activeMode}
+            protocol={activeMode as 'a2a' | 'mcp'}
+            canCreate={!LDAP_ENABLED || !!storedUser}
+            showCreator={LDAP_ENABLED}
           />
         ) : (
-          <CreateHttpTaskForm
-            onSubmit={handleCreateTask}
-            onCancel={handleModalCancel}
-            loading={currentLoading}
-            initialData={httpTaskToCopy}
-          />
+          <>
+            {/* Toolbar */}
+            <div className='jobs-toolbar'>
+              <div className='jobs-toolbar-left'>
+                {(!LDAP_ENABLED || storedUser) && (
+                  <Button
+                    type='primary'
+                    className='modern-button-primary'
+                    icon={<PlusOutlined />}
+                    onClick={() => setIsModalVisible(true)}
+                    disabled={currentLoading}
+                  >
+                    {t('pages.jobs.createNew')}
+                  </Button>
+                )}
+                {isHttpMode && (!LDAP_ENABLED || storedUser) && (
+                  <Tooltip
+                    title={t('pages.jobs.webOneClickTooltip')}
+                    placement='bottom'
+                    styles={{ root: { maxWidth: 280 } }}
+                  >
+                    <Button
+                      icon={<GlobalOutlined />}
+                      onClick={() => setWebOneClickOpen(true)}
+                      disabled={currentLoading}
+                      className='modern-button-web-quick-test'
+                    >
+                      {t('pages.jobs.webOneClick')}
+                    </Button>
+                  </Tooltip>
+                )}
+                {selectedRowKeys.length > 0 && (
+                  <>
+                    <Divider
+                      type='vertical'
+                      style={{ height: 24, margin: '0 4px' }}
+                    />
+                    <span
+                      style={{
+                        margin: '0 8px',
+                        fontSize: 14,
+                        color: '#000',
+                      }}
+                    >
+                      {t('pages.jobs.selectedCount', {
+                        count: selectedRowKeys.length,
+                      })}
+                    </span>
+                    <Tooltip
+                      title={
+                        !allSelectedManageable
+                          ? t('pages.jobs.batchRerunOwnerOnly')
+                          : undefined
+                      }
+                    >
+                      <Button
+                        icon={<PlayCircleOutlined />}
+                        onClick={handleBatchRerun}
+                        loading={batchRerunning}
+                        disabled={!allSelectedManageable}
+                        className='btn-purple-dark'
+                      >
+                        {t('pages.jobs.batchRerun')}
+                      </Button>
+                    </Tooltip>
+                    {selectedRowKeys.length >= 2 &&
+                      selectedRowKeys.length <= 5 &&
+                      allSelectedComparable && (
+                        <Button
+                          icon={<BarChartOutlined />}
+                          onClick={handleGoToCompare}
+                          className='btn-purple-medium'
+                        >
+                          {t('pages.jobs.goToCompare')}
+                        </Button>
+                      )}
+                    <Button
+                      icon={<FolderAddOutlined />}
+                      onClick={() => {
+                        setSingleAddTaskId(null);
+                        setCollectionModalOpen(true);
+                      }}
+                      className='btn-purple-light'
+                    >
+                      {t('pages.jobs.addToCollection')}
+                    </Button>
+                    <Button
+                      icon={<CloseOutlined />}
+                      onClick={() => setSelectedRowKeys([])}
+                      className='modern-button'
+                      style={{ color: 'var(--color-text-secondary)' }}
+                    >
+                      {t('pages.jobs.clearSelection')}
+                    </Button>
+                  </>
+                )}
+              </div>
+              <div className='jobs-toolbar-right'>
+                {currentRefreshing && <Badge status='processing' />}
+                {renderLastRefreshTime(currentLastRefresh)}
+                <Search
+                  placeholder={t('pages.jobs.searchPlaceholder')}
+                  value={currentSearchInput}
+                  onSearch={currentPerformSearch}
+                  onChange={e => currentUpdateSearchInput(e.target.value)}
+                  onClear={() => currentPerformSearch('')}
+                  className='w-300 modern-search'
+                  allowClear
+                  enterButton
+                />
+                <Button
+                  onClick={handleResetFilters}
+                  disabled={currentLoading}
+                  className='modern-button'
+                >
+                  {t('common.reset')}
+                </Button>
+                <Tooltip
+                  title={`${t('pages.jobs.lastRefresh')}: ${currentLastRefresh ? formatDate(currentLastRefresh) : '-'}`}
+                >
+                  <Button
+                    type='text'
+                    icon={<ReloadOutlined spin={currentRefreshing} />}
+                    onClick={currentManualRefresh}
+                    disabled={currentLoading || currentRefreshing}
+                    className='modern-button'
+                  />
+                </Tooltip>
+              </div>
+            </div>
+
+            <Table<any>
+              columns={currentColumns as any}
+              rowKey='id'
+              dataSource={currentJobs as any}
+              loading={currentLoading}
+              pagination={currentPagination}
+              rowSelection={rowSelection}
+              onChange={(pag, filters) => {
+                // Only handle table change, let handleTableChange manage pagination updates
+                handleTableChange(pag, filters);
+              }}
+              scroll={{ x: UI_CONFIG.TABLE_SCROLL_X }}
+              className='modern-table unified-table'
+              rowClassName={record =>
+                record.status?.toLowerCase() === 'running'
+                  ? 'table-highlight-row'
+                  : ''
+              }
+              locale={{
+                emptyText: currentError ? (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={<Text type='danger'>{currentError}</Text>}
+                  />
+                ) : (
+                  <Empty description={t('common.noData')} />
+                ),
+              }}
+            />
+          </>
         )}
-      </Modal>
+      </div>
 
-      <WebOneClickModal
-        open={webOneClickOpen}
-        onClose={() => setWebOneClickOpen(false)}
-        onTaskCreated={() => httpManualRefresh()}
-      />
+      {!isAgentMode && (
+        <>
+          <Modal
+            title={t('pages.jobs.renameTitle')}
+            open={!!renameTarget}
+            onCancel={closeRenameModal}
+            onOk={handleRenameSubmit}
+            confirmLoading={renaming}
+            destroyOnHidden
+            maskClosable={false}
+          >
+            <Input
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              maxLength={100}
+              placeholder={t('pages.jobs.renamePlaceholder')}
+            />
+          </Modal>
 
-      <AddToCollectionModal
-        open={collectionModalOpen}
-        onCancel={() => {
-          setCollectionModalOpen(false);
-          setSingleAddTaskId(null);
-        }}
-        taskIds={
-          singleAddTaskId
-            ? [singleAddTaskId]
-            : selectedRowKeys.map(k => String(k))
-        }
-        taskType={activeMode}
-        onSuccess={() => {
-          if (!singleAddTaskId) setSelectedRowKeys([]);
-        }}
-      />
+          <Modal
+            title={
+              taskToCopy || httpTaskToCopy
+                ? t('pages.jobs.edit')
+                : t('pages.jobs.createNew')
+            }
+            open={isModalVisible}
+            onCancel={handleModalCancel}
+            footer={null}
+            width={900}
+            destroyOnHidden
+            maskClosable={false}
+          >
+            {activeMode === 'llm' ? (
+              <CreateLlmTaskForm
+                onSubmit={handleCreateTask}
+                onCancel={handleModalCancel}
+                loading={currentLoading}
+                initialData={taskToCopy}
+                suppressCopyWarning={!!taskToCopy}
+              />
+            ) : (
+              <CreateHttpTaskForm
+                onSubmit={handleCreateTask}
+                onCancel={handleModalCancel}
+                loading={currentLoading}
+                initialData={httpTaskToCopy}
+              />
+            )}
+          </Modal>
+
+          <WebOneClickModal
+            open={webOneClickOpen}
+            onClose={() => setWebOneClickOpen(false)}
+            onTaskCreated={() => httpManualRefresh()}
+          />
+
+          <AddToCollectionModal
+            open={collectionModalOpen}
+            onCancel={() => {
+              setCollectionModalOpen(false);
+              setSingleAddTaskId(null);
+            }}
+            taskIds={
+              singleAddTaskId
+                ? [singleAddTaskId]
+                : selectedRowKeys.map(k => String(k))
+            }
+            taskType={activeMode === 'llm' ? 'llm' : 'http'}
+            onSuccess={() => {
+              if (!singleAddTaskId) setSelectedRowKeys([]);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 };

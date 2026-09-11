@@ -12,3 +12,6 @@ uvicorn
 psutil>=5.9.0
 orjson
 requests>=2.31.0
+httpx>=0.24.0
+boto3
+aliyun-log-python-sdk

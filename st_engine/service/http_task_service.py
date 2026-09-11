@@ -3,12 +3,13 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import os
 import subprocess  # nosec B404
 import traceback
 from typing import List
 
 import pymysql.err  # type: ignore[import-untyped]
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -227,10 +228,19 @@ class HttpTaskService:
             The claimed task ready for execution, or None.
         """
         try:
+            cluster_id = os.getenv("CLUSTER_ID", "local")
+            if cluster_id == "local":
+                cluster_filter = or_(
+                    HttpTask.cluster_id == "local", HttpTask.cluster_id.is_(None)
+                )
+            else:
+                cluster_filter = HttpTask.cluster_id == cluster_id
+
             query = (
                 select(HttpTask)
                 .where(HttpTask.status == TASK_STATUS_QUEUING)
                 .where(HttpTask.is_deleted == 0)
+                .where(cluster_filter)
                 .order_by(HttpTask.created_at.asc(), HttpTask.id.asc())
                 .with_for_update()
                 .limit(1)
@@ -664,7 +674,7 @@ class HttpTaskService:
                         )
             except Exception as status_update_error:
                 logger.error(
-                    f" Critical: Failed to update status for task {task_id}: {status_update_error}"
+                    f"Failed to update status for task {task_id}: {status_update_error}"
                 )
         finally:
             if handler_id is not None:

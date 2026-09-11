@@ -5,6 +5,8 @@ Copyright (c) 2025, All Rights Reserved.
 
 import os
 import time
+from collections import Counter
+from math import ceil
 from typing import Any, Dict
 
 import gevent
@@ -68,32 +70,69 @@ def collect_realtime_snapshot(
             This is used by LLM API tests which register multiple named
             metrics (e.g. ``Total_time``, ``Time_to_first_reasoning_token``).
     """
-    total = environment.stats.total
     runner = environment.runner
     current_users = runner.user_count if runner else 0
     now = time.time()
 
+    # Custom LLM timings/tokens are emitted as request_type="metric" so Locust
+    # can aggregate them across workers. They also enter stats.total, however,
+    # and must be excluded from real request RPS/count/latency calculations.
+    request_entries = [
+        entry
+        for (_name, method), entry in environment.stats.entries.items()
+        if method != "metric"
+    ]
+    total_requests = sum(entry.num_requests for entry in request_entries)
+    total_failures = sum(entry.num_failures for entry in request_entries)
+    total_response_time = sum(
+        getattr(entry, "total_response_time", 0) for entry in request_entries
+    )
+    response_times: Counter = Counter()
+    for entry in request_entries:
+        response_times.update(getattr(entry, "response_times", {}) or {})
+
+    def percentile(percent: float) -> float:
+        if total_requests <= 0 or not response_times:
+            return 0
+        target = max(1, ceil(total_requests * percent))
+        seen = 0
+        for response_time in sorted(response_times):
+            seen += response_times[response_time]
+            if seen >= target:
+                return float(response_time)
+        return float(max(response_times))
+
+    min_values = [
+        entry.min_response_time
+        for entry in request_entries
+        if entry.min_response_time is not None
+    ]
+    max_values = [
+        entry.max_response_time
+        for entry in request_entries
+        if entry.max_response_time is not None
+    ]
+
     snapshot: Dict[str, Any] = {
         "timestamp": now,
         "current_users": current_users,
-        "current_rps": round(total.current_rps, 2) if total else 0,
-        "current_fail_per_sec": round(total.current_fail_per_sec, 2) if total else 0,
-        "avg_response_time": round(total.avg_response_time, 2) if total else 0,
-        "min_response_time": round(total.min_response_time or 0, 2) if total else 0,
-        "max_response_time": round(total.max_response_time or 0, 2) if total else 0,
-        "median_response_time": (
-            round(total.median_response_time or 0, 2) if total else 0
+        "current_rps": round(sum(entry.current_rps for entry in request_entries), 2),
+        "current_fail_per_sec": round(
+            sum(entry.current_fail_per_sec for entry in request_entries), 2
         ),
-        "p95_response_time": (
-            round(total.get_response_time_percentile(0.95) or 0, 2) if total else 0
+        "avg_response_time": round(
+            total_response_time / total_requests if total_requests else 0, 2
         ),
-        "total_requests": total.num_requests if total else 0,
-        "total_failures": total.num_failures if total else 0,
+        "min_response_time": round(min(min_values) if min_values else 0, 2),
+        "max_response_time": round(max(max_values) if max_values else 0, 2),
+        "median_response_time": round(percentile(0.5), 2),
+        "p95_response_time": round(percentile(0.95), 2),
+        "total_requests": total_requests,
+        "total_failures": total_failures,
     }
 
     if include_entries:
         metrics: Dict[str, Dict[str, Any]] = {}
-        primary_entries = []
         for (name, _method), entry in environment.stats.entries.items():
             if name in ("Aggregated", "Total") or entry.num_requests == 0:
                 continue
@@ -102,35 +141,7 @@ def collect_realtime_snapshot(
                 "current_rps": round(entry.current_rps, 2),
                 "current_fail_per_sec": round(entry.current_fail_per_sec, 2),
             }
-            # Custom latency/item measurements use request_type="metric".
-            # Keep the headline RPS/failure series tied to real HTTP requests.
-            if _method != "metric":
-                primary_entries.append(entry)
         snapshot["metrics"] = metrics
-
-        if primary_entries:
-            request_count = sum(entry.num_requests for entry in primary_entries)
-            failure_count = sum(entry.num_failures for entry in primary_entries)
-            weighted_latency = sum(
-                entry.avg_response_time * entry.num_requests
-                for entry in primary_entries
-            )
-            snapshot.update(
-                {
-                    "current_rps": round(
-                        sum(entry.current_rps for entry in primary_entries), 2
-                    ),
-                    "current_fail_per_sec": round(
-                        sum(entry.current_fail_per_sec for entry in primary_entries),
-                        2,
-                    ),
-                    "avg_response_time": round(
-                        weighted_latency / request_count if request_count else 0, 2
-                    ),
-                    "total_requests": request_count,
-                    "total_failures": failure_count,
-                }
-            )
 
     return snapshot
 

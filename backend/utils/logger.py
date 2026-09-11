@@ -9,6 +9,8 @@ import sys
 from loguru import logger
 
 from utils.be_config import LOG_DIR
+from utils.sls_log_sink import SLSLogSink
+from utils.sls_settings import get_sls_settings
 
 # Get log level from environment variable, default to INFO
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -47,3 +49,14 @@ logger.add(
     diagnose=False,
     format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{file}:{line}</cyan> | <level>{message}</level>",  # noqa: E501
 )
+
+sls_settings = get_sls_settings()
+sls_sink = SLSLogSink(service_name=sls_settings.SLS_SERVICE_NAME or "backend")
+if sls_sink.enabled:
+    logger.add(
+        sls_sink,
+        level=LOG_LEVEL,
+        backtrace=False,
+        diagnose=False,
+        enqueue=False,
+    )

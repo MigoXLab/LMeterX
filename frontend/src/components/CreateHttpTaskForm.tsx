@@ -33,10 +33,16 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { httpTaskApi, uploadDatasetFile } from '@/api/services';
-import { HttpTask } from '@/types/job';
+import { clusterApi, httpTaskApi, uploadDatasetFile } from '@/api/services';
+import RequestHeadersEditor from '@/components/RequestHeadersEditor';
+import { Cluster, HttpTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import parseCurlCommand from '@/utils/curl';
+import {
+  headersForSubmission,
+  prepareHeadersForEditor,
+  RequestHeaderRow,
+} from '@/utils/requestHeaders';
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -79,6 +85,40 @@ const CreateHttpTaskForm: React.FC<Props> = ({
   const [testResult, setTestResult] = useState<any>(null);
   const { token } = theme.useToken();
 
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+
+  useEffect(() => {
+    setClustersLoading(true);
+    clusterApi
+      .getAllClusters()
+      .then(res => {
+        const list = Array.isArray(res)
+          ? res
+          : Array.isArray((res as any)?.data)
+            ? (res as any).data
+            : Array.isArray((res as any)?.data?.clusters)
+              ? (res as any).data.clusters
+              : [];
+        const sorted = [...list].sort((a, b) => {
+          const aHasSlots = (a.available_slots || 0) > 0;
+          const bHasSlots = (b.available_slots || 0) > 0;
+          if (aHasSlots && !bHasSlots) return -1;
+          if (!aHasSlots && bHasSlots) return 1;
+          return (a.id || '').localeCompare(b.id || '');
+        });
+        setClusters(sorted);
+        if (sorted.length > 0) {
+          const currentClusterId = form.getFieldValue('cluster_id');
+          if (!currentClusterId) {
+            form.setFieldsValue({ cluster_id: sorted[0].id });
+          }
+        }
+      })
+      .catch(() => setClusters([]))
+      .finally(() => setClustersLoading(false));
+  }, []);
+
   const toSingleUploadFileList = (filename?: string, uid: string = '-1') =>
     filename
       ? [
@@ -114,7 +154,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
     method: 'GET',
     response_mode: 'non-stream',
     target_url: '',
-    headers: 'Content-Type: application/json',
+    headers: prepareHeadersForEditor([]),
     request_body: '',
     load_mode: 'fixed' as const,
     concurrent_users: 1,
@@ -144,17 +184,21 @@ const CreateHttpTaskForm: React.FC<Props> = ({
   const initialValues = useMemo(() => {
     if (initialData) {
       // When copying template, copy the headers value from the template
-      let headersValue = 'Content-Type: application/json';
+      let headerRows: RequestHeaderRow[] = [];
       const { headers } = initialData;
       if (headers) {
         if (typeof headers === 'string') {
           const trimmed = (headers as string).trim();
-          headersValue = trimmed ? headers : 'Content-Type: application/json';
+          headerRows = trimmed
+            ? trimmed.split('\n').flatMap(line => {
+                const [key, ...rest] = line.split(':');
+                return key.trim()
+                  ? [{ key: key.trim(), value: rest.join(':').trim() }]
+                  : [];
+              })
+            : [];
         } else if (Array.isArray(headers) && headers.length > 0) {
-          // Convert array format to string format
-          headersValue = (headers as Array<{ key: string; value: string }>)
-            .map(h => `${h.key}: ${h.value}`)
-            .join('\n');
+          headerRows = headers as RequestHeaderRow[];
         }
       }
 
@@ -170,7 +214,10 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       return {
         ...defaultValues,
         ...initialData,
-        headers: headersValue,
+        headers: prepareHeadersForEditor(
+          headerRows,
+          initialData.redacted_header_keys
+        ),
         request_body: requestBodyValue,
         dataset_source:
           (initialData as any).dataset_source ??
@@ -305,15 +352,10 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       dataset_file: datasetFile,
       dataset_source: hasBody ? values.dataset_source || 'none' : 'none',
       success_assert: successAssert || null,
-      headers: (values.headers || '').trim()
-        ? values.headers
-            .split('\n')
-            .filter((line: string) => line.trim())
-            .map((line: string) => {
-              const [key, ...rest] = line.split(':');
-              return { key: key.trim(), value: rest.join(':').trim() };
-            })
-        : [],
+      headers: headersForSubmission(
+        values.headers,
+        initialData?.redacted_header_keys
+      ),
       ...(includeTempId
         ? { temp_task_id: values.temp_task_id || tempTaskId }
         : {}),
@@ -375,13 +417,10 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       message.error(t('components.createHttpTaskForm.curlParseNoUrl'));
       return;
     }
-    const headerText = (parsed.headers || [])
-      .map(h => `${h.key}: ${h.value}`)
-      .join('\n');
     form.setFieldsValue({
       target_url: parsed.url,
       method: parsed.method || 'GET',
-      headers: headerText,
+      headers: prepareHeadersForEditor(parsed.headers || []),
       request_body: parsed.body || '',
     });
     message.success(t('components.createHttpTaskForm.curlParseSuccess'));
@@ -398,20 +437,16 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       // Validate minimal set
       await form.validateFields(requiredFields as any);
 
+      const clusterId = form.getFieldValue('cluster_id');
+
       // Get current form values
       const allValues = form.getFieldsValue(true);
 
       // Build test-only payload - only include fields needed by HttpTaskTestReq
-      const headersStr = (allValues.headers || '').trim();
-      const parsedHeaders = headersStr
-        ? headersStr
-            .split('\n')
-            .filter((line: string) => line.trim())
-            .map((line: string) => {
-              const [key, ...rest] = line.split(':');
-              return { key: key.trim(), value: rest.join(':').trim() };
-            })
-        : [];
+      const parsedHeaders = headersForSubmission(
+        allValues.headers,
+        initialData?.redacted_header_keys
+      );
 
       const testHasBody = METHODS_WITH_BODY.has(
         (allValues.method || '').toUpperCase()
@@ -422,18 +457,36 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         headers: parsedHeaders,
         cookies: allValues.cookies || [],
         request_body: testHasBody ? allValues.request_body || null : null,
+        cluster_id: clusterId || undefined,
+        copy_source_task_id: allValues.copy_source_task_id || undefined,
+        inherit_source_headers: Boolean(allValues.inherit_source_headers),
       };
 
       setTesting(true);
       const res = await httpTaskApi.testJob(payload);
       const data = (res as any)?.data ?? {};
-      const httpStatus = data?.http_status ?? data?.status ?? res?.status;
-      setTestResult({
-        status: data?.status || 'success',
-        http_status: httpStatus,
-        headers: data?.headers,
-        body: data?.body ?? data,
-      });
+      const httpStatus =
+        data?.http_status ??
+        (typeof data?.status === 'number' ? data.status : undefined) ??
+        res?.status;
+
+      // If engine/backend returned an error without response body, surface it as error
+      if (data?.status === 'error' && data?.error && data?.body === undefined) {
+        setTestResult({
+          status: 'error',
+          error: data.error,
+          http_status: undefined,
+          headers: undefined,
+          body: undefined,
+        });
+      } else {
+        setTestResult({
+          status: data?.status || 'success',
+          http_status: httpStatus,
+          headers: data?.headers,
+          body: data?.body ?? data,
+        });
+      }
       setTestModalVisible(true);
     } catch (err: any) {
       // apiClient throws { data, status, statusText } — not wrapped in .response
@@ -515,6 +568,12 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         <Form.Item name='temp_task_id' hidden>
           <Input />
         </Form.Item>
+        <Form.Item name='copy_source_task_id' hidden>
+          <Input />
+        </Form.Item>
+        <Form.Item name='inherit_source_headers' hidden>
+          <Input />
+        </Form.Item>
 
         <Form.Item
           label={t('components.createHttpTaskForm.taskName')}
@@ -534,6 +593,27 @@ const CreateHttpTaskForm: React.FC<Props> = ({
           <Input
             placeholder={t('components.createHttpTaskForm.taskNamePlaceholder')}
             maxLength={100}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name='cluster_id'
+          label={t('components.createHttpTaskForm.env')}
+          rules={[
+            {
+              required: true,
+              message: t('components.createHttpTaskForm.envRequired'),
+            },
+          ]}
+        >
+          <Select
+            placeholder={t('components.createHttpTaskForm.envPlaceholder')}
+            loading={clustersLoading}
+            allowClear
+            options={clusters.map(c => ({
+              value: c.id,
+              label: `${c.name} (${t('components.createHttpTaskForm.envSlots', { slots: c.available_slots })})`,
+            }))}
           />
         </Form.Item>
 
@@ -642,27 +722,13 @@ const CreateHttpTaskForm: React.FC<Props> = ({
           </Col>
         </Row>
 
-        <Form.Item
-          label={
-            <Space>
-              {t('components.createHttpTaskForm.headers')}
-              <Tooltip
-                title={t(
-                  'components.createHttpTaskForm.headersHint',
-                  'One per line, e.g. Key: Value'
-                )}
-              >
-                <InfoCircleOutlined />
-              </Tooltip>
-            </Space>
-          }
-          name='headers'
-        >
-          <TextArea
-            rows={4}
-            placeholder={t('components.createHttpTaskForm.headersPlaceholder')}
-          />
-        </Form.Item>
+        <RequestHeadersEditor
+          form={form}
+          title={t('components.createAgentTaskForm.requestHeaders')}
+          tooltip={t('components.createAgentTaskForm.requestHeadersTooltip')}
+          redactedHeaderKeys={initialData?.redacted_header_keys}
+          maxValueLength={2000}
+        />
 
         {/* Request body & dataset – only shown for methods that carry a body */}
         {methodSupportsBody && (

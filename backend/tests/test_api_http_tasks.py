@@ -136,6 +136,34 @@ class TestHttpTaskAPI:
         assert response.status_code == 200
         assert response.json()["id"] == "ct_303"
 
+    @patch("api.api_http_task.get_http_task_copy_template_svc")
+    def test_get_http_copy_template_redacts_headers(self, mock_copy):
+        mock_copy.return_value = {
+            "id": "ct_303",
+            "headers": [
+                {
+                    "key": "X-Api-Key",
+                    "value": None,
+                    "configured": True,
+                    "sensitive": True,
+                }
+            ],
+            "copy_source_task_id": "ct_303",
+            "inherit_source_headers": True,
+        }
+        response = client.get("/api/http-tasks/ct_303/copy-template")
+        assert response.status_code == 200
+        assert response.json()["headers"][0]["value"] is None
+
+    @patch("api.api_http_task.rerun_http_task_svc")
+    def test_rerun_http_task_uses_server_side_clone(self, mock_rerun):
+        mock_rerun.return_value = HttpTaskCreateRsp(
+            task_id="ct_copy", status="created", message="ok"
+        )
+        response = client.post("/api/http-tasks/ct_303/rerun")
+        assert response.status_code == 200
+        assert response.json()["task_id"] == "ct_copy"
+
     @patch("api.api_http_task.get_http_task_status_svc")
     def test_get_http_task_status(self, mock_status):
         mock_status.return_value = {"status": "running"}

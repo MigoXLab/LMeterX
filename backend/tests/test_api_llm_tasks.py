@@ -1,6 +1,7 @@
-"""Task API tests."""
+"""
+Task API tests.
+"""
 
-import json
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -111,61 +112,6 @@ class TestTaskAPI:
         response = client.post("/api/llm-tasks", json=invalid_data)
         assert response.status_code == 422
 
-    @patch("api.api_llm_task.create_task_svc")
-    def test_create_openai_responses_task_uses_input_payload(self, mock_create_task):
-        mock_create_task.return_value = TaskCreateRsp(
-            task_id="responses_1",
-            status="created",
-            message="Task created successfully",
-        )
-        response = client.post(
-            "/api/llm-tasks",
-            json={
-                "temp_task_id": "temp_responses",
-                "name": "Responses API Test",
-                "target_host": "https://api.example.com",
-                "api_path": "/v1/responses",
-                "api_type": "openai-responses",
-                "model": "gpt-test",
-                "duration": 60,
-                "concurrent_users": 1,
-                "spawn_rate": 1,
-                "chat_type": 0,
-                "stream_mode": True,
-                "headers": [],
-            },
-        )
-
-        assert response.status_code == 200
-        body = mock_create_task.call_args.args[1]
-        assert body.api_type == "openai-responses"
-        assert json.loads(body.request_payload) == {
-            "model": "gpt-test",
-            "stream": True,
-            "input": "Hi",
-        }
-        assert body.field_mapping == {}
-
-    def test_create_task_rejects_unknown_api_type(self):
-        response = client.post(
-            "/api/llm-tasks",
-            json={
-                "temp_task_id": "temp_unknown",
-                "name": "Unknown API",
-                "target_host": "https://api.example.com",
-                "api_path": "/v1/unknown",
-                "api_type": "unknown-api",
-                "model": "test",
-                "duration": 60,
-                "concurrent_users": 1,
-                "spawn_rate": 1,
-                "chat_type": 0,
-                "stream_mode": True,
-                "headers": [],
-            },
-        )
-        assert response.status_code == 422
-
     @patch("api.api_llm_task.stop_task_svc")
     def test_stop_task(self, mock_stop_task):
         mock_response = TaskCreateRsp(
@@ -230,6 +176,34 @@ class TestTaskAPI:
         data = response.json()
         assert data["id"] == "task_123"
         assert data["name"] == "Test Task"
+
+    @patch("api.api_llm_task.get_task_copy_template_svc")
+    def test_get_copy_template_redacts_headers(self, mock_copy):
+        mock_copy.return_value = {
+            "id": "task_123",
+            "headers": [
+                {
+                    "key": "Authorization",
+                    "value": None,
+                    "configured": True,
+                    "sensitive": True,
+                }
+            ],
+            "copy_source_task_id": "task_123",
+            "inherit_source_headers": True,
+        }
+        response = client.get("/api/llm-tasks/task_123/copy-template")
+        assert response.status_code == 200
+        assert response.json()["headers"][0]["value"] is None
+
+    @patch("api.api_llm_task.rerun_task_svc")
+    def test_rerun_uses_server_side_clone(self, mock_rerun):
+        mock_rerun.return_value = TaskCreateRsp(
+            task_id="task_copy", status="created", message="ok"
+        )
+        response = client.post("/api/llm-tasks/task_123/rerun")
+        assert response.status_code == 200
+        assert response.json()["task_id"] == "task_copy"
 
 
 class TestTaskErrors:

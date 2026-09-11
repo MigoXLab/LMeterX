@@ -36,10 +36,10 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
-import { httpTaskApi, monitoringApi } from '@/api/services';
+import { httpTaskApi, monitoringApi, clusterApi } from '@/api/services';
 import { LoadingSpinner } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { RealtimeMetricPoint } from '@/types/job';
+import { Cluster, RealtimeMetricPoint } from '@/types/job';
 import { getStoredUser } from '@/utils/auth';
 import { formatDate } from '@/utils/date';
 
@@ -67,6 +67,7 @@ const HttpResults: React.FC = () => {
   );
   const [taskInfo, setTaskInfo] = useState<any>(null);
   const [results, setResults] = useState<any[]>([]);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
@@ -150,6 +151,32 @@ const HttpResults: React.FC = () => {
       cancelled = true;
     };
   }, [taskInfo?.engine_id]);
+
+  // Fetch clusters list to resolve cluster names.
+  useEffect(() => {
+    const fetchClusters = async () => {
+      try {
+        const res = await clusterApi.getAllClusters();
+        const list = Array.isArray(res)
+          ? res
+          : Array.isArray((res as any)?.data)
+            ? (res as any).data
+            : Array.isArray((res as any)?.data?.clusters)
+              ? (res as any).data.clusters
+              : [];
+        setClusters(list);
+      } catch (err) {
+        console.error('Failed to fetch clusters:', err);
+      }
+    };
+    fetchClusters();
+  }, []);
+
+  const clusterName = useMemo(() => {
+    if (!taskInfo?.cluster_id) return '';
+    const cluster = clusters.find(c => c.id === taskInfo.cluster_id);
+    return cluster ? cluster.name : taskInfo.cluster_id;
+  }, [clusters, taskInfo?.cluster_id]);
 
   // Fetch real-time metrics incrementally (with lock to prevent concurrent fetches)
   const fetchMetrics = useCallback(async () => {
@@ -1086,6 +1113,14 @@ const HttpResults: React.FC = () => {
             ) : (
               '-'
             )}
+          </span>
+        </div>
+        <div className='info-grid-item'>
+          <span className='info-label'>
+            {t('pages.results.env', 'Environment')}
+          </span>
+          <span className='info-value'>
+            {clusterName || taskInfo?.cluster_id || '-'}
           </span>
         </div>
       </div>

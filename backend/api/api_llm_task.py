@@ -25,12 +25,14 @@ from service.llm_task_service import (
     delete_task_svc,
     get_all_models_svc,
     get_model_tasks_for_comparison_svc,
+    get_task_copy_template_svc,
     get_task_realtime_metrics_svc,
     get_task_result_svc,
     get_task_status_svc,
     get_task_svc,
     get_tasks_status_svc,
     get_tasks_svc,
+    rerun_task_svc,
     stop_task_svc,
     test_llm_api_svc,
     update_task_svc,
@@ -168,6 +170,16 @@ async def delete_task(request: Request, task_id: str):
     Delete a task. Only creator can delete.
     """
     return await delete_task_svc(request, task_id)
+
+
+@router.get("/{task_id}/copy-template", response_model=Dict[str, Any])
+async def get_task_copy_template(request: Request, task_id: str):
+    return await get_task_copy_template_svc(request, task_id)
+
+
+@router.post("/{task_id}/rerun", response_model=TaskCreateRsp)
+async def rerun_task(request: Request, task_id: str):
+    return await rerun_task_svc(request, task_id)
 
 
 @router.get("/{task_id}", response_model=Dict[str, Any])

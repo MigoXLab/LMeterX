@@ -23,6 +23,8 @@ __all__ = [
     "stop_http_task_svc",
     "get_http_task_result_svc",
     "get_http_task_svc",
+    "get_http_task_copy_template_svc",
+    "rerun_http_task_svc",
     "get_http_task_status_svc",
     "get_http_tasks_for_comparison_svc",
     "compare_http_performance_svc",
@@ -48,11 +50,18 @@ from model.http_task import (
     HttpTaskStatusRsp,
     HttpTaskTestReq,
 )
+from service.task_dispatch_service import add_dispatch_entry, cancel_dispatch_entry
 from utils.auth import get_current_user, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.converters import kv_items_to_dict, safe_isoformat
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
+from utils.request_headers import (
+    merge_headers,
+    next_rerun_name,
+    redact_headers_for_copy,
+    redacted_header_keys,
+)
 
 settings = get_auth_settings()
 
@@ -73,6 +82,34 @@ def _map_status(status: Optional[str]) -> str:
     return status.lower()
 
 
+def _assert_task_owner(request: Request, task: HttpTask) -> None:
+    if not settings.LDAP_ENABLED:
+        return
+    username = _get_username_from_request(request)
+    if is_admin_user(username) or task.created_by == username:
+        return
+    raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+
+
+async def _resolved_copy_headers(request: Request, body) -> Dict[str, str]:
+    overrides = kv_items_to_dict(body.headers)
+    if not body.copy_source_task_id or not body.inherit_source_headers:
+        return overrides
+    source = await request.state.db.get(HttpTask, body.copy_source_task_id)
+    if not source or getattr(source, "is_deleted", 0):
+        raise ErrorResponse.not_found("Source task not found")
+    _assert_task_owner(request, source)
+    if (
+        str(source.target_url) != body.target_url
+        or str(source.method).upper() != str(body.method).upper()
+    ):
+        raise ErrorResponse.bad_request(
+            "Source request headers can only be inherited for the original target"
+        )
+    inherited = json.loads(str(source.headers or "{}"))
+    return merge_headers(inherited, overrides)
+
+
 def _build_task_summary(task: HttpTask) -> Dict[str, Any]:
     mapped_status = _map_status(cast(Optional[str], task.status))
     summary: Dict[str, Any] = {
@@ -87,6 +124,7 @@ def _build_task_summary(task: HttpTask) -> Dict[str, Any]:
         "spawn_rate": task.spawn_rate,
         "load_mode": getattr(task, "load_mode", "fixed") or "fixed",
         "engine_id": getattr(task, "engine_id", None),
+        "cluster_id": getattr(task, "cluster_id", None) or "local",
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -270,7 +308,7 @@ async def create_http_task_svc(
             "Request body exceeds 100000 characters. Please simplify payload or use dataset upload."
         )
 
-    headers_json = json.dumps(kv_items_to_dict(body.headers)) if body.headers else "{}"
+    headers_json = json.dumps(await _resolved_copy_headers(request, body))
     cookies_json = json.dumps(kv_items_to_dict(body.cookies)) if body.cookies else "{}"
 
     db = request.state.db
@@ -311,9 +349,16 @@ async def create_http_task_svc(
             step_sustain_duration=(
                 body.step_sustain_duration if load_mode == "stepped" else None
             ),
+            cluster_id=getattr(body, "cluster_id", None) or "local",
             error_message="",
         )
         db.add(new_task)
+        add_dispatch_entry(
+            db,
+            task_type="http",
+            task_id=task_id,
+            cluster_id=new_task.cluster_id,
+        )
         await db.flush()
         await db.commit()
         return HttpTaskCreateRsp(
@@ -417,6 +462,7 @@ async def delete_http_task_svc(request: Request, task_id: str) -> Dict[str, Any]
 
         # Soft delete: mark as deleted instead of physically removing
         task.is_deleted = 1
+        await cancel_dispatch_entry(db, task_type="http", task_id=task_id)
         await db.commit()
         return {"status": "success", "task_id": task_id, "message": "Task deleted"}
     except ErrorResponse:
@@ -428,11 +474,47 @@ async def delete_http_task_svc(request: Request, task_id: str) -> Dict[str, Any]
         raise ErrorResponse.internal_server_error(ErrorMessages.TASK_DELETION_FAILED)
 
 
+async def _test_http_via_probe(
+    request: Request, body: HttpTaskTestReq, headers: Dict[str, str]
+) -> Dict[str, Any]:
+    """Dispatch HTTP connectivity test to an engine in the target cluster."""
+    from service import probe_service
+
+    db = request.state.db
+
+    request_config = {
+        "method": body.method,
+        "target_url": body.target_url,
+        "headers": [{"key": key, "value": value} for key, value in headers.items()],
+        "cookies": [
+            {"key": c.key, "value": c.value} for c in body.cookies if c.key and c.value
+        ],
+        "request_body": body.request_body,
+    }
+
+    probe_id = await probe_service.create_probe(
+        db=db,
+        cluster_id=body.cluster_id,
+        probe_type="http",
+        request_config=request_config,
+    )
+
+    result = await probe_service.wait_for_probe_result(probe_id)
+    return result
+
+
 async def test_http_api_svc(request: Request, body: HttpTaskTestReq) -> Dict[str, Any]:
     """
     Test a HTTP API endpoint with provided configuration (non-stream).
-    Uses the original request body directly without dataset file.
+    If cluster_id is provided, dispatches the test as a probe to the target engine cluster.
+    Otherwise, tests directly from the backend.
     """
+    headers = await _resolved_copy_headers(request, body)
+
+    # If cluster_id is provided, proxy through engine cluster
+    if body.cluster_id:
+        return await _test_http_via_probe(request, body, headers)
+
     MAX_BODY_LENGTH = 100000
 
     if body.request_body and len(body.request_body) > MAX_BODY_LENGTH:
@@ -442,7 +524,6 @@ async def test_http_api_svc(request: Request, body: HttpTaskTestReq) -> Dict[str
             "response": None,
         }
 
-    headers = kv_items_to_dict(body.headers)
     cookies = kv_items_to_dict(body.cookies)
     method = body.method.upper()
     target_url = body.target_url
@@ -515,6 +596,14 @@ async def test_http_api_svc(request: Request, body: HttpTaskTestReq) -> Dict[str
             "error": "Operation timeout, please check network connection and target server status",
             "response": None,
         }
+    except ErrorResponse as e:
+        logger.error("Validation error when testing HTTP API: {}", e.error)
+        return {
+            "status": "error",
+            "error": e.error,
+            "details": e.details,
+            "response": None,
+        }
     except Exception as e:  # pragma: no cover - defensive
         logger.error("Error testing HTTP API: {}", e, exc_info=True)
         return {
@@ -552,6 +641,7 @@ async def stop_http_task_svc(request: Request, task_id: str) -> HttpTaskCreateRs
 
         if task.status == "queuing":
             task.status = "stopped"
+            await cancel_dispatch_entry(db, task_type="http", task_id=task_id)
             await db.commit()
             return HttpTaskCreateRsp(
                 status="stopped",
@@ -613,6 +703,50 @@ async def get_http_task_svc(request: Request, task_id: str) -> Dict[str, Any]:
         raise ErrorResponse.internal_server_error(
             "An internal error occurred while retrieving the HTTP task."
         )
+
+
+async def get_http_task_copy_template_svc(
+    request: Request, task_id: str
+) -> Dict[str, Any]:
+    """Return HTTP task configuration without request-header values."""
+    task = await request.state.db.get(HttpTask, task_id)
+    if not task or getattr(task, "is_deleted", 0):
+        raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+    _assert_task_owner(request, task)
+    detail = _build_task_detail(task)
+    headers = json.loads(str(task.headers or "{}"))
+    keys = redacted_header_keys(headers)
+    detail.update(
+        {
+            "headers": redact_headers_for_copy(headers),
+            "redacted_header_keys": keys,
+            "has_configured_headers": bool(keys),
+            "copy_source_task_id": task.id,
+            "inherit_source_headers": bool(keys),
+            "copy_policy": {
+                "credentials_removed": bool(keys),
+                "credential_reuse_allowed": True,
+                "credentials_inherited_on_start": bool(keys),
+            },
+        }
+    )
+    return detail
+
+
+async def rerun_http_task_svc(request: Request, task_id: str) -> HttpTaskCreateRsp:
+    """Clone an HTTP task while keeping its request headers server-side."""
+    task = await request.state.db.get(HttpTask, task_id)
+    if not task or getattr(task, "is_deleted", 0):
+        raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+    _assert_task_owner(request, task)
+    detail = _build_task_detail(task)
+    detail.update(
+        {
+            "temp_task_id": f"rerun-{uuid.uuid4()}",
+            "name": next_rerun_name(str(task.name or "Task")),
+        }
+    )
+    return await create_http_task_svc(request, HttpTaskCreateReq(**detail))
 
 
 async def get_http_task_status_svc(request: Request, task_id: str) -> Dict[str, Any]:

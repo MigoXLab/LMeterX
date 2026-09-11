@@ -525,3 +525,61 @@ async def get_available_engines() -> List[Dict[str, Any]]:
             }
         )
     return engines
+
+
+async def get_engines_by_cluster(db) -> List[Dict[str, Any]]:
+    """Get engines grouped by cluster from the database.
+
+    Returns:
+        List of cluster dicts, each containing a list of its engines.
+        Only includes engines with a recent heartbeat (within stale threshold).
+    """
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import and_, select
+
+    from model.cluster import Cluster
+    from model.engine import EngineHeartbeat
+
+    stale_seconds = 60
+    stale_cutoff = datetime.utcnow() - timedelta(seconds=stale_seconds)
+
+    # Get all active clusters
+    cluster_result = await db.execute(
+        select(Cluster)
+        .where(Cluster.status == "active")
+        .order_by(Cluster.created_at.asc())
+    )
+    clusters = cluster_result.scalars().all()
+
+    output = []
+    for cluster in clusters:
+        engine_result = await db.execute(
+            select(EngineHeartbeat).where(
+                and_(
+                    EngineHeartbeat.cluster_id == cluster.id,
+                    EngineHeartbeat.last_heartbeat >= stale_cutoff,
+                    EngineHeartbeat.status != "offline",
+                )
+            )
+        )
+        engines = engine_result.scalars().all()
+
+        output.append(
+            {
+                "cluster_id": cluster.id,
+                "cluster_name": cluster.name,
+                "engines": [
+                    {
+                        "engine_id": e.engine_id,
+                        "status": e.status,
+                        "last_seen": (
+                            e.last_heartbeat.timestamp() if e.last_heartbeat else 0
+                        ),
+                    }
+                    for e in engines
+                ],
+            }
+        )
+
+    return output

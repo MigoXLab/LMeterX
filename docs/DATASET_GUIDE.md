@@ -27,8 +27,8 @@ LMeterX 支持两种类型的API压测：**LLM API 压测**和**通用 API 压�
 ```
 
 字段说明：
-- `id`: 必需，唯一标识符
-- `prompt`: 必需，提示词（字符串或字符串数组）
+- `id`: 可选，唯一标识符；省略时使用行号
+- `prompt`: 基础格式必需，提示词（字符串或字符串数组）；Responses API 也可使用 `input` 或 `messages`
 - `image_path`: 可选，图片路径（字符串或字符串数组）
 - `image`: 可选，图片 URL 或 base64 编码
 
@@ -67,16 +67,27 @@ JSON 数组格式：
 ```
 
 字段说明：
-- `id`: 必需，唯一标识符
+- `id`: 可选，唯一标识符；省略时使用数组序号
 - `conversations`: 必需，对话数组
   - `from`: 必需，`"human"` 或 `"gpt"`
   - `value`: 必需，对话内容
 - `image`: 可选，图片路径或 URL
 
-**注意**：系统会自动提取 `conversations` 中所有 `"human"` 角色的内容作为提示词。
+**注意**：系统会自动提取 `conversations` 中第一个 `"human"` 角色的内容作为提示词。
 
 
-#### 3. 图片支持
+#### 3. OpenAI Responses API
+
+API 类型选择 `OpenAI Responses` 时，推荐继续使用通用的 `prompt` 字段，也可以直接使用字符串 `input`：
+
+```jsonl
+{"id":"1","prompt":"解释什么是 TTFT"}
+{"id":"2","input":"给出三个性能优化建议"}
+```
+
+LMeterX 会将每行内容写入请求体的 `input`，并保留 `model`、`stream` 等其他请求参数。`messages` 列表会直接写入 `input`；ShareGPT 数据会提取用户提示词。完整配置见 [OpenAI Responses API 压测指南](OPENAI_RESPONSES_GUIDE_CN.md)。
+
+#### 4. 图片支持
 
 当数据集包含图片路径时，您需要将图片文件挂载到容器./data对应目录下。
 
@@ -225,8 +236,8 @@ One JSON object per line:
 ```
 
 Fields:
-- `id`: Required, unique identifier
-- `prompt`: Required, prompt text (string or array of strings)
+- `id`: Optional unique identifier; the line number is used when omitted
+- `prompt`: Required for the basic format; Responses API rows may use `input` or `messages` instead
 - `image_path`: Optional, image path (string or array of strings)
 - `image`: Optional, image URL or base64 encoded data
 
@@ -265,15 +276,26 @@ JSON array format:
 ```
 
 Fields:
-- `id`: Required, unique identifier
+- `id`: Optional unique identifier; the array index is used when omitted
 - `conversations`: Required, array of conversation turns
   - `from`: Required, either `"human"` or `"gpt"`
   - `value`: Required, conversation content
 - `image`: Optional, image path or URL
 
-**Note**: The system automatically extracts all `"human"` role content from `conversations` as prompts.
+**Note**: The system extracts the first `"human"` role content from `conversations` as the prompt.
 
-#### 3. Image Support
+#### 3. OpenAI Responses API
+
+When the API type is `OpenAI Responses`, keep using the common `prompt` field or provide a string `input` directly:
+
+```jsonl
+{"id":"1","prompt":"Explain what TTFT means."}
+{"id":"2","input":"Give three performance tuning tips."}
+```
+
+LMeterX writes each row to request `input` and preserves options such as `model` and `stream`. A `messages` list is written directly to `input`; ShareGPT data is reduced to its extracted user prompt. See the [OpenAI Responses API Guide](OPENAI_RESPONSES_GUIDE.md) for configuration details.
+
+#### 4. Image Support
 
 When your dataset contains images, you need to mount the image files into the container.
 

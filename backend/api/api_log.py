@@ -6,15 +6,121 @@ Copyright (c) 2025, All Rights Reserved.
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
 
-from model.log import LogContentResponse
+from model.log import LogContentResponse, SLSLogResponse
 from service.log_service import (
     download_task_log_svc,
+    get_engine_system_log_svc,
     get_service_log_svc,
     get_task_log_svc,
 )
+from service.sls_log_service import query_sls_logs_svc
 
 # Create an API router for log-related endpoints
 router = APIRouter()
+
+
+@router.get("/sls/task/{task_id}", response_model=SLSLogResponse)
+async def query_sls_task_log(
+    task_id: str,
+    start_time: int | None = Query(default=None),
+    end_time: int | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    keyword: str | None = Query(default=None),
+    level: str | None = Query(default=None),
+    reverse: bool = Query(default=False),
+):
+    """Query task logs from Alibaba Cloud SLS."""
+    return await query_sls_logs_svc(
+        task_id=task_id,
+        start_time=start_time,
+        end_time=end_time,
+        limit=limit,
+        offset=offset,
+        keyword=keyword,
+        level=level,
+        reverse=reverse,
+    )
+
+
+@router.get("/sls/engine/{engine_id}", response_model=SLSLogResponse)
+async def query_sls_engine_log(
+    engine_id: str,
+    cluster_id: str = Query(...),
+    start_time: int | None = Query(default=None),
+    end_time: int | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    keyword: str | None = Query(default=None),
+    level: str | None = Query(default=None),
+    reverse: bool = Query(default=False),
+):
+    """Query engine logs from Alibaba Cloud SLS."""
+    response = await query_sls_logs_svc(
+        service="engine",
+        engine_id=engine_id,
+        cluster_id=cluster_id,
+        exclude_task_logs=True,
+        start_time=start_time,
+        end_time=end_time,
+        limit=limit,
+        offset=offset,
+        keyword=keyword,
+        level=level,
+        reverse=reverse,
+    )
+    if response.logs or cluster_id != "local":
+        return response
+
+    # Backward compatibility: older/local engine SLS records may have been
+    # written without cluster_id before the engine sink had a local default.
+    return await query_sls_logs_svc(
+        service="engine",
+        engine_id=engine_id,
+        exclude_task_logs=True,
+        start_time=start_time,
+        end_time=end_time,
+        limit=limit,
+        offset=offset,
+        keyword=keyword,
+        level=level,
+        reverse=reverse,
+    )
+
+
+@router.get("/sls/{service_name}", response_model=SLSLogResponse)
+async def query_sls_service_log(
+    service_name: str,
+    start_time: int | None = Query(default=None),
+    end_time: int | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    keyword: str | None = Query(default=None),
+    level: str | None = Query(default=None),
+    reverse: bool = Query(default=False),
+):
+    """Query service logs from Alibaba Cloud SLS."""
+    return await query_sls_logs_svc(
+        service=service_name,
+        start_time=start_time,
+        end_time=end_time,
+        limit=limit,
+        offset=offset,
+        keyword=keyword,
+        level=level,
+        reverse=reverse,
+    )
+
+
+@router.get("/engine/{engine_id}", response_model=LogContentResponse)
+async def get_engine_system_log(
+    engine_id: str,
+    cluster_id: str = Query(..., description="Cluster ID of the engine"),
+    offset: int = Query(default=0, ge=0),
+    tail: int = Query(default=0, ge=0),
+):
+    """Get the system log of a specific engine instance."""
+    return await get_engine_system_log_svc(engine_id, cluster_id, offset, tail)
 
 
 @router.get("/{service_name}", response_model=LogContentResponse)

@@ -3,6 +3,7 @@ Author: Charm
 Copyright (c) 2025, All Rights Reserved.
 """
 
+import os
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -10,84 +11,36 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from db.database import get_db_session, init_db
-from service.heartbeat import (
-    ensure_heartbeat_table,
-    heartbeat_and_reconcile_loop,
-    update_heartbeat,
-)
-from service.poller import (
-    http_task_create_poller,
-    http_task_enqueue_poller,
-    http_task_stop_poller,
-    llm_task_create_poller,
-    llm_task_enqueue_poller,
-    llm_task_stop_poller,
-)
 from utils.logger import logger
 from utils.resource_collector import start_resource_collector, stop_resource_collector
 
-
-def start_polling():
-    """Initializes and starts the background polling threads for task management."""
-    logger.info("Starting polling threads...")
-    llm_task_enqueue_thread = threading.Thread(
-        target=llm_task_enqueue_poller, daemon=True, name="LlmTaskEnqueuePollerThread"
-    )
-    llm_task_create_thread = threading.Thread(
-        target=llm_task_create_poller, daemon=True, name="LlmTaskCreatePollerThread"
-    )
-    llm_task_stop_thread = threading.Thread(
-        target=llm_task_stop_poller, daemon=True, name="LlmTaskStopPollerThread"
-    )
-    http_task_enqueue_thread = threading.Thread(
-        target=http_task_enqueue_poller,
-        daemon=True,
-        name="HttpTaskEnqueuePollerThread",
-    )
-    http_task_create_thread = threading.Thread(
-        target=http_task_create_poller,
-        daemon=True,
-        name="HttpTaskCreatePollerThread",
-    )
-    http_task_stop_thread = threading.Thread(
-        target=http_task_stop_poller,
-        daemon=True,
-        name="HttpTaskStopPollerThread",
-    )
-    heartbeat_thread = threading.Thread(
-        target=heartbeat_and_reconcile_loop,
-        daemon=True,
-        name="HeartbeatReconcileThread",
-    )
-    llm_task_enqueue_thread.start()
-    llm_task_create_thread.start()
-    llm_task_stop_thread.start()
-    http_task_enqueue_thread.start()
-    http_task_create_thread.start()
-    http_task_stop_thread.start()
-    heartbeat_thread.start()
-    logger.info("Polling threads started successfully.")
+ENGINE_MODE = os.getenv("ENGINE_MODE", "api")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Asynchronous context manager to handle application startup and shutdown events.
-    """
-    # Executed on application startup
-    logger.info("Performance testing engine is starting up...")
+def start_polling_db_mode():
+    """Deprecated: Legacy mode that polls MySQL directly. Use ENGINE_MODE=api instead."""
+    from db.database import get_db_session, init_db
+    from service.heartbeat import (
+        ensure_heartbeat_table,
+        heartbeat_and_reconcile_loop,
+        update_heartbeat,
+    )
+    from service.poller import (
+        http_task_create_poller,
+        http_task_enqueue_poller,
+        http_task_stop_poller,
+        llm_task_create_poller,
+        llm_task_enqueue_poller,
+        llm_task_stop_poller,
+    )
 
-    # Initialize the database with a retry mechanism
     db_initialized = False
     max_retries = 5
     retry_count = 0
     while not db_initialized and retry_count < max_retries:
         try:
             init_db()
-            logger.info(
-                "Database connection and SessionLocal initialized successfully."
-            )
+            logger.info("Database connection initialized successfully.")
             db_initialized = True
         except Exception as e:
             retry_count += 1
@@ -95,19 +48,11 @@ async def lifespan(app: FastAPI):
                 f"Database initialization failed (Attempt {retry_count}/{max_retries}): {e}"
             )
             if retry_count < max_retries:
-                logger.info("Retrying in 30 seconds...")
                 time.sleep(30)
             else:
-                logger.error(
-                    "Maximum database initialization retries reached. Engine will exit."
-                )
-                # Propagate the exception to fail the application startup
                 raise e
 
     if db_initialized:
-        # Ensure heartbeat table exists and write the initial heartbeat
-        # so that peer engines (and subsequent reconciliation) see us as alive
-        # BEFORE any poller starts its own startup reconciliation.
         try:
             ensure_heartbeat_table()
             with get_db_session() as session:
@@ -116,10 +61,101 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to initialise engine heartbeat (non-fatal): {e}")
 
-        # Start background polling tasks if the database is initialized
-        start_polling()
+        logger.info("Starting DB polling threads...")
+        threads = [
+            threading.Thread(
+                target=llm_task_enqueue_poller,
+                daemon=True,
+                name="LlmTaskEnqueuePollerThread",
+            ),
+            threading.Thread(
+                target=llm_task_create_poller,
+                daemon=True,
+                name="LlmTaskCreatePollerThread",
+            ),
+            threading.Thread(
+                target=llm_task_stop_poller, daemon=True, name="LlmTaskStopPollerThread"
+            ),
+            threading.Thread(
+                target=http_task_enqueue_poller,
+                daemon=True,
+                name="HttpTaskEnqueuePollerThread",
+            ),
+            threading.Thread(
+                target=http_task_create_poller,
+                daemon=True,
+                name="HttpTaskCreatePollerThread",
+            ),
+            threading.Thread(
+                target=http_task_stop_poller,
+                daemon=True,
+                name="HttpTaskStopPollerThread",
+            ),
+            threading.Thread(
+                target=heartbeat_and_reconcile_loop,
+                daemon=True,
+                name="HeartbeatReconcileThread",
+            ),
+        ]
+        for t in threads:
+            t.start()
+        logger.info("DB polling threads started successfully.")
 
-    # Start system resource collector (pushes CPU/Memory/Network to VictoriaMetrics)
+
+def start_polling_api_mode():
+    """New mode: Engine communicates with Backend via HTTP REST API."""
+    from service.api_poller import (
+        api_heartbeat_loop,
+        api_log_push_loop,
+        api_stop_poller,
+        api_task_poller,
+        startup_register,
+    )
+
+    registered = False
+    max_retries = 10
+    for attempt in range(max_retries):
+        if startup_register():
+            registered = True
+            break
+        logger.warning(
+            f"Registration attempt {attempt+1}/{max_retries} failed, retrying in 5s..."
+        )
+        time.sleep(5)
+
+    if not registered:
+        logger.error("Engine failed to register with Backend. Starting pollers anyway.")
+
+    logger.info("Starting API polling threads...")
+    threads = [
+        threading.Thread(
+            target=api_heartbeat_loop, daemon=True, name="ApiHeartbeatThread"
+        ),
+        threading.Thread(
+            target=api_task_poller, daemon=True, name="ApiTaskPollerThread"
+        ),
+        threading.Thread(
+            target=api_stop_poller, daemon=True, name="ApiStopPollerThread"
+        ),
+        threading.Thread(
+            target=api_log_push_loop, daemon=True, name="ApiLogPushThread"
+        ),
+    ]
+    for t in threads:
+        t.start()
+    logger.info("API polling threads started successfully.")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Asynchronous context manager for application startup and shutdown."""
+    logger.info(f"Performance testing engine starting up (mode={ENGINE_MODE})...")
+
+    if ENGINE_MODE == "api":
+        start_polling_api_mode()
+    else:
+        start_polling_db_mode()
+
     try:
         start_resource_collector()
         logger.info("System resource collector started successfully.")
@@ -128,8 +164,14 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Executed on application shutdown
     logger.info("Performance testing engine is shutting down.")
+    if ENGINE_MODE == "api":
+        try:
+            from service.api_poller import shutdown_unregister
+
+            shutdown_unregister()
+        except Exception as e:
+            logger.warning(f"Failed to unregister engine during shutdown: {e}")
     try:
         stop_resource_collector()
     except Exception as e:
@@ -141,14 +183,10 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/health", summary="Health Check", tags=["Monitoring"])
 async def health_check():
-    """
-    Provides a health check endpoint to verify that the service is running.
-    Returns a simple JSON response indicating the status.
-    """
-    return {"status": "ok"}
+    """Health check endpoint."""
+    return {"status": "ok", "mode": ENGINE_MODE}
 
 
 if __name__ == "__main__":
     logger.info("Starting server with Uvicorn...")
-
     uvicorn.run("app:app", host="127.0.0.1", port=5002, reload=True)

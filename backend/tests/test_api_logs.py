@@ -42,6 +42,26 @@ class TestLogAPI:
         assert "content" in data
         assert data["file_size"] == 512
 
+    @patch("api.api_log.get_engine_system_log_svc")
+    def test_get_engine_system_log(self, mock_get_engine_log):
+        mock_response = LogContentResponse(
+            content="2026-07-08 17:29:10 INFO: Engine online",
+            file_size=128,
+        )
+        mock_get_engine_log.return_value = mock_response
+
+        response = client.get(
+            "/api/logs/engine/engine_123"
+            "?cluster_id=aliyun-public-network&offset=0&tail=100"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content"] == "2026-07-08 17:29:10 INFO: Engine online"
+        assert data["file_size"] == 128
+        mock_get_engine_log.assert_called_once_with(
+            "engine_123", "aliyun-public-network", 0, 100
+        )
+
     @patch("api.api_log.get_task_log_svc")
     def test_get_task_log(self, mock_get_task_log):
         mock_response = LogContentResponse(

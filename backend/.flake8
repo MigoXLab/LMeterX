@@ -9,6 +9,8 @@ extend-ignore =
     W503,
     # D100: Missing docstring in public module
     D100,
+    # D101: Missing docstring in public class
+    D101,
     # D104: Missing docstring in public package
     D104,
     # D200: One-line docstring should fit on one line with quotes

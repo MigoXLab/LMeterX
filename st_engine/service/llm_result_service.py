@@ -70,8 +70,8 @@ class LlmResultService:
                     task_id=task_id,
                     metric_type="token_metrics",
                     num_requests=custom_metrics.get(
-                        "reqs_num", 0
-                    ),  # Use actual request count
+                        "reqs_count", custom_metrics.get("reqs_num", 0)
+                    ),  # reqs_num is retained as a legacy fallback
                     num_failures=0,
                     avg_latency=0,
                     min_latency=0,

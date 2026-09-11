@@ -36,11 +36,13 @@ class StreamMetrics:
     # Timing fields for metric calculation (previously dynamically injected)
     _start_thinking_perf: Optional[float] = None
     _first_output_token_perf: Optional[float] = None
-    # Responses API state. Item lifecycles are keyed by item id because output
-    # indices can be reused across separate requests and are not identity keys.
-    output_items: Dict[str, "OutputItemLifecycle"] = field(default_factory=dict)
-    responses_terminal_event: Optional[str] = None
-    responses_error: Optional[str] = None
+    time_to_first_reasoning_token_ms: Optional[float] = None
+    time_to_first_output_token_ms: Optional[float] = None
+    time_to_reasoning_completion_ms: Optional[float] = None
+    content_limit_exceeded: bool = False
+    # OpenAI Responses output item lifecycle tracking, keyed by item_id.
+    # Each value stores added_at, first_delta_at and item_type.
+    _output_items: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @property
     def content(self) -> str:
@@ -51,18 +53,6 @@ class StreamMetrics:
     def reasoning_content(self) -> str:
         """Get accumulated reasoning content as a single string."""
         return "".join(self._reasoning_parts)
-
-
-@dataclass
-class OutputItemLifecycle:
-    """Timing state for one Responses API output item."""
-
-    item_id: str
-    output_index: int
-    item_type: str
-    category: str
-    added_perf: float
-    done_perf: Optional[float] = None
 
 
 @dataclass
@@ -136,6 +126,7 @@ class GlobalStateManager:
         """Initialize global state."""
         self._config: Optional[GlobalConfig] = None
         self._start_time: Optional[float] = None
+        self._end_time: Optional[float] = None
         self._token_stats = TokenStats()
         self._logger_cache: OrderedDict[str, Any] = OrderedDict()
         self._logger_cache_maxsize: int = 128
@@ -167,14 +158,28 @@ class GlobalStateManager:
         return self._start_time
 
     @start_time.setter
-    def start_time(self, value: float):
+    def start_time(self, value: Optional[float]):
         """Set test start time."""
         self._start_time = value
+
+    @property
+    def end_time(self) -> Optional[float]:
+        """Get the captured test end time, excluding report finalization work."""
+        return self._end_time
+
+    @end_time.setter
+    def end_time(self, value: Optional[float]):
+        """Set the captured test end time."""
+        self._end_time = value
 
     @property
     def token_stats(self) -> TokenStats:
         """Get token stats."""
         return self._token_stats
+
+    def reset_token_stats(self) -> None:
+        """Reset token aggregation at the beginning of a load test."""
+        self._token_stats = TokenStats()
 
     @property
     def worker_count(self) -> int:
@@ -432,8 +437,8 @@ class ConfigManager:
         """Generate default field mapping based on API type.
 
         Args:
-            api_type: The API type (openai-chat, openai-responses, claude-chat,
-                embeddings, custom-chat)
+            api_type: The API type (openai-chat, openai-responses,
+                claude-chat, embeddings, custom-chat)
             stream_mode: Whether the API is in streaming mode
 
         Returns:
@@ -463,23 +468,33 @@ class ConfigManager:
                 total_tokens="usage.total_tokens",
             )
         elif api_type == "openai-responses":
-            # Streaming Responses events are event-oriented and can contain
-            # several heterogeneous output items. A dedicated processor handles
-            # deltas and lifecycle timing; these paths cover payload/usage
-            # extraction and non-streaming compatibility.
+            # Streaming Responses API events are type-discriminated and are
+            # processed by StreamProcessor instead of a generic content path.
             return FieldMapping(
                 stream_prefix="data:",
                 data_format="json",
                 stop_flag="response.completed",
                 end_prefix="data:",
                 end_field="type",
-                content="output.0.content.0.text",
+                content="" if stream_mode else "output.0.content.0.text",
                 reasoning_content="",
                 prompt="input",
                 image="",
-                prompt_tokens="usage.input_tokens",
-                completion_tokens="usage.output_tokens",
-                total_tokens="usage.total_tokens",
+                prompt_tokens=(
+                    "response.usage.input_tokens"
+                    if stream_mode
+                    else "usage.input_tokens"
+                ),
+                completion_tokens=(
+                    "response.usage.output_tokens"
+                    if stream_mode
+                    else "usage.output_tokens"
+                ),
+                total_tokens=(
+                    "response.usage.total_tokens"
+                    if stream_mode
+                    else "usage.total_tokens"
+                ),
             )
         elif api_type == "claude-chat":
             return FieldMapping(

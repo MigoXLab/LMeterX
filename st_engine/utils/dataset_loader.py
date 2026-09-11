@@ -205,8 +205,8 @@ def _parse_json_obj(
             prompt = extract_prompt_from_messages(raw_input)
 
     if not prompt and not messages_list:
-        # Raw-payload APIs can carry valid data without prompt/messages.
-        # as long as json_obj has actual data (passed via raw_data).
+        # Raw-payload APIs can carry valid data without prompt/messages as long
+        # as json_obj has actual data (passed via raw_data).
         if api_type in ("openai-responses", "embeddings", "custom-chat"):
             if len(json_obj) == 0:
                 return None

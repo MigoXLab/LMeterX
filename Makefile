@@ -1,9 +1,20 @@
-.PHONY: help install install-dev format lint type-check security test clean all ci frontend-install frontend-lint frontend-format frontend-test backend-install backend-dev backend-format backend-lint backend-type-check backend-security backend-test backend-clean backend-all backend-ci st-engine-install st-engine-dev st-engine-format st-engine-lint st-engine-type-check st-engine-security st-engine-test st-engine-clean st-engine-all st-engine-ci docker-base-backend docker-base-engine docker-base-agent docker-base-all docker-push-base-backend docker-push-base-engine docker-push-base-agent docker-push-base-all docker-build-backend docker-build-engine docker-build-all
+.PHONY: help install install-dev format lint type-check security test clean all ci frontend-check-node frontend-install frontend-lint frontend-format frontend-test backend-install backend-dev backend-format backend-lint backend-type-check backend-security backend-test backend-clean backend-all backend-ci st-engine-install st-engine-dev st-engine-format st-engine-lint st-engine-type-check st-engine-security st-engine-test st-engine-clean st-engine-all st-engine-ci docker-base-backend docker-base-engine docker-base-agent docker-base-all docker-push-base-backend docker-push-base-engine docker-push-base-agent docker-push-base-all docker-build-backend docker-build-engine docker-build-all
 
 # Docker Hub username (can be overridden via environment variable)
 DOCKER_USER ?= charmy1220
 BACKEND_PYTHON ?= $(if $(CONDA_PREFIX),$(CONDA_PREFIX)/bin/python,python)
 ST_ENGINE_PYTHON ?= $(BACKEND_PYTHON)
+
+# Ubuntu 系统自带 Node 12，Prettier 3 / Vite 5 需要 >=18。
+# 非交互终端（make / IDE）往往不会 source nvm，这里自动选用 nvm 里最新的 Node。
+NODE_MAJOR := $(shell node -p "parseInt(process.versions.node, 10)" 2>/dev/null || echo 0)
+ifeq ($(shell [ "$(NODE_MAJOR)" -lt 18 ] && echo yes),yes)
+NVM_DIR ?= $(HOME)/.nvm
+NVM_NODE_BIN := $(shell ls -1d $(NVM_DIR)/versions/node/v*/bin 2>/dev/null | sort -V | tail -1)
+ifneq ($(NVM_NODE_BIN),)
+export PATH := $(NVM_NODE_BIN):$(PATH)
+endif
+endif
 
 # 默认目标
 help:
@@ -95,19 +106,22 @@ ci: frontend-lint frontend-test backend-ci st-engine-ci
 	@echo "所有项目 CI/CD 检查完成!"
 
 # Frontend 命令
-frontend-install:
+frontend-check-node:
+	@node -e "const m=parseInt(process.versions.node,10); if(m<18){console.error('前端需要 Node.js >= 18，当前是 '+process.version+'。请安装 nvm 并执行: nvm install 18'); process.exit(1)}"
+
+frontend-install: frontend-check-node
 	@echo "正在安装前端依赖..."
 	cd frontend && npm install
 
-frontend-lint:
+frontend-lint: frontend-check-node
 	@echo "正在检查前端代码质量..."
 	cd frontend && npm run lint
 
-frontend-format:
+frontend-format: frontend-check-node
 	@echo "正在格式化前端代码..."
 	cd frontend && npm run format
 
-frontend-test:
+frontend-test: frontend-check-node
 	@echo "正在运行前端测试..."
 	cd frontend && npm test
 

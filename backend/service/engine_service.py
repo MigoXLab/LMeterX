@@ -11,7 +11,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, select, text, update
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from model.cluster import Cluster
@@ -125,12 +125,13 @@ async def claim_task(
     cluster_id: str,
     task_types: List[str],
 ) -> Optional[dict]:
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task as LlmTask
     from model.probe_task import ProbeTask
     from model.task_dispatch_queue import TaskDispatchQueue
 
-    supported_task_types = {"probe", "llm", "http"}
+    supported_task_types = {"probe", "llm", "http", "agent"}
     normalized_task_types = [
         task_type.strip().lower()
         for task_type in task_types
@@ -216,7 +217,11 @@ async def claim_task(
             return None
 
         task_type = dispatch_entry.task_type
-        TaskModel = LlmTask if task_type == "llm" else HttpTask
+        TaskModel = {
+            "llm": LlmTask,
+            "http": HttpTask,
+            "agent": AgentTask,
+        }[task_type]
         task = await db.get(TaskModel, dispatch_entry.task_id)
 
         # A cancellation/deletion may race with dispatch, or an inconsistent
@@ -250,10 +255,11 @@ async def update_task_status(
     progress: Optional[int] = None,
     message: Optional[str] = None,
 ) -> bool:
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task as LlmTask
 
-    for TaskModel in [LlmTask, HttpTask]:
+    for TaskModel in [LlmTask, HttpTask, AgentTask]:
         task = await db.get(TaskModel, task_id)
         if task:
             if task.engine_id != engine_id:
@@ -398,6 +404,7 @@ async def submit_task_results(
     final_status: str,
     error_message: Optional[str] = None,
 ) -> bool:
+    from model.agent_task import AgentTask, AgentTaskResult
     from model.http_task import HttpTask, HttpTaskResult
     from model.llm_task import Task as LlmTask
     from model.llm_task import TaskResult as LlmTaskResult
@@ -405,6 +412,7 @@ async def submit_task_results(
     for TaskModel, ResultModel in [
         (LlmTask, LlmTaskResult),
         (HttpTask, HttpTaskResult),
+        (AgentTask, AgentTaskResult),
     ]:
         task = await db.get(TaskModel, task_id)
         if task:
@@ -427,6 +435,49 @@ async def submit_task_results(
             for result_fields in result_records:
                 db.add(ResultModel(**result_fields))
 
+            if ResultModel is AgentTaskResult:
+                import json
+
+                custom_metrics = locust_results.get("custom_metrics") or {}
+                db.add(
+                    AgentTaskResult(
+                        task_id=task_id,
+                        metric_type="protocol_summary",
+                        num_requests=_safe_int(
+                            custom_metrics.get("top_level_requests")
+                        ),
+                        num_failures=_safe_int(custom_metrics.get("failed_requests")),
+                        avg_latency=_safe_number(
+                            (custom_metrics.get("end_to_end_latency_ms") or {}).get(
+                                "avg"
+                            )
+                        ),
+                        min_latency=_safe_number(
+                            (custom_metrics.get("end_to_end_latency_ms") or {}).get(
+                                "min"
+                            )
+                        ),
+                        max_latency=_safe_number(
+                            (custom_metrics.get("end_to_end_latency_ms") or {}).get(
+                                "max"
+                            )
+                        ),
+                        median_latency=_safe_number(
+                            (custom_metrics.get("end_to_end_latency_ms") or {}).get(
+                                "p50"
+                            )
+                        ),
+                        p95_latency=_safe_number(
+                            (custom_metrics.get("end_to_end_latency_ms") or {}).get(
+                                "p95"
+                            )
+                        ),
+                        rps=_safe_number(custom_metrics.get("top_level_rps")),
+                        avg_content_length=0.0,
+                        metric_data=json.dumps(custom_metrics, ensure_ascii=False),
+                    )
+                )
+
             await db.flush()
             return True
 
@@ -436,11 +487,12 @@ async def submit_task_results(
 async def get_stopping_tasks(
     db: AsyncSession, engine_id: str, cluster_id: str
 ) -> List[str]:
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task as LlmTask
 
     task_ids = []
-    for TaskModel in [LlmTask, HttpTask]:
+    for TaskModel in [LlmTask, HttpTask, AgentTask]:
         result = await db.execute(
             select(TaskModel.id).where(
                 and_(
@@ -456,6 +508,7 @@ async def get_stopping_tasks(
 
 
 async def reconcile_dead_engines(db: AsyncSession) -> int:
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task as LlmTask
 
@@ -472,7 +525,7 @@ async def reconcile_dead_engines(db: AsyncSession) -> int:
         return 0
 
     count = 0
-    for TaskModel in [LlmTask, HttpTask]:
+    for TaskModel in [LlmTask, HttpTask, AgentTask]:
         result = await db.execute(
             update(TaskModel)
             .where(
@@ -566,13 +619,23 @@ async def cleanup_stale_engines(
 def _serialize_task(task, task_type: str) -> dict:
     import os
 
+    from utils.credential_crypto import decrypt_headers
+
     oss_enabled = os.getenv("OSS_ENABLED", "false").lower() == "true"
 
     data_file = None
     if task_type == "llm":
         data_file = getattr(task, "test_data", None)
-    else:
+    elif task_type == "http":
         data_file = getattr(task, "dataset_file", None)
+    elif task_type == "agent":
+        try:
+            agent_protocol_config = json.loads(
+                getattr(task, "protocol_config", "{}") or "{}"
+            )
+        except (TypeError, json.JSONDecodeError):
+            agent_protocol_config = {}
+        data_file = agent_protocol_config.get("dataset_file")
 
     test_data_url = None
     if data_file and isinstance(data_file, str) and data_file.startswith("/"):
@@ -583,6 +646,12 @@ def _serialize_task(task, task_type: str) -> dict:
         else:
             test_data_url = data_file
 
+    serialized_headers = task.headers
+    if task_type == "agent":
+        serialized_headers = json.dumps(
+            decrypt_headers(task.headers), ensure_ascii=False
+        )
+
     config = {
         "id": task.id,
         "name": task.name,
@@ -592,8 +661,8 @@ def _serialize_task(task, task_type: str) -> dict:
         "duration": task.duration,
         "concurrent_users": task.concurrent_users,
         "spawn_rate": task.spawn_rate,
-        "headers": task.headers,
-        "cookies": task.cookies,
+        "headers": serialized_headers,
+        "cookies": getattr(task, "cookies", None),
         "load_mode": getattr(task, "load_mode", "fixed"),
         "step_start_users": getattr(task, "step_start_users", None),
         "step_increment": getattr(task, "step_increment", None),
@@ -618,7 +687,7 @@ def _serialize_task(task, task_type: str) -> dict:
                 "test_data": getattr(task, "test_data", ""),
             }
         )
-    else:
+    elif task_type == "http":
         config.update(
             {
                 "method": getattr(task, "method", "GET"),
@@ -627,6 +696,15 @@ def _serialize_task(task, task_type: str) -> dict:
                 "dataset_file": getattr(task, "dataset_file", ""),
                 "curl_command": getattr(task, "curl_command", ""),
                 "success_assert": getattr(task, "success_assert", ""),
+            }
+        )
+    else:
+        config.update(
+            {
+                "protocol": getattr(task, "protocol", "a2a"),
+                "protocol_version": getattr(task, "protocol_version", "1.0"),
+                "target_url": getattr(task, "target_url", ""),
+                "protocol_config": getattr(task, "protocol_config", "{}"),
             }
         )
 

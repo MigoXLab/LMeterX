@@ -42,7 +42,7 @@ const Collections: React.FC = () => {
   const [form] = Form.useForm();
   const [pagination, setPagination] = useState({
     current: 1,
-    pageSize: 10,
+    pageSize: 12,
     total: 0,
   });
   const [search, setSearch] = useState('');
@@ -51,7 +51,7 @@ const Collections: React.FC = () => {
 
   const fetchCollections = async (
     page = 1,
-    pageSize = 10,
+    pageSize = 12,
     searchKey = search
   ) => {
     setLoading(true);
@@ -329,7 +329,7 @@ const Collections: React.FC = () => {
           )}
         </div>
 
-        {pagination.total > 10 && (
+        {pagination.total > 12 && (
           <div
             style={{
               display: 'flex',
@@ -341,6 +341,7 @@ const Collections: React.FC = () => {
               current={pagination.current}
               pageSize={pagination.pageSize}
               total={pagination.total}
+              pageSizeOptions={[12, 24, 36, 48]}
               showSizeChanger
               hideOnSinglePage
               onChange={(page, pageSize) => fetchCollections(page, pageSize)}

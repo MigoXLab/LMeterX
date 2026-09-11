@@ -113,12 +113,15 @@ async def test_scheduler_only_activates_entries_for_queuing_tasks(monkeypatch):
     session = AsyncMock()
     llm_update_result = MagicMock(rowcount=1)
     http_update_result = MagicMock(rowcount=1)
+    agent_update_result = MagicMock(rowcount=1)
     queue_update_result = MagicMock(rowcount=1)
     session.execute = AsyncMock(
         side_effect=[
             llm_update_result,
             queue_update_result,
             http_update_result,
+            queue_update_result,
+            agent_update_result,
             queue_update_result,
         ]
     )
@@ -137,11 +140,14 @@ async def test_scheduler_only_activates_entries_for_queuing_tasks(monkeypatch):
     await scheduler._enqueue_created_tasks()
 
     session.commit.assert_awaited_once()
-    assert session.execute.await_count == 4
+    assert session.execute.await_count == 6
 
     llm_queue_update = str(session.execute.await_args_list[1].args[0])
     http_queue_update = str(session.execute.await_args_list[3].args[0])
+    agent_queue_update = str(session.execute.await_args_list[5].args[0])
     assert "SELECT llm_tasks.id" in llm_queue_update
     assert "llm_tasks.status" in llm_queue_update
     assert "SELECT http_tasks.id" in http_queue_update
     assert "http_tasks.status" in http_queue_update
+    assert "SELECT agent_tasks.id" in agent_queue_update
+    assert "agent_tasks.status" in agent_queue_update

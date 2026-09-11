@@ -399,6 +399,125 @@ body {
   align-items: center;
 }
 
+/* ========================================
+   Task Mode Tabs — independent rounded-rects
+   Same radius as page buttons; one background layer only
+   ======================================== */
+
+.task-mode-tabs.unified-tabs .ant-tabs-nav {
+  margin-bottom: 20px !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-nav-wrap,
+.task-mode-tabs.unified-tabs .ant-tabs-nav-list {
+  width: auto;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-nav-list {
+  gap: 8px;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab,
+.task-mode-tabs.unified-tabs .ant-tabs-tab-active {
+  flex: none !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  line-height: 40px !important;
+  padding: 0 16px !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden !important;
+  font-size: 14px !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab-btn,
+.task-mode-tabs.unified-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 100% !important;
+  width: auto !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab {
+  background: var(--brand-lighter) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab:hover {
+  background: var(--brand-light) !important;
+  color: var(--brand-primary) !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab-active {
+  background: var(--brand-gradient) !important;
+  color: #ffffff !important;
+  box-shadow: var(--shadow-brand) !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab-active:hover {
+  background: var(--brand-gradient-hover) !important;
+  color: #ffffff !important;
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab-active .ant-tabs-tab-btn,
+.task-mode-tabs.unified-tabs .ant-tabs-tab-active .tab-label {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.task-mode-tabs.unified-tabs .tab-label {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.task-mode-tabs.unified-tabs .tab-label .tab-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  justify-content: center;
+  font-size: 14px;
+  background: rgba(102, 126, 234, 0.12);
+  color: var(--brand-primary);
+}
+
+.task-mode-tabs.unified-tabs .ant-tabs-tab-active .tab-icon {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.task-mode-tabs + .jobs-toolbar {
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .task-mode-tabs.unified-tabs .ant-tabs-tab,
+  .task-mode-tabs.unified-tabs .ant-tabs-tab-active {
+    height: 36px !important;
+    min-height: 36px !important;
+    line-height: 36px !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+  }
+
+  .task-mode-tabs.unified-tabs .tab-label {
+    font-size: 13px;
+    gap: 6px;
+  }
+}
+
 /* Field Mapping Section - prevent label wrapping */
 .field-mapping-section .ant-form-item-label > label {
   white-space: nowrap !important;
@@ -1474,6 +1593,131 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* Scenario distribution summary */
+.scenario-weight-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 12px;
+}
+
+.scenario-weight-card {
+  padding: 16px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+}
+
+.scenario-weight-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.scenario-weight-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.scenario-weight-name {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-weight-id {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-weight-badge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+  background: var(--brand-light);
+  color: var(--brand-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.scenario-share-row + .scenario-share-row {
+  margin-top: 13px;
+}
+
+.scenario-share-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.scenario-share-meta span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.scenario-share-meta small {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.scenario-share-meta strong {
+  color: var(--color-text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scenario-share-track {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.scenario-share-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+}
+
+.scenario-share-fill-expected {
+  background: rgba(102, 126, 234, 0.45);
+}
+
+.scenario-share-fill-actual {
+  background: var(--brand-gradient);
+}
+
+@media (max-width: 768px) {
+  .scenario-weight-card {
+    padding: 14px;
+  }
+
+  .scenario-weight-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 
 /* Unified Table Styles */

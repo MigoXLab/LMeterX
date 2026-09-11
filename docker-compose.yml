@@ -8,13 +8,31 @@ services:
       MYSQL_ROOT_PASSWORD: lmeterx123
       MYSQL_DATABASE: lmeterx
       TZ: Asia/Shanghai
-    command: ["mysqld", "--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--init-connect=SET NAMES utf8mb4", "--default-time-zone=+08:00"]
+    command:
+      [
+        "mysqld",
+        "--default-authentication-plugin=mysql_native_password",
+        "--character-set-server=utf8mb4",
+        "--collation-server=utf8mb4_unicode_ci",
+        "--init-connect=SET NAMES utf8mb4",
+        "--default-time-zone=+08:00",
+      ]
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-plmeterx123"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-plmeterx123",
+        ]
       interval: 10s
       timeout: 20s
       retries: 10
@@ -39,10 +57,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: "1"
           memory: 2G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 1G
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
@@ -73,6 +91,10 @@ services:
       - OSS_ENABLED=false
       - K8S_RECONCILE_ENABLED=false
       - LDAP_ENABLED=false
+      # Required for encrypted A2A/MCP request headers.
+      # Format must be key-id:fernet-key (e.g. v1:<key>). Generate a Fernet key:
+      # python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - AGENT_CREDENTIAL_ENCRYPTION_KEYS=${AGENT_CREDENTIAL_ENCRYPTION_KEYS:-}
       # Uncomment and configure the following only when LDAP_ENABLED=true:
       # - LDAP_SERVER=ldap://ldap.example.com
       # - LDAP_PORT=389
@@ -103,7 +125,7 @@ services:
       - ./logs:/app/logs
       - ./upload_files:/app/upload_files
     healthcheck:
-      test: [ "CMD", "curl", "-s", "-f", "http://localhost:5001/health" ]
+      test: ["CMD", "curl", "-s", "-f", "http://localhost:5001/health"]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -143,19 +165,19 @@ services:
       # DB_NAME: lmeterx
       # Multi-process configuration
       ENABLE_MULTIPROCESS: auto
-      LOCUST_CPU_CORES: 2.0                  # Must match deploy.resources.limits.cpus
-      MULTIPROCESS_THRESHOLD: 1000           # Enable only when users exceed 1000
-      MIN_USERS_PER_PROCESS: 500             # Each process handles at least 500 users
+      LOCUST_CPU_CORES: 2.0 # Must match deploy.resources.limits.cpus
+      MULTIPROCESS_THRESHOLD: 1000 # Enable only when users exceed 1000
+      MIN_USERS_PER_PROCESS: 500 # Each process handles at least 500 users
       # Engine polling and heartbeat
-      ENGINE_HEARTBEAT_INTERVAL: 10          # Backend heartbeat interval (seconds)
-      TASK_POLL_INTERVAL: 3                  # New-task polling interval (seconds)
-      STOP_POLL_INTERVAL: 5                  # Stop-request polling interval (seconds)
-      RESOURCE_COLLECT_INTERVAL: 2           # Resource metrics interval (seconds)
+      ENGINE_HEARTBEAT_INTERVAL: 10 # Backend heartbeat interval (seconds)
+      TASK_POLL_INTERVAL: 3 # New-task polling interval (seconds)
+      STOP_POLL_INTERVAL: 5 # Stop-request polling interval (seconds)
+      RESOURCE_COLLECT_INTERVAL: 2 # Resource metrics interval (seconds)
       # Process management and stability
-      PYTHONUNBUFFERED: 1                    # Ensure immediate log output
+      PYTHONUNBUFFERED: 1 # Ensure immediate log output
       # Memory and performance tuning
-      MALLOC_ARENA_MAX: 2                    # Limit memory arenas for stability
-      PYTHONMALLOC: malloc                   # Use system malloc for better memory management
+      MALLOC_ARENA_MAX: 2 # Limit memory arenas for stability
+      PYTHONMALLOC: malloc # Use system malloc for better memory management
       DETAIL_LOG_LEVEL: "INFO"
     ulimits:
       nofile:
@@ -170,13 +192,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'                           # Must match LOCUST_CPU_CORES
+          cpus: "2.0" # Must match LOCUST_CPU_CORES
           memory: 4G
         reservations:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
     healthcheck:
-      test: [ "CMD", "curl", "-s", "-f", "http://localhost:5002/health" ]
+      test: ["CMD", "curl", "-s", "-f", "http://localhost:5002/health"]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -199,7 +221,7 @@ services:
       - VITE_LDAP_ENABLED=false
       - VITE_PERSIST_ACCESS_TOKEN=true
     healthcheck:
-      test: [ "CMD", "curl", "-s", "-f", "http://localhost:80" ]
+      test: ["CMD", "curl", "-s", "-f", "http://localhost:80"]
       interval: 10s
       timeout: 5s
       retries: 3

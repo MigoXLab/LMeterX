@@ -52,10 +52,15 @@ import {
   uploadCertificateFiles,
   uploadDatasetFile,
 } from '@/api/services';
+import RequestHeadersEditor from '@/components/RequestHeadersEditor';
 import { useI18n } from '@/hooks/useI18n';
 import { Cluster, LlmTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import { safeJsonParse } from '@/utils/data';
+import {
+  headersForSubmission,
+  prepareHeadersForEditor,
+} from '@/utils/requestHeaders';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -589,36 +594,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       dataToFill.temp_task_id = tempTaskId;
 
       // handle headers
-      const currentHeaders = initialData.headers
-        ? JSON.parse(JSON.stringify(initialData.headers))
-        : [];
-
-      // ensure Content-Type exists and is fixed
-      const contentTypeHeader = currentHeaders.find(
-        (h: { key: string }) => h.key === 'Content-Type'
+      const currentHeaders = prepareHeadersForEditor(
+        initialData.headers,
+        initialData.redacted_header_keys
       );
-      if (contentTypeHeader) {
-        contentTypeHeader.value = 'application/json';
-        contentTypeHeader.fixed = true;
-      } else {
-        currentHeaders.unshift({
-          key: 'Content-Type',
-          value: 'application/json',
-          fixed: true,
-        });
-      }
 
-      // ensure Authorization exists (even if the value is empty)
-      const authHeader = currentHeaders.find(
-        (h: { key: string }) => h.key === 'Authorization'
-      );
-      if (!authHeader) {
-        currentHeaders.push({
-          key: 'Authorization',
-          value: '',
-          fixed: false,
-        });
-      }
       dataToFill.headers = currentHeaders;
 
       // handle cookies
@@ -1031,6 +1011,10 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           { key: 'Content-Type', value: 'application/json', fixed: true },
         ];
       }
+      values.headers = headersForSubmission(
+        values.headers,
+        initialData?.redacted_header_keys
+      );
 
       // Prepare test data - only include fields needed by backend TaskTestReq
       const testData: any = {
@@ -1043,6 +1027,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         request_payload: values.request_payload,
         api_type: values.api_type,
         cluster_id: clusterId || undefined,
+        copy_source_task_id: values.copy_source_task_id || undefined,
+        inherit_source_headers: Boolean(values.inherit_source_headers),
       };
 
       // Include cert_config if present (uploaded via certificate flow)
@@ -1312,6 +1298,10 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
 
       // Clean up form-specific fields
       delete values.test_data_input_type;
+      values.headers = headersForSubmission(
+        values.headers,
+        initialData?.redacted_header_keys
+      );
 
       await onSubmit(values);
     } catch (error) {
@@ -1373,137 +1363,13 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
   // create advanced settings panel content
   const advancedPanelContent = (
     <div style={{ marginLeft: '8px' }}>
-      {/* Header configuration */}
-      <div
-        style={{
-          marginBottom: 24,
-          padding: '16px',
-          backgroundColor: token.colorFillAlter,
-          borderRadius: '8px',
-        }}
-      >
-        <div style={{ marginBottom: 12, fontWeight: 'bold', fontSize: '14px' }}>
-          <Space>
-            <span>{t('components.createJobForm.httpHeaders')}</span>
-            <Tooltip title={t('components.createJobForm.httpHeadersTooltip')}>
-              <InfoCircleOutlined />
-            </Tooltip>
-          </Space>
-        </div>
-        <Form.List name='headers'>
-          {(fields, { add, remove }) => (
-            <>
-              {fields.map(({ key, name, ...restField }) => {
-                const isFixed = form.getFieldValue(['headers', name, 'fixed']);
-                const headerKey = form.getFieldValue(['headers', name, 'key']);
-                const isAuth = headerKey === 'Authorization';
-
-                return (
-                  <Space
-                    key={key}
-                    style={{ display: 'flex', marginBottom: 8, width: '100%' }}
-                  >
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'key']}
-                      style={{ flex: 1, minWidth: '140px' }}
-                      rules={[
-                        {
-                          required: true,
-                          message: t(
-                            'components.createJobForm.headerNameRequired'
-                          ),
-                        },
-                        {
-                          max: 100,
-                          message: t(
-                            'components.createJobForm.headerNameLengthLimit'
-                          ),
-                        },
-                      ]}
-                    >
-                      <Input
-                        placeholder={
-                          isFixed
-                            ? t('components.createJobForm.systemHeader')
-                            : t(
-                                'components.createJobForm.headerNamePlaceholder'
-                              )
-                        }
-                        disabled={isFixed}
-                        maxLength={100}
-                        style={
-                          isFixed
-                            ? {
-                                backgroundColor: token.colorBgContainerDisabled,
-                              }
-                            : {}
-                        }
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'value']}
-                      style={{ flex: 2 }}
-                      rules={[
-                        {
-                          max: 1000,
-                          message: t(
-                            'components.createJobForm.headerValueLengthLimit'
-                          ),
-                        },
-                        ...(isAuth
-                          ? [
-                              {
-                                required: false,
-                                message:
-                                  'Please enter API key (include Bearer prefix if required)',
-                              },
-                            ]
-                          : []),
-                      ]}
-                    >
-                      <Input
-                        placeholder={
-                          isAuth
-                            ? t('components.createJobForm.pleaseEnterApiKey')
-                            : t(
-                                'components.createJobForm.headerValuePlaceholder'
-                              )
-                        }
-                        disabled={isFixed}
-                        maxLength={1000}
-                        style={
-                          isFixed
-                            ? {
-                                backgroundColor: token.colorBgContainerDisabled,
-                              }
-                            : {}
-                        }
-                      />
-                    </Form.Item>
-                    {!isFixed && (
-                      <MinusCircleOutlined
-                        onClick={() => remove(name)}
-                        style={{ marginTop: 8, color: token.colorTextTertiary }}
-                      />
-                    )}
-                  </Space>
-                );
-              })}
-              <Button
-                type='dashed'
-                onClick={() => add()}
-                block
-                icon={<PlusOutlined />}
-                style={{ marginTop: 8 }}
-              >
-                {t('components.createJobForm.addHeaderButton')}
-              </Button>
-            </>
-          )}
-        </Form.List>
-      </div>
+      <RequestHeadersEditor
+        form={form}
+        title={t('components.createAgentTaskForm.requestHeaders')}
+        tooltip={t('components.createAgentTaskForm.requestHeadersTooltip')}
+        redactedHeaderKeys={initialData?.redacted_header_keys}
+        maxValueLength={1000}
+      />
 
       {/* Cookies */}
       <div
@@ -3633,7 +3499,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           api_type: 'openai-chat',
           headers: [
             { key: 'Content-Type', value: 'application/json', fixed: true },
-            { key: 'Authorization', value: '', fixed: false },
           ],
           cookies: [],
           stream_mode: true,
@@ -3859,6 +3724,12 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       >
         {/* Hidden field for storing file and temporary task ID */}
         <Form.Item name='temp_task_id' hidden>
+          <Input />
+        </Form.Item>
+        <Form.Item name='copy_source_task_id' hidden>
+          <Input />
+        </Form.Item>
+        <Form.Item name='inherit_source_headers' hidden>
           <Input />
         </Form.Item>
         <Form.Item name='cert_file' hidden>

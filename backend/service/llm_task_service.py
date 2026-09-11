@@ -50,6 +50,12 @@ from utils.converters import (
 )
 from utils.error_handler import ErrorMessages, ErrorResponse
 from utils.logger import logger
+from utils.request_headers import (
+    merge_headers,
+    next_rerun_name,
+    redact_headers_for_copy,
+    redacted_header_keys,
+)
 
 # Testing configuration
 MAX_DURATION_FOR_TESTING = 120  # max duration to wait for testing
@@ -83,6 +89,34 @@ def _map_status(status: Optional[str]) -> str:
     if not status:
         return "created"
     return status.lower()
+
+
+def _assert_task_owner(request: Request, task: Task) -> None:
+    if not settings.LDAP_ENABLED:
+        return
+    username = _get_username_from_request(request)
+    if is_admin_user(username) or task.created_by == username:
+        return
+    raise ErrorResponse.forbidden(ErrorMessages.INSUFFICIENT_PERMISSIONS)
+
+
+async def _resolved_copy_headers(request: Request, body) -> Dict[str, str]:
+    overrides = kv_items_to_dict(body.headers)
+    if not body.copy_source_task_id or not body.inherit_source_headers:
+        return overrides
+    source = await request.state.db.get(Task, body.copy_source_task_id)
+    if not source or getattr(source, "is_deleted", 0):
+        raise ErrorResponse.not_found("Source task not found")
+    _assert_task_owner(request, source)
+    if (
+        str(source.target_host).rstrip("/") != body.target_host.rstrip("/")
+        or str(source.api_path) != body.api_path
+    ):
+        raise ErrorResponse.bad_request(
+            "Source request headers can only be inherited for the original target"
+        )
+    inherited = safe_json_loads(source.headers, f"headers for task {source.id}", {})
+    return merge_headers(inherited, overrides)
 
 
 def _build_task_summary(task: Task) -> Dict[str, Any]:
@@ -488,7 +522,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
     except ValueError as exc:
         raise ErrorResponse.bad_request(str(exc))
 
-    headers_json = json.dumps(kv_items_to_dict(body.headers))
+    headers_json = json.dumps(await _resolved_copy_headers(request, body))
     cookies_json = json.dumps(kv_items_to_dict(body.cookies))
 
     test_data = body.test_data or ""
@@ -745,6 +779,49 @@ async def get_task_svc(request: Request, task_id: str):
         raise ErrorResponse.internal_server_error(
             "An internal error occurred while retrieving the task."
         )
+
+
+async def get_task_copy_template_svc(request: Request, task_id: str):
+    """Return task configuration with write-only request-header values."""
+    task = await request.state.db.get(Task, task_id)
+    if not task or getattr(task, "is_deleted", 0):
+        raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+    _assert_task_owner(request, task)
+    detail = _build_task_detail(task)
+    headers = safe_json_loads(task.headers, f"headers for task {task.id}", {})
+    keys = redacted_header_keys(headers)
+    detail.update(
+        {
+            "headers": redact_headers_for_copy(headers),
+            "redacted_header_keys": keys,
+            "has_configured_headers": bool(keys),
+            "copy_source_task_id": task.id,
+            "inherit_source_headers": bool(keys),
+            "copy_policy": {
+                "credentials_removed": bool(keys),
+                "credential_reuse_allowed": True,
+                "credentials_inherited_on_start": bool(keys),
+            },
+        }
+    )
+    return detail
+
+
+async def rerun_task_svc(request: Request, task_id: str):
+    """Clone an LLM task without returning its request headers to the browser."""
+    task = await request.state.db.get(Task, task_id)
+    if not task or getattr(task, "is_deleted", 0):
+        raise ErrorResponse.not_found(ErrorMessages.TASK_NOT_FOUND)
+    _assert_task_owner(request, task)
+    detail = _build_task_detail(task)
+    detail.update(
+        {
+            "temp_task_id": f"rerun-{uuid.uuid4()}",
+            "name": next_rerun_name(str(task.name or "Task")),
+        }
+    )
+    body = TaskCreateReq(**detail)
+    return await create_task_svc(request, body)
 
 
 async def get_task_status_svc(request: Request, task_id: str):
@@ -1206,7 +1283,9 @@ async def _handle_non_streaming_response(response) -> Dict:
     }
 
 
-async def _test_llm_via_probe(request: Request, body: TaskTestReq):
+async def _test_llm_via_probe(
+    request: Request, body: TaskTestReq, headers: Dict[str, str]
+):
     """Dispatch LLM connectivity test to an engine in the target cluster."""
     from service import probe_service
 
@@ -1217,9 +1296,7 @@ async def _test_llm_via_probe(request: Request, body: TaskTestReq):
         "api_path": body.api_path,
         "model": body.model or "",
         "stream_mode": body.stream_mode,
-        "headers": [
-            {"key": h.key, "value": h.value} for h in body.headers if h.key and h.value
-        ],
+        "headers": dict_to_kv_list(headers),
         "cookies": [
             {"key": c.key, "value": c.value} for c in body.cookies if c.key and c.value
         ],
@@ -1244,18 +1321,14 @@ async def test_llm_api_svc(request: Request, body: TaskTestReq):
     If cluster_id is provided, dispatches the test as a probe to the target engine cluster.
     Otherwise, tests directly from the backend.
     """
+    headers = await _resolved_copy_headers(request, body)
+
     # If cluster_id is provided, proxy through engine cluster
     if body.cluster_id:
-        return await _test_llm_via_probe(request, body)
+        return await _test_llm_via_probe(request, body, headers)
 
     try:
         # Prepare headers
-        headers = {
-            header.key: header.value
-            for header in body.headers
-            if header.key and header.value
-        }
-
         # Prepare cookies
         cookies = _prepare_cookies_from_headers(body)
 

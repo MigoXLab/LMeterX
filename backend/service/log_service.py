@@ -241,7 +241,6 @@ async def get_engine_system_log_svc(
 
     if OSS_ENABLED:
         cache_dir = os.path.join(LOG_DIR, "engine_cache")
-        os.makedirs(cache_dir, exist_ok=True)
         local_cache = os.path.join(cache_dir, f"{cluster_id}_{engine_id}_engine.log")
 
         oss_key = f"logs/system/{cluster_id}/{engine_id}/engine.log"

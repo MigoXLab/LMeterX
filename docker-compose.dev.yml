@@ -78,6 +78,10 @@ services:
       - OSS_ENABLED=false
       - K8S_RECONCILE_ENABLED=false
       - LDAP_ENABLED=false
+      # Required for encrypted A2A/MCP request headers.
+      # Format must be key-id:fernet-key (e.g. v1:<key>). Generate a Fernet key:
+      # python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - AGENT_CREDENTIAL_ENCRYPTION_KEYS=v1:KhYMLSiss3x5KAa0Dp-5Upma6W3Nr0UKKr67C0PCm5g=
       # Uncomment and configure the following only when LDAP_ENABLED=true:
       # - LDAP_SERVER=ldap://ldap.example.com
       # - LDAP_PORT=389

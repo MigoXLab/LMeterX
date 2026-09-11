@@ -6,6 +6,7 @@ to the central Backend. This module is used when ENGINE_MODE=api.
 """
 
 import asyncio
+import json
 import os
 import threading
 import time
@@ -22,6 +23,7 @@ from client.oss_client import (
 )
 from config.base import LOCUST_STOP_TIMEOUT
 from engine.process_manager import get_multiprocess_manager
+from service.agent_task_service import AgentTaskService
 from service.http_task_service import HttpTaskService
 from service.llm_task_service import LlmTaskService
 from utils.engine_identity import resolve_cluster_id, resolve_engine_id
@@ -123,6 +125,7 @@ def api_task_poller():
 
     llm_service = LlmTaskService()
     http_service = HttpTaskService()
+    agent_service = AgentTaskService()
 
     while True:
         try:
@@ -155,11 +158,13 @@ def api_task_poller():
             task_data = backend_client.claim_task(
                 engine_id=ENGINE_ID,
                 cluster_id=CLUSTER_ID,
-                task_types=["llm", "http"],
+                task_types=["llm", "http", "agent"],
             )
 
             if task_data:
-                _start_regular_task_thread(task_data, llm_service, http_service)
+                _start_regular_task_thread(
+                    task_data, llm_service, http_service, agent_service
+                )
 
         except Exception as e:
             logger.exception(f"[API] Task poller error: {e}")
@@ -231,6 +236,7 @@ def _start_regular_task_thread(
     task_data: dict,
     llm_service: LlmTaskService,
     http_service: HttpTaskService,
+    agent_service: Optional[AgentTaskService] = None,
 ) -> bool:
     global _regular_task_thread
 
@@ -245,9 +251,14 @@ def _start_regular_task_thread(
             )
             return False
 
+        thread_args = (
+            (task_data, llm_service, http_service)
+            if agent_service is None
+            else (task_data, llm_service, http_service, agent_service)
+        )
         thread = threading.Thread(
             target=_run_regular_task_pipeline,
-            args=(task_data, llm_service, http_service),
+            args=thread_args,
             daemon=True,
             name=f"RegularTaskThread-{task_id}",
         )
@@ -261,6 +272,7 @@ def _run_regular_task_pipeline(
     task_data: dict,
     llm_service: LlmTaskService,
     http_service: HttpTaskService,
+    agent_service: Optional[AgentTaskService] = None,
 ):
     global _regular_task_thread
 
@@ -275,13 +287,24 @@ def _run_regular_task_pipeline(
         local_test_data = download_test_data(task_id, test_data_url)
         if local_test_data and config.get("test_data", "").startswith("/"):
             config["test_data"] = local_test_data
+        if local_test_data and task_type == "agent":
+            try:
+                protocol_config = json.loads(config.get("protocol_config") or "{}")
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("Invalid agent protocol configuration") from exc
+            protocol_config["dataset_file"] = local_test_data
+            config["protocol_config"] = json.dumps(protocol_config, ensure_ascii=False)
 
         task_proxy = TaskProxy(config)
 
         if task_type == "llm":
             _execute_llm_task(llm_service, task_proxy, task_id)
-        else:
+        elif task_type == "http":
             _execute_http_task(http_service, task_proxy, task_id)
+        else:
+            _execute_agent_task(
+                agent_service or AgentTaskService(), task_proxy, task_id
+            )
     finally:
         cleanup_task_files(task_id)
         with _regular_task_lock:
@@ -295,6 +318,7 @@ def api_stop_poller():
 
     llm_service = LlmTaskService()
     http_service = HttpTaskService()
+    agent_service = AgentTaskService()
 
     while True:
         try:
@@ -306,9 +330,15 @@ def api_stop_poller():
                 logger.info(f"[API] Stopping task: {task_id}")
                 time.sleep(1)
 
-                stopped = llm_service.stop_task(task_id) or http_service.stop_task(
-                    task_id
-                )
+                # Existing stop services intentionally return True even when no
+                # local process is registered. Invoke all of them so a prior
+                # service cannot short-circuit the owner of the task.
+                stop_results = [
+                    llm_service.stop_task(task_id),
+                    http_service.stop_task(task_id),
+                    agent_service.stop_task(task_id),
+                ]
+                stopped = any(stop_results)
                 if stopped:
                     backend_client.update_task_status(
                         task_id=task_id,
@@ -526,6 +556,51 @@ def _execute_http_task(service: HttpTaskService, task_proxy: TaskProxy, task_id:
         upload_task_logs_to_oss(task_id, include_archives=True)
 
 
+def _execute_agent_task(service: AgentTaskService, task_proxy: TaskProxy, task_id: str):
+    """Execute an A2A/MCP task and report protocol and Locust metrics."""
+    handler_id = None
+    log_upload_loop = None
+    try:
+        handler_id = add_task_log_sink(task_id)
+        log_upload_loop = _start_task_log_upload_loop(task_id)
+        run_result = service.start_task(task_proxy)
+        run_status = run_result.get("status")
+        locust_result = run_result.get("locust_result", {})
+        if run_status == "COMPLETED":
+            final_status = "completed"
+        elif run_status == "FAILED_REQUESTS":
+            final_status = "failed_requests"
+        elif run_status == "STOPPED":
+            backend_client.update_task_status(task_id, ENGINE_ID, "stopped")
+            return
+        else:
+            final_status = "failed"
+        backend_client.submit_results(
+            task_id=task_id,
+            engine_id=ENGINE_ID,
+            locust_results=locust_result,
+            final_status=final_status,
+            error_message=(
+                run_result.get("error_message", "")
+                if final_status == "failed_requests"
+                else None
+            ),
+        )
+    except Exception as exc:
+        logger.exception(f"[API] Agent task {task_id} pipeline failed: {exc}")
+        backend_client.submit_results(
+            task_id=task_id,
+            engine_id=ENGINE_ID,
+            final_status="failed",
+            error_message=f"Pipeline error: {str(exc)[:500]}",
+        )
+    finally:
+        _stop_task_log_upload_loop(log_upload_loop)
+        if handler_id is not None:
+            remove_task_log_sink(handler_id)
+        upload_task_logs_to_oss(task_id, include_archives=True)
+
+
 def _execute_probe(task_data: dict):
     """Execute a lightweight connectivity probe and submit result to Backend."""
     import ssl
@@ -581,8 +656,7 @@ def _execute_probe(task_data: dict):
     )
     if submitted:
         logger.info(
-            f"[API] Probe {probe_id} completed and submitted: "
-            f"{result.get('status')}"
+            f"[API] Probe {probe_id} completed and submitted: {result.get('status')}"
         )
     else:
         logger.error(
@@ -884,7 +958,7 @@ def startup_register():
                 return True
 
         logger.warning(
-            f"[API] Registration attempt {attempt+1}/{max_retries} failed, retrying..."
+            f"[API] Registration attempt {attempt + 1}/{max_retries} failed, retrying..."
         )
         time.sleep(5)
 

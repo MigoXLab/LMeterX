@@ -207,6 +207,7 @@ addopts = [
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "e2e: marks tests that submit real protocol jobs through Backend and Engine",
 ]
 
 [tool.bandit]

@@ -1589,17 +1589,16 @@ class APIClient:
             response_time = (time.perf_counter() - start_time) * 1000
             error_str = str(e)
             additional_context = {"api_path": self.config.api_path}
-            traceparent = self.error_handler._extract_traceparent(response)
             if "timed out" in error_str.lower() or "timeout" in error_str.lower():
                 error_msg = (
                     f"[Client idle timeout] No response data received from server for "
                     f"{DEFAULT_STREAM_IDLE_TIMEOUT} seconds, client triggered fallback "
                     f"timeout mechanism. Original error: {e}"
                 )
-                warning_msg = error_msg
-                if traceparent:
-                    warning_msg = f"{warning_msg} | traceparent: {traceparent}"
-                self.task_logger.warning(warning_msg)
+                self.task_logger.warning(
+                    f"{error_msg}"
+                    f"{self.error_handler._correlation_header_suffix(response)}"
+                )
             else:
                 error_msg = f"Connection error: {e}"
             self.error_handler._handle_general_exception_event(
@@ -1889,7 +1888,10 @@ class APIClient:
                     f"{DEFAULT_NON_STREAM_TIMEOUT} seconds, client triggered fallback "
                     f"timeout mechanism. Original error: {e}"
                 )
-                self.task_logger.warning(error_msg)
+                self.task_logger.warning(
+                    f"{error_msg}"
+                    f"{self.error_handler._correlation_header_suffix(response)}"
+                )
             else:
                 error_msg = f"Connection error: {e}"
             self.error_handler._handle_general_exception_event(

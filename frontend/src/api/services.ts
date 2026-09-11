@@ -7,7 +7,13 @@
 
 import { Dataset } from '../types';
 import { LoginResponse, UserInfo } from '../types/auth';
-import { Cluster, HttpTask, LlmTask } from '../types/job';
+import {
+  AgentTask,
+  AgentTaskPayload,
+  Cluster,
+  HttpTask,
+  LlmTask,
+} from '../types/job';
 import { getApiBaseUrl } from '../utils/runtimeConfig';
 import api, { uploadFiles } from './apiClient';
 
@@ -130,6 +136,9 @@ export const llmTaskApi = {
 
   // Get a specific task by ID
   getJob: (id: string) => api.get<LlmTask>(`/llm-tasks/${id}`),
+  getCopyTemplate: (id: string) =>
+    api.get<LlmTask>(`/llm-tasks/${id}/copy-template`),
+  rerun: (id: string) => api.post(`/llm-tasks/${id}/rerun`),
 
   // Get only the status of a specific task by ID (lightweight)
   getJobStatus: (id: string) =>
@@ -185,6 +194,9 @@ export const httpTaskApi = {
   },
 
   getJob: (id: string) => api.get(`/http-tasks/${id}`),
+  getCopyTemplate: (id: string) =>
+    api.get<HttpTask>(`/http-tasks/${id}/copy-template`),
+  rerun: (id: string) => api.post(`/http-tasks/${id}/rerun`),
 
   getJobStatus: (id: string) => api.get(`/http-tasks/${id}/status`),
 
@@ -213,6 +225,30 @@ export const httpTaskApi = {
 /** @deprecated Use httpTaskApi instead */
 /** @deprecated Use httpTaskApi instead */
 export const commonJobApi = httpTaskApi;
+
+export const agentTaskApi = {
+  getAll: (page = 1, pageSize = 100, protocol?: 'a2a' | 'mcp') =>
+    api.get<{
+      data: AgentTask[];
+      pagination: { total: number; page: number; page_size: number };
+      status: string;
+    }>('/agent-tasks', {
+      params: { page, page_size: pageSize, ...(protocol ? { protocol } : {}) },
+    }),
+  get: (id: string) => api.get<AgentTask>(`/agent-tasks/${id}`),
+  getCopyTemplate: (id: string) =>
+    api.get<AgentTask>(`/agent-tasks/${id}/copy-template`),
+  getStatus: (id: string) => api.get(`/agent-tasks/${id}/status`),
+  getResults: (id: string) => api.get(`/agent-tasks/${id}/results`),
+  create: (data: AgentTaskPayload) => api.post('/agent-tasks', data),
+  update: (id: string, data: Pick<AgentTask, 'name'>) =>
+    api.put(`/agent-tasks/${id}`, data),
+  rerun: (id: string) => api.post(`/agent-tasks/${id}/rerun`),
+  testConnection: (data: AgentTaskPayload) =>
+    api.post('/agent-tasks/test-connection', data),
+  stop: (id: string) => api.post(`/agent-tasks/${id}/stop`),
+  delete: (id: string) => api.delete(`/agent-tasks/${id}`),
+};
 
 // Results API methods
 export const resultApi = {

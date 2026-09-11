@@ -303,8 +303,42 @@ def test_error_log_includes_response_traceparent(monkeypatch):
     assert error_log == "request failed | traceparent: 00-trace-id-span-id-01"
 
 
+def test_error_log_includes_response_x_request_id(monkeypatch):
+    """Error logs include a sanitized x-request-id response header."""
+    task_logger = MagicMock()
+    handler = ErrorResponse(GlobalConfig(), task_logger)
+    response = MagicMock()
+    response.headers = {"X-Request-Id": "req-123\r\n"}
+    monkeypatch.setattr(EventManager, "fire_failure_event", Mock())
+
+    handler._handle_general_exception_event("request failed", response=response)
+
+    error_log = task_logger.error.call_args.args[0]
+    assert error_log == "request failed | x-request-id: req-123"
+
+
+def test_error_log_includes_traceparent_and_x_request_id(monkeypatch):
+    """Error logs append both correlation headers when present."""
+    task_logger = MagicMock()
+    handler = ErrorResponse(GlobalConfig(), task_logger)
+    response = MagicMock()
+    response.headers = {
+        "traceparent": "00-trace-id-span-id-01",
+        "x-request-id": "req-456",
+    }
+    monkeypatch.setattr(EventManager, "fire_failure_event", Mock())
+
+    handler._handle_general_exception_event("request failed", response=response)
+
+    error_log = task_logger.error.call_args.args[0]
+    assert error_log == (
+        "request failed | traceparent: 00-trace-id-span-id-01"
+        " | x-request-id: req-456"
+    )
+
+
 def test_error_log_omits_missing_traceparent(monkeypatch):
-    """Error logs remain unchanged when traceparent is absent."""
+    """Error logs remain unchanged when correlation headers are absent."""
     task_logger = MagicMock()
     handler = ErrorResponse(GlobalConfig(), task_logger)
     response = MagicMock()

@@ -2063,6 +2063,9 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           const inputType = getFieldValue('test_data_input_type');
           const currentApiType = getFieldValue('api_type') || 'openai-chat';
           const isChatApi = isStandardChatApiType(currentApiType);
+          const isPromptSystemChatApi =
+            currentApiType === 'openai-chat' ||
+            currentApiType === 'claude-chat';
 
           const cardStyle = {
             background: token.colorFillAlter,
@@ -2186,15 +2189,14 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                     marginTop: 12,
                     color: token.colorTextSecondary,
                     fontSize: 12,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
                   }}
                 >
                   <span style={{ whiteSpace: 'pre-line' }}>
                     {isChatApi
                       ? t(
-                          'components.createJobForm.datasetFileFormatDescriptionChat'
+                          isPromptSystemChatApi
+                            ? 'components.createJobForm.datasetFileFormatDescriptionChat'
+                            : 'components.createJobForm.datasetFileFormatDescriptionResponses'
                         ) ||
                         'Supports JSONL format:\n• JSONL: one JSON object per line {"id": "...", "messages": [...]}'
                       : t(
@@ -2202,11 +2204,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                         ) ||
                         'Supports JSONL format:\n• JSONL: one JSON object per line, representing the full request payload'}
                   </span>
-                  {isChatApi && (
-                    <span>
-                      {t('components.createJobForm.datasetImageMountWarning')}
-                    </span>
-                  )}
                 </div>
               </Upload.Dragger>
             </Form.Item>
@@ -2218,7 +2215,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                 <Text strong>{t('components.createJobForm.jsonlData')}</Text>
                 <Text type='secondary' style={{ fontSize: 12 }}>
                   {isChatApi
-                    ? t('components.createJobForm.jsonlDataTooltip')
+                    ? t(
+                        isPromptSystemChatApi
+                          ? 'components.createJobForm.jsonlDataTooltip'
+                          : 'components.createJobForm.jsonlDataTooltipResponses'
+                      )
                     : t('components.createJobForm.jsonlDataTooltipPayload')}
                 </Text>
                 <Form.Item
@@ -2294,7 +2295,11 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
                     rows={6}
                     placeholder={
                       isChatApi
-                        ? `{"id": "1", "messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "Hello!"}]}\n{"id": "2", "messages": [{"role": "user", "content": "What is AI?"}]}`
+                        ? isPromptSystemChatApi
+                          ? t(
+                              'components.createJobForm.jsonlDataPlaceholderChat'
+                            )
+                          : `{"id": "1", "messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "Hello!"}]}\n{"id": "2", "messages": [{"role": "user", "content": "What is AI?"}]}`
                         : currentApiType === 'custom-chat'
                           ? `{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"Hello, how are you?"}]}\n{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"What is artificial intelligence?"}]}`
                           : `{"id": "1", "input": "Hello, how are you?", "model": "text-embedding-3-small"}\n{"id": "2", "input": "What is artificial intelligence?", "model": "text-embedding-3-small"}`

@@ -1052,6 +1052,15 @@ class PayloadBuilder:
             if not user_message_found:
                 messages.append(user_message)
 
+        system_prompt = prompt_data.get("system_prompt") if prompt_data else None
+        if isinstance(system_prompt, str):
+            for msg in messages:
+                if isinstance(msg, dict) and msg.get("role") == "system":
+                    msg["content"] = system_prompt
+                    break
+            else:
+                messages.insert(0, {"role": "system", "content": system_prompt})
+
         # Update messages in payload (preserves all other parameters)
         payload["messages"] = messages
 
@@ -1204,6 +1213,9 @@ class PayloadBuilder:
 
         # Update messages in payload (preserves all other parameters)
         payload["messages"] = messages
+        system_prompt = prompt_data.get("system_prompt") if prompt_data else None
+        if isinstance(system_prompt, str):
+            payload["system"] = system_prompt
 
     def _update_embeddings_payload(
         self, payload: Dict[str, Any], user_prompt: str

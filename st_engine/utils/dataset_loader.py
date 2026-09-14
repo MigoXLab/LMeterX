@@ -39,6 +39,7 @@ class PromptData:
         image_path: str = "",
         messages: Optional[List[Dict[str, Any]]] = None,
         raw_data: Optional[Dict[str, Any]] = None,
+        system_prompt: Optional[str] = None,
     ):
         """Initialize the PromptData object."""
         self.id = prompt_id
@@ -48,6 +49,7 @@ class PromptData:
         self.image_path = image_path
         self.messages = messages or []
         self.raw_data = raw_data or {}
+        self.system_prompt = system_prompt
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
@@ -60,6 +62,8 @@ class PromptData:
             result["image_path"] = self.image_path
         if self.messages:
             result["messages"] = self.messages
+        if self.system_prompt is not None:
+            result["system_prompt"] = self.system_prompt
         if self.raw_data:
             result["raw_data"] = self.raw_data
         return result
@@ -75,6 +79,7 @@ class PromptData:
             image_path=data.get("image_path", ""),
             messages=data.get("messages", []),
             raw_data=data.get("raw_data", {}),
+            system_prompt=data.get("system_prompt"),
         )
 
 
@@ -242,6 +247,11 @@ def _parse_json_obj(
         image_path,
         messages_list,
         json_obj,
+        (
+            json_obj.get("system_prompt")
+            if isinstance(json_obj.get("system_prompt"), str)
+            else None
+        ),
     )
 
 

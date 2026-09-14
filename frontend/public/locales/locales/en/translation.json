@@ -203,7 +203,7 @@
         "Output_item_reasoning_duration": "Output duration from first delta to done for reasoning items",
         "Output_item_tool_call_duration": "Output duration from first delta to done for tool-call items",
         "Output_item_other_duration": "Output duration from first delta to done for other output items",
-        "Time_to_first_reasoning_token": "Time to output the first token in the reasoning part (reasoning_content field)",
+        "Time_to_first_reasoning_token": "Time to output the first token (reasoning_content/reasoning field)",
         "Time_to_reasoning_completion": "Generation time for the reasoning part"
       },
       "statisticExplanations": {

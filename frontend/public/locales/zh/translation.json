@@ -355,7 +355,7 @@
         "Output_item_reasoning_duration": "reasoning 类型 output item 从首个 delta 到 done 的输出时长",
         "Output_item_tool_call_duration": "工具调用类型 output item 从首个 delta 到 done 的输出时长",
         "Output_item_other_duration": "其他类型 output item 从首个 delta 到 done 的输出时长",
-        "Time_to_first_reasoning_token": "输出第一个Token的时间（reasoning_content字段）",
+        "Time_to_first_reasoning_token": "输出第一个Token的时间（reasoning_content/reasoning字段）",
         "Time_to_reasoning_completion": "推理部分的生成时间",
         "Input_tokens": "每请求的输入Token数量（prompt tokens）",
         "Completion_tokens": "每请求的输出Token数量（completion tokens）",

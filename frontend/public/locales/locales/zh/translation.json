@@ -204,7 +204,7 @@
         "Output_item_reasoning_duration": "reasoning 类型 output item 从首个 delta 到 done 的输出时长",
         "Output_item_tool_call_duration": "工具调用类型 output item 从首个 delta 到 done 的输出时长",
         "Output_item_other_duration": "其他类型 output item 从首个 delta 到 done 的输出时长",
-        "Time_to_first_reasoning_token": "输出第一个Token的时间（reasoning_content字段）",
+        "Time_to_first_reasoning_token": "输出第一个Token的时间（reasoning_content/reasoning字段）",
         "Time_to_reasoning_completion": "推理部分的生成时间"
       },
       "statisticExplanations": {
@@ -501,7 +501,6 @@
       "selectDatasetFile": "选择数据集文件",
       "jsonlFormatDescription": "必需格式：.jsonl文件，每行包含{\"id\": \"...\", \"prompt\": \"...\"}",
       "datasetFileFormatDescription": "支持 JSON (ShareGPT 格式) 和 JSONL 格式：\n• JSON: [{\"id\": \"...\", \"conversations\": [...]}, ...]\n• JSONL: 每行一个 JSON 对象 {\"id\": \"...\", \"prompt\": \"...\"}",
-      "datasetImageMountWarning": "⚠️ 若上传数据集包含图片路径，请确保启动服务前图片已挂载到容器对应目录下，详见 DATASET_GUIDE。",
       "jsonlData": "JSONL数据",
       "jsonlDataTooltip": "每行必须是具有id和prompt字段的有效JSON对象。",
       "testDuration": "测试持续时间（秒）",

@@ -90,6 +90,7 @@ class FieldMapping:
     end_field: str = ""
     content: str = ""
     reasoning_content: str = ""
+    reasoning_content_aliases: Tuple[str, ...] = ()
     prompt: str = ""
     image: str = ""
     prompt_tokens: str = ""
@@ -461,6 +462,9 @@ class ConfigManager:
                     if stream_mode
                     else "choices.0.message.reasoning_content"
                 ),
+                reasoning_content_aliases=(
+                    ("choices.0.delta.reasoning",) if stream_mode else ()
+                ),
                 prompt="messages.0.content.0.text",
                 image="messages.0.content.-1.image_url.url",
                 prompt_tokens="usage.prompt_tokens",
@@ -577,6 +581,15 @@ class ConfigManager:
             return ConfigManager.generate_field_mapping_by_api_type(
                 getattr(config, "api_type", "custom-chat"), config.stream_mode
             )
+
+        defaults = ConfigManager.generate_field_mapping_by_api_type(
+            getattr(config, "api_type", "custom-chat"), config.stream_mode
+        )
+        if (
+            mapping.reasoning_content == defaults.reasoning_content
+            and not mapping.reasoning_content_aliases
+        ):
+            mapping.reasoning_content_aliases = defaults.reasoning_content_aliases
 
         return mapping
 

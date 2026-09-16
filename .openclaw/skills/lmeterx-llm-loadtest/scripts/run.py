@@ -29,9 +29,11 @@ from urllib.parse import urlparse
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _DEPS_DIR = os.path.join(_SCRIPT_DIR, ".deps")
 
+
 def _ensure_httpx():
     try:
         import httpx
+
         return httpx
     except ImportError:
         pass
@@ -39,6 +41,7 @@ def _ensure_httpx():
         sys.path.insert(0, _DEPS_DIR)
         try:
             import httpx
+
             return httpx
         except ImportError:
             pass
@@ -49,15 +52,17 @@ def _ensure_httpx():
     )
     sys.path.insert(0, _DEPS_DIR)
     import httpx
+
     return httpx
+
 
 httpx = _ensure_httpx()
 
 # ── Global configuration ──────────────────────────────────────────────────────
 
-LMETERX_BASE_URL: str = os.getenv(
-    "LMETERX_BASE_URL", "<YOUR_LMETERX_BASE_URL>"
-).rstrip("/")
+LMETERX_BASE_URL: str = os.getenv("LMETERX_BASE_URL", "<YOUR_LMETERX_BASE_URL>").rstrip(
+    "/"
+)
 
 LMETERX_AUTH_TOKEN: str = os.getenv("LMETERX_AUTH_TOKEN") or "<YOUR_AUTH_TOKEN>"
 
@@ -162,14 +167,42 @@ def _parse_curl(curl_cmd: str) -> Dict[str, Any]:
     cookies: Dict[str, str] = {}
 
     SKIP_FLAGS_WITH_ARG = {
-        "--connect-timeout", "--max-time", "-m", "--retry", "-o", "--output",
-        "-u", "--user", "-e", "--referer", "-A", "--user-agent", "--proxy",
-        "-x", "--cert", "--key", "--cacert",
+        "--connect-timeout",
+        "--max-time",
+        "-m",
+        "--retry",
+        "-o",
+        "--output",
+        "-u",
+        "--user",
+        "-e",
+        "--referer",
+        "-A",
+        "--user-agent",
+        "--proxy",
+        "-x",
+        "--cert",
+        "--key",
+        "--cacert",
     }
     SKIP_FLAGS_NO_ARG = {
-        "--compressed", "--insecure", "-k", "-v", "--verbose", "-s", "--silent",
-        "-S", "--show-error", "-L", "--location", "-i", "--include", "-f",
-        "--fail", "-N", "--no-buffer",
+        "--compressed",
+        "--insecure",
+        "-k",
+        "-v",
+        "--verbose",
+        "-s",
+        "--silent",
+        "-S",
+        "--show-error",
+        "-L",
+        "--location",
+        "-i",
+        "--include",
+        "-f",
+        "--fail",
+        "-N",
+        "--no-buffer",
     }
 
     i = 0
@@ -209,7 +242,13 @@ def _parse_curl(curl_cmd: str) -> Dict[str, Any]:
     if not method:
         method = "POST" if body else "GET"
 
-    return {"url": url, "method": method, "headers": req_headers, "body": body, "cookies": cookies}
+    return {
+        "url": url,
+        "method": method,
+        "headers": req_headers,
+        "body": body,
+        "cookies": cookies,
+    }
 
 
 # ── LLM API detection and URL splitting ───────────────────────────────────────
@@ -332,21 +371,49 @@ Examples:
 
     parser.add_argument("--body", default="", help="Request body (JSON string)")
     parser.add_argument(
-        "--header", action="append", default=[], help="Request header (repeatable, format: 'Key: Value')"
+        "--header",
+        action="append",
+        default=[],
+        help="Request header (repeatable, format: 'Key: Value')",
     )
     parser.add_argument(
-        "--cookie", action="append", default=[], help="Cookie (repeatable, format: 'Key=Value')"
+        "--cookie",
+        action="append",
+        default=[],
+        help="Cookie (repeatable, format: 'Key=Value')",
     )
-    parser.add_argument("--model", default="", help="Model name (auto-extracted from body if not set)")
-    parser.add_argument("--stream", dest="stream_mode", action="store_true", default=None, help="Enable streaming")
-    parser.add_argument("--no-stream", dest="stream_mode", action="store_false", help="Disable streaming")
-    parser.add_argument("--concurrent-users", type=int, default=50, help="Concurrent users (default 50)")
-    parser.add_argument("--duration", type=int, default=300, help="Duration in seconds (default 300)")
-    parser.add_argument("--spawn-rate", type=int, default=30, help="Spawn rate (default 30)")
-    parser.add_argument("--name", default="", help="Task name (auto-generated if empty)")
     parser.add_argument(
-        "--test-data", default="",
-        help="Test dataset: '' for none (default), 'default' for built-in dataset"
+        "--model", default="", help="Model name (auto-extracted from body if not set)"
+    )
+    parser.add_argument(
+        "--stream",
+        dest="stream_mode",
+        action="store_true",
+        default=None,
+        help="Enable streaming",
+    )
+    parser.add_argument(
+        "--no-stream",
+        dest="stream_mode",
+        action="store_false",
+        help="Disable streaming",
+    )
+    parser.add_argument(
+        "--concurrent-users", type=int, default=50, help="Concurrent users (default 50)"
+    )
+    parser.add_argument(
+        "--duration", type=int, default=300, help="Duration in seconds (default 300)"
+    )
+    parser.add_argument(
+        "--spawn-rate", type=int, default=30, help="Spawn rate (default 30)"
+    )
+    parser.add_argument(
+        "--name", default="", help="Task name (auto-generated if empty)"
+    )
+    parser.add_argument(
+        "--test-data",
+        default="",
+        help="Test dataset: '' for none (default), 'default' for built-in dataset",
     )
 
     args = parser.parse_args()
@@ -401,7 +468,9 @@ Examples:
         stream_mode = extracted if extracted is not None else True
 
     # Filter Content-Type from user headers
-    filtered_headers = {k: v for k, v in req_headers.items() if k.lower() != "content-type"}
+    filtered_headers = {
+        k: v for k, v in req_headers.items() if k.lower() != "content-type"
+    }
 
     api_type_label = "OpenAI Chat" if api_type == "openai-chat" else "Claude Chat"
     print(f"\n🔍 API 类型: 🤖 {api_type_label}")
@@ -486,7 +555,6 @@ Examples:
 
         temp_task_id = f"llm_{uuid.uuid4().hex[:8]}"
         test_data = args.test_data
-        chat_type = 2 if test_data else 0
         create_payload = {
             "temp_task_id": temp_task_id,
             "name": task_name,
@@ -502,7 +570,6 @@ Examples:
             "request_payload": body or "",
             "api_type": api_type,
             "test_data": test_data,
-            "chat_type": chat_type,
             "warmup_enabled": True,
             "warmup_duration": 120,
             "load_mode": "fixed",

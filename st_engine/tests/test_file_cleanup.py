@@ -69,18 +69,6 @@ class TestFileCleanup(unittest.TestCase):
         self.assertFalse(os.path.exists(cert_file))
         self.assertFalse(os.path.exists(key_file))
 
-    def test_cleanup_task_files_ignores_default_dataset(self):
-        """Test that cleanup ignores default dataset and JSONL content."""
-        mock_task = Mock()
-        mock_task.id = "test_task_456"
-        mock_task.test_data = "default"  # Should not attempt to delete
-        mock_task.cert_file = None
-        mock_task.key_file = None
-
-        # Should not raise any exceptions
-        with patch("utils.logger.logger") as mock_logger:
-            self.task_service._cleanup_task_files(mock_task)
-
     def test_cleanup_task_files_ignores_jsonl_content(self):
         """Test that cleanup ignores JSONL content strings."""
         mock_task = Mock()

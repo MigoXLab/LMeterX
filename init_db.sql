@@ -30,11 +30,8 @@ CREATE TABLE `llm_tasks` (
   `step_duration` int(11) DEFAULT NULL COMMENT 'Stepped mode: duration of each step (seconds)',
   `step_max_users` int(11) DEFAULT NULL COMMENT 'Stepped mode: maximum number of users',
   `step_sustain_duration` int(11) DEFAULT NULL COMMENT 'Stepped mode: sustain duration at max users (seconds)',
-  `chat_type` int(11) DEFAULT '0',
   `warmup_enabled` tinyint(1) DEFAULT '1' COMMENT 'Warmup mode: 0=disabled, 1=enabled',
   `warmup_duration` int(11) DEFAULT '120' COMMENT 'Warmup duration in seconds (10-1800)',
-  `log_file` longtext COLLATE utf8mb4_unicode_ci,
-  `result_file` longtext COLLATE utf8mb4_unicode_ci,
   `cert_file` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `key_file` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `headers` json DEFAULT NULL,
@@ -114,8 +111,6 @@ CREATE TABLE `http_tasks` (
   `step_duration` int(11) DEFAULT NULL COMMENT 'Stepped mode: duration of each step (seconds)',
   `step_max_users` int(11) DEFAULT NULL COMMENT 'Stepped mode: maximum number of users',
   `step_sustain_duration` int(11) DEFAULT NULL COMMENT 'Stepped mode: sustain duration at max users (seconds)',
-  `log_file` longtext COLLATE utf8mb4_unicode_ci,
-  `result_file` longtext COLLATE utf8mb4_unicode_ci,
   `error_message` text COLLATE utf8mb4_unicode_ci,
   `engine_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Engine instance ID that executed this task',
   `cluster_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -356,6 +351,29 @@ CREATE TABLE `collection_tasks` (
   UNIQUE KEY `uk_collection_task` (`collection_id`, `task_id`),
   KEY `idx_collection_id` (`collection_id`),
   KEY `idx_task_id` (`task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- Table structure for reusable datasets
+-- ----------------------------
+DROP TABLE IF EXISTS `datasets`;
+CREATE TABLE `datasets` (
+  `id` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `file_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_path` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_size` bigint NOT NULL DEFAULT '0',
+  `record_count` int NOT NULL DEFAULT '0',
+  `dataset_types` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `tags` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_by` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_public` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_dataset_created_by` (`created_by`),
+  KEY `idx_dataset_visibility_created` (`is_public`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -70,7 +70,6 @@ class GlobalConfig:
     model_name: Optional[str] = None
     user_prompt: Optional[str] = None
     stream_mode: bool = True
-    chat_type: int = 0  # Built-in dataset selector (0=text, 1=ShareGPT, 2=vision)
     cert_file: Optional[str] = None
     key_file: Optional[str] = None
     cert_config: Optional[Union[str, Tuple[str, str]]] = None
@@ -369,9 +368,6 @@ class ConfigManager:
         )
         config.stream_mode = ConfigManager._as_bool(
             _get_option("stream_mode", config.stream_mode), default=config.stream_mode
-        )
-        config.chat_type = ConfigManager._safe_int(
-            _get_option("chat_type", config.chat_type), default=config.chat_type
         )
         config.cert_file = ConfigManager._normalize_optional_str(
             _get_option("cert_file", config.cert_file)

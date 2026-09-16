@@ -625,6 +625,22 @@ async def create_agent_task(
     task_id = str(uuid.uuid4())
     copied_dataset: Optional[str] = None
     try:
+        from service.dataset_service import (
+            authorize_managed_dataset_path,
+            resolve_dataset_for_task,
+        )
+
+        managed_dataset_path = await resolve_dataset_for_task(
+            request, body.dataset_id, body.protocol, task_id
+        )
+        if not managed_dataset_path:
+            managed_dataset_path = await authorize_managed_dataset_path(
+                request, body.dataset_file, body.protocol, task_id
+            )
+        if managed_dataset_path:
+            body.dataset_file = managed_dataset_path
+            copied_dataset = managed_dataset_path
+            body.inherit_source_dataset = False
         if source and body.inherit_source_dataset and not body.dataset_file:
             copied_dataset = _copy_dataset_for_rerun(_protocol_config(source), task_id)
             body.dataset_file = copied_dataset

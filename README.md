@@ -27,7 +27,7 @@ LMeterX is a professional performance testing platform for LLM inference service
 - **Full Modality & Scenarios**: Supports GPT, Claude, Llama to document parsing models like [MinerU](https://github.com/opendatalab/MinerU) and [dots.ocr](https://github.com/rednote-hilab/dots.ocr), covering text, multimodal, and streaming.
 - **Multi-Protocol Model APIs**: Native support for OpenAI `/v1/chat/completions`, `/v1/responses`&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />, Anthropic `/v1/messages`, Embeddings, custom model APIs, and general HTTP services.
 - **Multi-mode & High-Concurrency Load**: Supports fixed/stepped concurrency&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" /> strategies, supports simulating ultra-high concurrency, and accurately locates performance inflection points and system capacity limits.
-- **Built-in Dual-Mode Datasets**: Pre-configured with high-quality self-built datasets and ShareGPT standard sets, supporting one-click invocation to lower data preparation barriers.
+- **System Dataset Library**: Upload once and reuse across LLM, HTTP, A2A, and MCP tasks. A bundled ShareGPT text set is mounted as a public system dataset.
 - **Automated Warm-up Mechanism** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports automatic model service warm-up to eliminate cold-start effects, ensuring the accuracy of test data.
 - **Multi-dimensional Indicator Visualization**: Integrates core indicators such as TTFT, RPS, TPS, and throughput distribution, supporting real-time tracking and visualization of performance data<img src="docs/images/badge-new.svg" alt="NEW" height="16" />.
 - **Engine Resource Monitoring** &nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Supports real-time monitoring of the load testing machine's CPU, memory, and network bandwidth, accurately identifying local resource bottlenecks.
@@ -88,11 +88,11 @@ After the script finishes:
 - Open the web UI at http://localhost:8080 (see [Usage Guide](#usage-guide))
 
 ### Data & Volume Layout
-- `./data` → mounted to `/app/data` in the `engine` service (large datasets are **not** baked into the image)
+- `./data` → mounted to `/app/data` in the `engine` service (bundled ShareGPT source and local image files for multimodal tests; large datasets are **not** baked into the image)
 - `./logs` → shared log output for backend and engine
-- `./upload_files` → user-supplied payloads and exported reports
+- `./upload_files` → dataset-library files, task uploads, and exported reports
 
-For custom data, please refer to the [Dataset Usage Guide](docs/DATASET_GUIDE.md).
+Dataset files are UTF-8 JSONL (one JSON object per line). Choose a type that matches the task: `llm`, `business` (HTTP), `a2a`, or `mcp`. See the [Dataset Usage Guide](docs/DATASET_GUIDE.md) for row formats, field rules, and image mounts.
 
 ### Usage Guide
 
@@ -105,9 +105,12 @@ The Tasks page has four tabs: **HTTP API**, **LLM Load Test**, **A2A Agent Colla
    - 2.1 Environment: Select the Engine cluster that should run the task; use `Local` for a single-node deployment.
    - 2.2 Basic Information: For OpenAI and Claude APIs, select the API type and enter the path, model, and response mode. You may also provide a complete payload.
    - 2.3 OpenAI Responses: Select `OpenAI Responses`, set the path to `/v1/responses`, and use `input` instead of `messages` in the payload.
-   - 2.4 Data & Load: Select the dataset, concurrency, and duration.
+   - 2.4 Data & Load: Pick a library dataset, upload `.jsonl`, paste JSONL, or skip the dataset and use the request payload as-is. Then set concurrency and duration.
+     - OpenAI / Claude Chat: each row needs `prompt` or `messages`; optional `system_prompt` replaces the system message / Claude `system` field. `messages` replaces the whole conversation; otherwise `prompt` replaces the user message.
+     - OpenAI Responses: each row uses `prompt`, `input`, or `messages` (written to `input`).
+     - Custom Chat / Embeddings: each row is a **full request body**.
    - 2.5 Field Mapping: Only non-standard APIs such as custom APIs require prompt, content, reasoning, and usage paths.
-   > 💡 **Tip**: For custom multimodal dataset load tests, follow the [Dataset Guide](docs/DATASET_GUIDE.md) for data preparation, mounting, and troubleshooting.
+   > 💡 **Tip**: Row formats, ShareGPT compatibility, and local image mounts are documented in the [Dataset Guide](docs/DATASET_GUIDE.md).
 3. **API Testing**: In Test Tasks → Create Task, click the "Test" button in the Basic Information panel to quickly test API connectivity (use a lightweight prompt for faster feedback).
 4. **Real-time Monitoring**: Navigate to Test Tasks → Logs/Monitoring Center to view full-chain test logs and troubleshoot exceptions
 5. **Result Analysis**: Navigate to Test Tasks → Results to view detailed performance results and export reports
@@ -121,7 +124,7 @@ The Tasks page has four tabs: **HTTP API**, **LLM Load Test**, **A2A Agent Colla
    - Paste your complete curl command and click "One-Click Parse" to automatically parse request method, URL, headers, and request body
    - Verify that the parsed request information is complete and accurate
 3. **API Testing**: Click the "Test" button to verify API connectivity and ensure request information is correct before load testing
-4. **Dataset Preparation** (Optional): If using dataset load testing, prepare a JSONL format file in advance. Each line must be a complete payload JSON object
+4. **Dataset** (Optional): Select a `business` dataset from the library or upload JSONL. Each line must be a complete request-body JSON object; rows are used round-robin. Without a dataset, the form body is sent on every request.
 5. **Start Load Testing**: Configure concurrent users, test duration, and other parameters, then click "Create" to start the load testing task
 6. **Real-time Monitoring**: During testing, click the "Logs" button to view load testing status and real-time logs
 7. **Result Analysis**: After testing completes, click the "Results" button to view load testing results, including RPS, response time, success rate, and other metrics
@@ -137,7 +140,7 @@ Use this tab to stress-test Agent-to-Agent (A2A 1.0) services that accept JSON-R
 3. Click **Test Connection** to confirm the service is reachable
 4. Add one or more message scenarios and set weights — traffic is sampled by weight
 5. Choose how results are collected: **Sync**, **Streaming SSE**, or **Async submit + poll**
-6. Optionally upload a `.jsonl` file so the same scenario can send different messages (`scenario_id` + `message`)
+6. Optionally pick an `a2a` library dataset or upload `.jsonl` so the same scenario can send different messages. Each row needs `id`, `scenario_id` (must match a configured scenario), and `message` (`role` = `ROLE_USER`, non-empty `parts`). Extra fields are rejected; weights stay on the scenario, not the row. The file must cover every configured scenario.
 7. Set concurrency and duration, then create the task; check logs and results for end-to-end latency and success rate
 
 #### MCP Tool Calls
@@ -147,7 +150,7 @@ Use this tab to stress-test MCP Streamable HTTP servers by calling tools concurr
 1. Switch to **MCP Tool Calls**
 2. Fill in the MCP Streamable HTTP URL and click **Test Connection** to discover available tools
 3. Add tool-call scenarios: pick a tool name, fill in `arguments`, and set a weight
-4. Optionally upload a `.jsonl` file to vary arguments for the same tool (`scenario_id` + `arguments`)
+4. Optionally pick an `mcp` library dataset or upload `.jsonl` to vary arguments for the same tool. Each row needs `id`, `scenario_id` (must match a configured scenario), and `arguments` (object, `{}` allowed). Extra fields are rejected; the file must cover every configured scenario.
 5. Set concurrency and duration, then create the task; review tool-call latency and success rate in results
 
 ## 🔧 Configuration
@@ -296,18 +299,17 @@ LMeterX adopts a modern technology stack to ensure system reliability and mainta
 
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) — deployment and operations
 - [Multi-Cluster Engine Guide](docs/MULTI_CLUSTER_GUIDE.md) — cluster registration, Engine setup, scaling, and troubleshooting
-- [Dataset Guide](docs/DATASET_GUIDE.md) — custom text and multimodal datasets
+- [Dataset Guide](docs/DATASET_GUIDE.md) — JSONL formats for LLM, HTTP, A2A, and MCP tasks
 - [Contributing Guide](docs/CONTRIBUTING.md) — development workflow
 
 ## 🗂️ Dataset Reference Notes
 
-> LMeterX builds test samples based on the open-source ShareGPT dataset, strictly adhering to the original license requirements.
+> The bundled system dataset **ShareGPT V3 Partial** (`ShareGPT_V3_partial.jsonl`) is mounted into the dataset library as a public LLM text set. Each line is `{"id","prompt"}`. It is derived from open-source ShareGPT and follows the original license.
 
-- **Data Source**: Uses the [ShareGPT dataset](https://huggingface.co/datasets/learnanything/sharegpt_v3_unfiltered_cleaned_split) as the original dialogue corpus.
-
+- **Data Source**: [ShareGPT](https://huggingface.co/datasets/learnanything/sharegpt_v3_unfiltered_cleaned_split) dialogue corpus.
 - **Adjustment Scope**:
-- Filtered high-quality dialogue samples, removing low-quality or irrelevant data for the load testing scenario.
-- Random sampling was performed to reduce the data size while preserving diverse dialogues.
+  - Filtered high-quality samples and dropped low-quality or irrelevant turns for load testing.
+  - Randomly sampled to keep size manageable while preserving diverse dialogues.
 
 ## 👥 Contributing
 

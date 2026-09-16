@@ -39,7 +39,7 @@ import React, {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   analysisApi,
   clusterApi,
@@ -105,9 +105,25 @@ const parseNetworkFailureSummary = (message?: string | null) => {
   };
 };
 
+const getDatasetDisplayValue = (
+  testData: string | null | undefined,
+  customJsonlLabel: string
+): string => {
+  const value = testData?.trim();
+  if (!value) {
+    return '-';
+  }
+  if (value.startsWith('{') || value.startsWith('[')) {
+    return customJsonlLabel;
+  }
+
+  return value.split(/[\\/]/).filter(Boolean).pop() || '-';
+};
+
 const LlmResults: React.FC = () => {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguage();
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const getTabStorageKey = useCallback(
     (jobId?: string) => `results-active-tab:${jobId || 'unknown'}`,
@@ -158,6 +174,10 @@ const LlmResults: React.FC = () => {
   const networkFailureSummary = parseNetworkFailureSummary(
     taskInfo?.error_message
   );
+  const datasetDisplayValue = getDatasetDisplayValue(
+    taskInfo?.test_data,
+    t('components.createJobForm.customJsonlData')
+  );
 
   const getNumericValue = (item: any, fields: string[]): number | undefined => {
     if (!item) {
@@ -185,17 +205,6 @@ const LlmResults: React.FC = () => {
 
   const getFailureCountValue = (item?: any): number | undefined =>
     getNumericValue(item, ['num_failures', 'failure_count']);
-
-  const getBuiltInDatasetLabel = (value?: number | null) => {
-    switch (value) {
-      case 1:
-        return t('pages.results.datasetOptionShareGPTPartial');
-      case 2:
-        return t('pages.results.datasetOptionVisionSelfBuilt');
-      default:
-        return t('pages.results.datasetOptionTextSelfBuilt');
-    }
-  };
 
   // Function to fetch analysis result
   const fetchAnalysisResult = async () => {
@@ -1734,31 +1743,12 @@ const LlmResults: React.FC = () => {
             </span>
           </div>
           <div className='info-grid-item'>
-            <span className='info-label'>
-              {t('pages.results.datasetSource')}
-            </span>
-            <span className='info-value'>
-              {(() => {
-                if (taskInfo?.test_data === 'default') {
-                  return t('pages.results.builtInDataset');
-                }
-                if (taskInfo?.test_data && taskInfo.test_data !== 'default') {
-                  return t('pages.results.customDataset');
-                }
-                return '-';
-              })()}
-            </span>
-          </div>
-          <div className='info-grid-item'>
-            <span className='info-label'>{t('pages.results.datasetType')}</span>
-            <span className='info-value'>
-              {(() => {
-                if (taskInfo?.test_data === 'default') {
-                  return getBuiltInDatasetLabel(taskInfo?.chat_type);
-                }
-                return '-';
-              })()}
-            </span>
+            <span className='info-label'>{t('pages.results.datasetFile')}</span>
+            <Tooltip title={datasetDisplayValue}>
+              <span className='info-value info-value-ellipsis'>
+                {datasetDisplayValue}
+              </span>
+            </Tooltip>
           </div>
           <div className='info-grid-item'>
             <span className='info-label'>{t('pages.results.modelName')}</span>
@@ -1858,6 +1848,8 @@ const LlmResults: React.FC = () => {
           title={t('pages.results.title', 'Test Results')}
           icon={<FileTextOutlined />}
           level={3}
+          onBack={() => navigate('/jobs?tab=llm')}
+          backText={t('pages.results.backToJobs')}
         />
       </div>
 

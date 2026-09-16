@@ -42,16 +42,6 @@ def test_cleanup_task_files_removes_files(task_service, tmp_path):
     assert not key_file.exists()
 
 
-def test_cleanup_task_files_ignores_default_dataset(task_service):
-    mock_task = Mock()
-    mock_task.id = "test_task_default"
-    mock_task.test_data = "default"
-    mock_task.cert_file = None
-    mock_task.key_file = None
-
-    task_service._cleanup_task_files(mock_task)
-
-
 def test_cleanup_task_files_ignores_jsonl_content(task_service):
     mock_task = Mock()
     mock_task.id = "test_task_jsonl"

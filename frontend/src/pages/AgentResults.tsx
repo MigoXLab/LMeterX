@@ -32,7 +32,7 @@ import React, {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { agentTaskApi, clusterApi, monitoringApi } from '@/api/services';
 import { IconTooltip } from '@/components/ui/IconTooltip';
@@ -122,6 +122,7 @@ const formatSeconds = (value: unknown): string => {
 
 const AgentResults: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [task, setTask] = useState<AgentTask | null>(null);
   const [rows, setRows] = useState<any[]>([]);
@@ -1214,6 +1215,10 @@ const AgentResults: React.FC = () => {
           title={t('pages.results.title', 'Test Results')}
           icon={<FileTextOutlined />}
           level={3}
+          onBack={() =>
+            navigate(`/jobs?tab=${task?.protocol === 'mcp' ? 'mcp' : 'a2a'}`)
+          }
+          backText={t('pages.results.backToJobs')}
         />
       </div>
 

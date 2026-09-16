@@ -26,7 +26,6 @@ export interface BenchmarkJob {
   dataset_id?: string;
   duration: number;
   concurrency?: number;
-  chat_type?: number;
   stream_mode?: boolean;
   headers?: Array<{
     key: string;

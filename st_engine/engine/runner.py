@@ -445,8 +445,6 @@ class LocustRunner:
             getattr(task, "api_type", "openai-chat") or "openai-chat",
             "--stream_mode",
             task.stream_mode,
-            "--chat_type",
-            str(task.chat_type or 0),
             "--task-id",
             f"{task.id}_warmup",
             "--warmup_mode",
@@ -505,8 +503,6 @@ class LocustRunner:
             getattr(task, "api_type", "openai-chat") or "openai-chat",
             "--stream_mode",
             task.stream_mode,
-            "--chat_type",
-            str(task.chat_type or 0),
             "--task-id",
             task.id,
         ]

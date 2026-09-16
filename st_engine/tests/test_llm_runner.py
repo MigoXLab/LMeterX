@@ -50,7 +50,6 @@ def mock_llm_task():
     task.model = "test-model"
     task.api_type = "openai-chat"
     task.stream_mode = "True"
-    task.chat_type = 0
     task.concurrent_users = 50
     task.spawn_rate = 10
     task.duration = 120

@@ -168,7 +168,6 @@ def _ensure_prompt_queue(environment, options, task_logger):
             from utils.shared_dataset import DatasetQueueAdapter
 
             reader = init_shared_dataset(
-                chat_type=int(getattr(options, "chat_type", 0)),
                 test_data=getattr(options, "test_data", "") or "",
                 api_type=getattr(options, "api_type", ""),
                 task_logger=task_logger,
@@ -184,7 +183,6 @@ def _ensure_prompt_queue(environment, options, task_logger):
         from utils.dataset_loader import init_prompt_queue
 
         environment.prompt_queue = init_prompt_queue(
-            chat_type=int(getattr(options, "chat_type", 0)),
             test_data=getattr(options, "test_data", "") or "",
             api_type=getattr(options, "api_type", ""),
             task_logger=task_logger,
@@ -334,12 +332,6 @@ def init_parser(parser):
         type=str,
         default="True",
         help="Whether to use streaming responses.",
-    )
-    parser.add_argument(
-        "--chat_type",
-        type=int,
-        default=0,
-        help="Type of chat (e.g., text:0, multimodal:1).",
     )
     parser.add_argument(
         "--cert_file", type=str, default="", help="Path to the client certificate file."

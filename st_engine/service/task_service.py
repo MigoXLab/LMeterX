@@ -56,10 +56,8 @@ class TaskService:
 
         # Collect all file paths associated with this task
         if hasattr(task, "test_data") and task.test_data:
-            if task.test_data not in ["default", ""]:
-                # Only add actual file paths, not default dataset or empty strings
-                if not task.test_data.strip().startswith("{"):  # Not JSONL content
-                    files_to_remove.append(task.test_data)
+            if not task.test_data.strip().startswith("{"):  # Not JSONL content
+                files_to_remove.append(task.test_data)
 
         if hasattr(task, "cert_file") and task.cert_file:
             files_to_remove.append(task.cert_file)

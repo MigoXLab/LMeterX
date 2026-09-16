@@ -23,5 +23,6 @@ RUN playwright install chromium
 # Copy application code and shared runtime helpers.
 COPY backend/ .
 COPY common/ /app/common/
+COPY data/ShareGPT_V3_partial.jsonl /app/data/ShareGPT_V3_partial.jsonl
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5001", "--workers", "2", "--timeout-keep-alive", "600"]

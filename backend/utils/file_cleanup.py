@@ -36,10 +36,8 @@ def cleanup_task_files(
 
     # Collect all file paths associated with this task
     if test_data_path and test_data_path.strip():
-        # Only add actual file paths, not default dataset or JSONL content
-        if test_data_path not in ["default", ""]:
-            if not test_data_path.strip().startswith("{"):  # Not JSONL content
-                files_to_remove.append(test_data_path)
+        if not test_data_path.strip().startswith("{"):  # Not JSONL content
+            files_to_remove.append(test_data_path)
 
     if cert_file_path and cert_file_path.strip():
         files_to_remove.append(cert_file_path)

@@ -4,6 +4,9 @@
  * @author Charm
  * @copyright 2025
  */
+import { ConfigProvider } from 'antd';
+import enUS from 'antd/locale/en_US';
+import zhCN from 'antd/locale/zh_CN';
 import React, {
   createContext,
   useCallback,
@@ -69,9 +72,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
     [changeLanguage, currentLanguage, isLanguageReady]
   );
 
+  const antdLocale = useMemo(
+    () => (currentLanguage?.startsWith('zh') ? zhCN : enUS),
+    [currentLanguage]
+  );
+
   return (
     <LanguageContext.Provider value={value}>
-      {children}
+      <ConfigProvider locale={antdLocale}>{children}</ConfigProvider>
     </LanguageContext.Provider>
   );
 };

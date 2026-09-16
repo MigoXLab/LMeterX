@@ -52,7 +52,6 @@ class TestTaskLifecycle:
         task.concurrent_users = 10
         task.spawn_rate = 2
         task.duration = 60
-        task.chat_type = 0
         task.headers = '{"Content-Type": "application/json"}'
         task.created_at = datetime.now()
         task.updated_at = datetime.now()

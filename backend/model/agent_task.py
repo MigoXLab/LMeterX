@@ -101,6 +101,7 @@ class AgentTaskCreateReq(BaseModel):
     request_timeout: float = Field(default=30.0, gt=0, le=3600)
     cluster_id: str = Field(default="local", min_length=1, max_length=64)
     dataset_file: Optional[str] = Field(default=None, max_length=2000)
+    dataset_id: Optional[str] = Field(default=None, max_length=40)
     # Server-side copy context. Values from the source task are never sent to
     # the browser; these flags only authorize inheritance during create/test.
     copy_source_task_id: Optional[str] = Field(default=None, max_length=40)

@@ -85,7 +85,6 @@ def sample_task_data():
         "duration": 300,
         "concurrent_users": 10,
         "spawn_rate": 2,
-        "chat_type": 1,
         "stream_mode": True,
         "headers": [],
     }
@@ -103,7 +102,6 @@ def sample_task_response():
         "concurrent_users": 10,
         "duration": 300,
         "spawn_rate": 2,
-        "chat_type": 1,
         "stream_mode": True,
         "error_message": "",
         "created_at": "2025-01-01T00:00:00Z",

@@ -28,7 +28,7 @@ LMeterX 是一个专业的性能测试平台，覆盖大模型推理服务、通
 - **全模态全场景**：支持 GPT、Claude、Llama 及 [MinerU](https://github.com/opendatalab/MinerU)、[dots.ocr](https://github.com/rednote-hilab/dots.ocr) 等文档解析模型，涵盖文本、多模态与流式交互。
 - **多协议模型接口**：原生支持 OpenAI `/v1/chat/completions`、`/v1/responses`&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />、Anthropic `/v1/messages`、Embeddings 与自定义模型接口，同时支持通用 HTTP 业务接口。
 - **多模式高并发压测**：支持固定/阶梯式并发&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />策略，支持模拟超高并发，精准定位性能拐点与系统容量上限。
-- **内置双模数据集**：预置高质量自建集与 ShareGPT 标准集，支持一键调用，大幅降低测试准备门槛。
+- **系统数据集库**：一次上传，可在 LLM、HTTP、A2A、MCP 任务中按类型选用，系统预置公开 ShareGPT 文本集。
 - **智能自动化预热**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持模型自动预热，消除冷启动干扰，确保测试数据精准可靠。
 - **多维指标可视化**：集成 TTFT、RPS、TPS 及吞吐分布等核心指标，支持性能数据实时追踪与可视化&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />。
 - **系统资源监控**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持压测机 CPU、内存与网络带宽的实时监控，精准排除本地资源瓶颈
@@ -88,11 +88,11 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 - 在浏览器打开 http://localhost:8080（详见下方「使用指南」）
 
 ### 数据目录与挂载说明
-- `./data` → 挂载到 `engine` 容器的 `/app/data`（大规模数据集不会打包进镜像，便于更新）
+- `./data` → 挂载到 `engine` 容器的 `/app/data`（预置 ShareGPT 源文件、多模态本地图片；大规模数据不打进镜像）
 - `./logs` → 后端与压测引擎的统一日志输出目录
-- `./upload_files` → 用户上传的自定义文件及导出的报表
+- `./upload_files` → 数据集库文件、任务上传文件及导出报表
 
-如需准备自定义数据，请参考 [数据集使用指南](docs/DATASET_GUIDE.md)。
+数据集统一为 UTF-8 JSONL（每行一个 JSON 对象），类型需与任务匹配：`llm`、`business`（HTTP）、`a2a`、`mcp`。行格式、字段规则与图片挂载见 [数据集使用指南](docs/DATASET_GUIDE.md)。
 
 ### 使用指南
 
@@ -105,9 +105,12 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
    - 2.1 压测环境: 选择任务要运行的 Engine 集群；单机部署选择默认的 `Local`
    - 2.2 基础信息: 对于 OpenAI 与 Claude 接口，只需填写 API 类型、路径、模型与响应模式，也可在请求参数中补充完整 payload
    - 2.3 OpenAI Responses: API 类型选择 `OpenAI Responses`，路径填写 `/v1/responses`；请求体使用 `input` 而不是 `messages`
-   - 2.4 数据与负载: 根据需要选择数据集类型、并发数、压测时间等
+   - 2.4 数据与负载: 从数据集库选择、上传 `.jsonl`、粘贴 JSONL，或不使用数据集而沿用请求体。再配置并发与时长。
+     - OpenAI / Claude Chat：每行需有 `prompt` 或 `messages`；可选 `system_prompt` 替换 system 消息 / Claude 顶层 `system`。有 `messages` 时替换整段对话，否则用 `prompt` 替换用户消息。
+     - OpenAI Responses：每行使用 `prompt`、`input` 或 `messages`（写入 `input`）。
+     - 自定义 Chat / Embeddings：每行是**完整请求体**。
    - 2.5 字段映射: 仅自定义 API 等非标准接口需要配置 prompt、content、reasoning_content、usage 等字段路径
-   > 💡 **提示**: 若需自定义图文数据集压测，请参考 [数据集使用指南](docs/DATASET_GUIDE.md) 了解数据准备、挂载与常见问题排查。
+   > 💡 **提示**: 行格式、ShareGPT 兼容说明与本地图片挂载见 [数据集使用指南](docs/DATASET_GUIDE.md)。
 3. **API 测试**: 在 测试任务 → 创建任务，点击基础信息面板的「测试」按钮，快速验证接口连通性（建议使用简短 prompt）
 4. **实时监控**: 访问 测试任务 → 日志/监控中心，查看全链路测试日志，快速定位异常
 5. **结果分析**: 进入 测试任务 → 结果，查看详细性能指标并导出报告
@@ -123,7 +126,7 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 3. 点击「测试连接」，确认服务可达
 4. 添加消息场景并设置权重，压测时按权重随机发送
 5. 选择执行方式：**同步**、**流式 SSE**，或 **异步提交 + 轮询**
-6. （可选）上传 `.jsonl` 数据集，为同一场景提供不同 `message`（每行需带 `scenario_id`）
+6. （可选）选用 `a2a` 类型数据集或上传 `.jsonl`，为同一场景提供不同 `message`。每行必填 `id`、`scenario_id`（须对应已配置场景）、`message`（`role` 为 `ROLE_USER`，`parts` 非空）。禁止多余字段；权重写在场景上。文件须覆盖任务中全部场景。
 7. 配置并发与时长后创建任务，在日志和结果中查看耗时与成功率
 
 #### MCP 工具调用压测
@@ -133,7 +136,7 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 1. 切换到 **MCP 工具调用**
 2. 填写 MCP Streamable HTTP 地址，点击「测试连接」发现可用工具
 3. 添加工具调用场景：选择工具名、填写 `arguments`，并设置权重
-4. （可选）上传 `.jsonl` 数据集，为同一工具提供不同参数（每行需带 `scenario_id`）
+4. （可选）选用 `mcp` 类型数据集或上传 `.jsonl`，为同一工具提供不同参数。每行必填 `id`、`scenario_id`（须对应已配置场景），`arguments` 为对象（可为 `{}`）。禁止多余字段；文件须覆盖任务中全部场景。
 5. 配置并发与时长后创建任务，在结果中查看工具调用延迟与成功率
 
 ## 🔧 配置说明
@@ -275,7 +278,7 @@ victoria-metrics:
 - [部署指南](docs/DEPLOYMENT_GUIDE_CN.md) - 详细部署说明
 - [跨多集群 Engine 部署指南](docs/MULTI_CLUSTER_GUIDE_CN.md) - 集群注册、Engine 接入、扩缩容与排查
 - [贡献指南](docs/CONTRIBUTING.md) - 参与开发指南
-- [数据集使用指南](docs/DATASET_GUIDE.md) - 自定义图文数据集准备与使用说明
+- [数据集使用指南](docs/DATASET_GUIDE.md) - LLM / HTTP / A2A / MCP 的 JSONL 格式与使用说明
 
 ## 👥 贡献者
 
@@ -286,9 +289,9 @@ victoria-metrics:
 
 ## 🗂️ 数据集引用说明
 
-> LMeterX 基于开源 ShareGPT 数据集构建测试样本，严格遵循原始许可要求。
+> 系统预置公开数据集 **ShareGPT V3 Partial**（`ShareGPT_V3_partial.jsonl`）会挂入数据集库，类型为 LLM 文本，每行为 `{"id","prompt"}`。样本来自开源 ShareGPT，遵循原始许可。
 
-- **数据来源**：使用 [ShareGPT 数据集](https://huggingface.co/datasets/learnanything/sharegpt_v3_unfiltered_cleaned_split) 作为原始对话语料
+- **数据来源**：[ShareGPT 数据集](https://huggingface.co/datasets/learnanything/sharegpt_v3_unfiltered_cleaned_split) 对话语料
 - **调整范围**：
   - 筛选高质量对话样本，剔除低质量或与压测场景无关的数据
   - 进行随机抽样，减轻数据规模的同时保留多样化对话

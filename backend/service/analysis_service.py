@@ -38,15 +38,6 @@ METRIC_TYPES = (
 )
 
 
-def _resolve_dataset_type(task: Task) -> str:
-    if (
-        getattr(task, "test_data", None) == "default"
-        and getattr(task, "chat_type", None) == 1
-    ):
-        return "Image-Text Dialogue Dataset"
-    return "Text conversation dataset"
-
-
 def _first_non_empty(*values: Optional[float]) -> Optional[float]:
     for value in values:
         if value is not None:
@@ -337,8 +328,6 @@ async def extract_task_metrics(  # noqa: C901
             if avg_completion > 0:
                 metrics_data["avg_completion_tokens_per_req"] = avg_completion
 
-        dataset_type = _resolve_dataset_type(task)
-
         return {
             "task_id": task_id,
             "task_name": getattr(task, "name", f"Task {task_id}"),
@@ -346,7 +335,7 @@ async def extract_task_metrics(  # noqa: C901
             "concurrent_users": getattr(task, "concurrent_users", 0),
             "duration": f"{getattr(task, 'duration', 0)}s",
             "stream_mode": truthy(getattr(task, "stream_mode", False)),
-            "dataset_type": dataset_type,
+            "dataset_type": "Text conversation dataset",
             **metrics_data,
         }
 

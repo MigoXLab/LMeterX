@@ -15,6 +15,7 @@ from api.api_analysis import router as analysis
 from api.api_auth import router as auth
 from api.api_cluster import router as cluster
 from api.api_collection import router as collection
+from api.api_dataset import router as dataset
 from api.api_engine import router as engine
 from api.api_http_task import router as http_task
 from api.api_llm_task import router as llm_task
@@ -45,12 +46,14 @@ async def lifespan(app: FastAPI):
 
     from db.mysql import async_session_factory
     from service.agent_task_service import migrate_legacy_agent_headers
+    from service.dataset_service import ensure_default_datasets
     from service.engine_service import reset_all_engines_heartbeat
     from utils.credential_crypto import CredentialEncryptionError
 
     # Reset engine heartbeats to epoch to avoid stale engines on startup
     async with async_session_factory() as session:
         await reset_all_engines_heartbeat(session)
+        await ensure_default_datasets(session)
         try:
             await migrate_legacy_agent_headers(session)
         except CredentialEncryptionError as exc:
@@ -186,6 +189,7 @@ app.include_router(analysis, prefix="/api/analyze", tags=["analysis"])
 app.include_router(auth, prefix="/api/auth", tags=["auth"])
 app.include_router(cluster, prefix="/api/clusters", tags=["clusters"])
 app.include_router(collection, prefix="/api/collections", tags=["collections"])
+app.include_router(dataset, prefix="/api/datasets", tags=["datasets"])
 app.include_router(engine, prefix="/api/engine", tags=["engine"])
 app.include_router(system, prefix="/api/system", tags=["system"])
 app.include_router(task, prefix="/api/tasks", tags=["tasks"])

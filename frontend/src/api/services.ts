@@ -7,6 +7,7 @@
 
 import { Dataset } from '../types';
 import { LoginResponse, UserInfo } from '../types/auth';
+import { getToken } from '../utils/auth';
 import {
   AgentTask,
   AgentTaskPayload,
@@ -99,15 +100,36 @@ const extractFile = (fileLike: FileLike): File => {
 
 // Dataset API methods
 export const datasetApi = {
-  // Get all datasets
-  getAllDatasets: () => api.get<Dataset[]>('/datasets'),
+  getAllDatasets: (params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+    dataset_type?: string;
+  }) =>
+    api.get<{
+      data: Dataset[];
+      pagination: {
+        total: number;
+        page: number;
+        page_size: number;
+        total_pages: number;
+      };
+    }>('/datasets', { params }),
 
   // Get a specific dataset by ID
   getDataset: (id: string) => api.get<Dataset>(`/datasets/${id}`),
 
   // Create a new dataset
-  createDataset: (formData: FormData) =>
-    api.uploadFile<Dataset>('/datasets', formData),
+  createDataset: (
+    formData: FormData,
+    onUploadProgress?: (progress: { loaded: number; total?: number }) => void
+  ) =>
+    api.uploadFile<Dataset>('/datasets', formData, {
+      onUploadProgress,
+      // Large datasets can take longer than the default API timeout to upload
+      // and validate on the server.
+      timeout: 30 * 60 * 1000,
+    }),
 
   // Update a dataset
   updateDataset: (id: string, data: Partial<Dataset>) =>
@@ -115,6 +137,21 @@ export const datasetApi = {
 
   // Delete a dataset
   deleteDataset: (id: string) => api.delete<void>(`/datasets/${id}`),
+
+  downloadDataset: async (id: string): Promise<Blob> => {
+    const token = getToken();
+    const response = await fetch(
+      `${getApiBaseUrl()}/datasets/${encodeURIComponent(id)}/download`,
+      {
+        credentials: 'include',
+        headers: token ? { 'X-Authorization': `Bearer ${token}` } : {},
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`Download failed (${response.status})`);
+    }
+    return response.blob();
+  },
 };
 
 // Cluster API methods

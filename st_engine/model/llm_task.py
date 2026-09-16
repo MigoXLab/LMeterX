@@ -140,7 +140,6 @@ class TaskCreateReq(BaseModel):
     )
     concurrent_users: int = Field(..., ge=1, description="Number of concurrent users")
     spawn_rate: int = Field(ge=1, description="Number of users to spawn per second")
-    chat_type: int = Field(ge=0, description="Type of chat interaction")
     warmup_enabled: bool = Field(
         default=True, description="Whether to enable warmup mode"
     )
@@ -238,11 +237,8 @@ class Task(Base):
     step_duration = Column(Integer, nullable=True)
     step_max_users = Column(Integer, nullable=True)
     step_sustain_duration = Column(Integer, nullable=True)
-    chat_type = Column(Integer, nullable=True)
     warmup_enabled = Column(Integer, nullable=True, default=1, server_default="1")
     warmup_duration = Column(Integer, nullable=True, default=120, server_default="120")
-    log_file = Column(Text, nullable=True)
-    result_file = Column(Text, nullable=True)
     cert_file = Column(String(255), nullable=True)
     key_file = Column(String(255), nullable=True)
     headers = Column(Text, nullable=True)

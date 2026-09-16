@@ -55,6 +55,7 @@ from utils.auth import get_current_user, is_admin_user
 from utils.auth_settings import get_auth_settings
 from utils.converters import kv_items_to_dict, safe_isoformat
 from utils.error_handler import ErrorMessages, ErrorResponse
+from utils.file_cleanup import cleanup_task_files
 from utils.logger import logger
 from utils.request_headers import (
     merge_headers,
@@ -308,11 +309,25 @@ async def create_http_task_svc(
             "Request body exceeds 100000 characters. Please simplify payload or use dataset upload."
         )
 
+    managed_dataset_path: Optional[str] = None
     headers_json = json.dumps(await _resolved_copy_headers(request, body))
     cookies_json = json.dumps(kv_items_to_dict(body.cookies)) if body.cookies else "{}"
 
     db = request.state.db
     try:
+        from service.dataset_service import (
+            authorize_managed_dataset_path,
+            resolve_dataset_for_task,
+        )
+
+        managed_dataset_path = await resolve_dataset_for_task(
+            request, body.dataset_id, "business", task_id
+        )
+        if not managed_dataset_path:
+            managed_dataset_path = await authorize_managed_dataset_path(
+                request, body.dataset_file, "business", task_id
+            )
+
         user = get_current_user(request)
         created_by: Optional[str] = None
         if isinstance(user, dict):
@@ -335,7 +350,7 @@ async def create_http_task_svc(
             headers=headers_json,
             cookies=cookies_json,
             request_body=body.request_body or "",
-            dataset_file=body.dataset_file or "",
+            dataset_file=managed_dataset_path or body.dataset_file or "",
             curl_command=body.curl_command or "",
             success_assert=body.success_assert or "",
             concurrent_users=body.concurrent_users,
@@ -366,8 +381,15 @@ async def create_http_task_svc(
             status="created",
             message="HTTP task created successfully",
         )
+    except ErrorResponse:
+        await db.rollback()
+        if managed_dataset_path:
+            cleanup_task_files(task_id, test_data_path=managed_dataset_path)
+        raise
     except Exception as e:
         await db.rollback()
+        if managed_dataset_path:
+            cleanup_task_files(task_id, test_data_path=managed_dataset_path)
         logger.error("Failed to create HTTP task: {}", e, exc_info=True)
         raise ErrorResponse.internal_server_error("Failed to create HTTP task")
 

@@ -39,8 +39,6 @@ class HttpTask(Base):
     step_duration = Column(Integer, nullable=True)
     step_max_users = Column(Integer, nullable=True)
     step_sustain_duration = Column(Integer, nullable=True)
-    log_file = Column(Text, nullable=True)
-    result_file = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     engine_id = Column(String(64), nullable=True)
     cluster_id = Column(String(64), nullable=True)

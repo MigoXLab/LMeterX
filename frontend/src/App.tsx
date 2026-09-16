@@ -29,6 +29,7 @@ import TasksPage from './pages/Tasks';
 import Collections from './pages/Collections';
 import CollectionDetail from './pages/CollectionDetail';
 import Dashboard from './pages/Dashboard';
+import Datasets from './pages/Datasets';
 import { isAuthenticated, getStoredUser } from './utils/auth';
 import { getLdapEnabled } from './utils/runtimeConfig';
 
@@ -165,6 +166,14 @@ const App: React.FC = () => {
                   />
                   <Route path='/dashboard' element={<Dashboard />} />
                   <Route path='/jobs' element={<TasksPage />} />
+                  <Route
+                    path='/datasets'
+                    element={
+                      <RequireAuth>
+                        <Datasets />
+                      </RequireAuth>
+                    }
+                  />
                   <Route
                     path='/agent-jobs'
                     element={<Navigate to='/jobs?tab=a2a' replace />}

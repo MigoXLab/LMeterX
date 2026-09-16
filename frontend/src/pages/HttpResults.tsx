@@ -34,7 +34,7 @@ import React, {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { httpTaskApi, monitoringApi, clusterApi } from '@/api/services';
 import { LoadingSpinner } from '@/components/ui/LoadingState';
@@ -45,6 +45,7 @@ import { formatDate } from '@/utils/date';
 
 const HttpResults: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const getTabStorageKey = useCallback(
     (jobId?: string) => `http-results-active-tab:${jobId || 'unknown'}`,
@@ -1277,6 +1278,8 @@ const HttpResults: React.FC = () => {
           title={t('pages.results.title', 'Test Results')}
           icon={<FileTextOutlined />}
           level={3}
+          onBack={() => navigate('/jobs?tab=http')}
+          backText={t('pages.results.backToJobs')}
         />
       </div>
 

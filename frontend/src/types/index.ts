@@ -7,14 +7,21 @@
 
 // Dataset Types
 export interface Dataset {
-  _id: string;
+  id: string;
   name: string;
   description?: string;
   created_at: string;
   updated_at: string;
   file_name: string;
-  object_name: string;
-  prompt_count: number;
+  file_size: number;
+  record_count: number;
+  dataset_types: Array<'business' | 'llm' | 'a2a' | 'mcp'>;
+  tags: string[];
+  created_by: string;
+  is_public: boolean;
+  is_system: boolean;
+  can_download: boolean;
+  can_manage: boolean;
 }
 
 // Job status/types (legacy)

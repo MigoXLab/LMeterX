@@ -70,7 +70,6 @@ class GlobalConfig:
     model_name: Optional[str] = None
     user_prompt: Optional[str] = None
     stream_mode: bool = True
-    chat_type: int = 0  # Built-in dataset selector (0=text, 1=ShareGPT, 2=vision)
     cert_file: Optional[str] = None
     key_file: Optional[str] = None
     cert_config: Optional[Union[str, Tuple[str, str]]] = None
@@ -90,6 +89,7 @@ class FieldMapping:
     end_field: str = ""
     content: str = ""
     reasoning_content: str = ""
+    reasoning_content_aliases: Tuple[str, ...] = ()
     prompt: str = ""
     image: str = ""
     prompt_tokens: str = ""
@@ -369,9 +369,6 @@ class ConfigManager:
         config.stream_mode = ConfigManager._as_bool(
             _get_option("stream_mode", config.stream_mode), default=config.stream_mode
         )
-        config.chat_type = ConfigManager._safe_int(
-            _get_option("chat_type", config.chat_type), default=config.chat_type
-        )
         config.cert_file = ConfigManager._normalize_optional_str(
             _get_option("cert_file", config.cert_file)
         )
@@ -460,6 +457,9 @@ class ConfigManager:
                     "choices.0.delta.reasoning_content"
                     if stream_mode
                     else "choices.0.message.reasoning_content"
+                ),
+                reasoning_content_aliases=(
+                    ("choices.0.delta.reasoning",) if stream_mode else ()
                 ),
                 prompt="messages.0.content.0.text",
                 image="messages.0.content.-1.image_url.url",
@@ -577,6 +577,15 @@ class ConfigManager:
             return ConfigManager.generate_field_mapping_by_api_type(
                 getattr(config, "api_type", "custom-chat"), config.stream_mode
             )
+
+        defaults = ConfigManager.generate_field_mapping_by_api_type(
+            getattr(config, "api_type", "custom-chat"), config.stream_mode
+        )
+        if (
+            mapping.reasoning_content == defaults.reasoning_content
+            and not mapping.reasoning_content_aliases
+        ):
+            mapping.reasoning_content_aliases = defaults.reasoning_content_aliases
 
         return mapping
 

@@ -83,6 +83,7 @@ class TestTaskAPI:
     def test_create_task_success(self, mock_create_task):
         task_data = {
             "temp_task_id": "temp_123",
+            "dataset_id": "dataset_123",
             "name": "Performance Test Task",
             "target_host": "https://api.example.com",
             "api_path": "/chat/completions",
@@ -90,7 +91,6 @@ class TestTaskAPI:
             "duration": 300,
             "concurrent_users": 10,
             "spawn_rate": 2,
-            "chat_type": 1,
             "stream_mode": True,
             "headers": [],
         }
@@ -106,6 +106,7 @@ class TestTaskAPI:
         assert data["task_id"] == "task_456"
         assert data["status"] == "created"
         assert "successfully" in data["message"]
+        assert mock_create_task.call_args.args[1].dataset_id == "dataset_123"
 
     def test_create_task_validation_error(self):
         invalid_data = {"name": "Test Task"}
@@ -238,7 +239,6 @@ class TestTaskErrors:
             "duration": 300,
             "concurrent_users": 10,
             "spawn_rate": 2,
-            "chat_type": 1,
             "stream_mode": True,
             "headers": [],
         }

@@ -16,7 +16,6 @@ export const DEFAULT_FORM_VALUES = {
   CONCURRENT_USERS: 1,
   SPAWN_RATE: 1,
   STREAM_MODE: true,
-  CHAT_TYPE: 0,
   DATA_FORMAT: 'json',
   DURATION: 60,
   MODEL: 'gpt-3.5-turbo',

@@ -6,7 +6,6 @@ import {
   ExperimentOutlined,
   InfoCircleOutlined,
   PlusOutlined,
-  UploadOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -26,19 +25,20 @@ import {
   Tag,
   Tooltip,
   Typography,
-  Upload,
 } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { agentTaskApi, uploadDatasetFile } from '@/api/services';
 import RequestHeadersEditor from '@/components/RequestHeadersEditor';
+import TaskDatasetFields, {
+  TaskDatasetSource,
+} from '@/components/TaskDatasetFields';
 import { useI18n } from '@/hooks/useI18n';
 import { AgentTask, AgentTaskPayload, Cluster } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import { INHERITED_SECRET_PLACEHOLDER } from '@/utils/requestHeaders';
 
 const { TextArea } = Input;
-const { Dragger } = Upload;
 const { Text } = Typography;
 const SYSTEM_CONTENT_TYPE_HEADER = {
   key: 'Content-Type',
@@ -90,6 +90,12 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
   const [datasetUploading, setDatasetUploading] = useState(false);
   const [datasetFileName, setDatasetFileName] = useState('');
   const [tempTaskId, setTempTaskId] = useState(`temp-${Date.now()}`);
+  const datasetSource =
+    (Form.useWatch('dataset_source', form) as TaskDatasetSource | undefined) ||
+    'none';
+  const inheritSourceDataset = Boolean(
+    Form.useWatch('inherit_source_dataset', form)
+  );
 
   const initialValues = useMemo(
     () => ({
@@ -101,7 +107,9 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
       a2a_tenant: '',
       a2a_mode: 'async_poll',
       headers: [{ ...SYSTEM_CONTENT_TYPE_HEADER }],
+      dataset_source: 'none',
       dataset_file: '',
+      dataset_id: undefined,
       copy_source_task_id: undefined,
       inherit_source_headers: false,
       inherit_source_dataset: false,
@@ -138,6 +146,13 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
       copy_source_task_id: initialData.copy_source_task_id,
       inherit_source_headers: initialData.inherit_source_headers || false,
       inherit_source_dataset: initialData.inherit_source_dataset || false,
+      dataset_source: initialData.dataset_id
+        ? 'managed'
+        : initialData.dataset_file ||
+            initialData.dataset_configured ||
+            initialData.inherit_source_dataset
+          ? 'upload'
+          : 'none',
     });
     const cases =
       protocol === 'a2a' ? initialData.a2a_scenarios : initialData.mcp_calls;
@@ -201,10 +216,19 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
       spawn_rate: values.spawn_rate,
       request_timeout: values.request_timeout,
       cluster_id: values.cluster_id || 'local',
-      dataset_file: values.dataset_file || undefined,
+      dataset_file:
+        values.dataset_source === 'upload'
+          ? values.dataset_file || undefined
+          : undefined,
+      dataset_id:
+        values.dataset_source === 'managed'
+          ? values.dataset_id || undefined
+          : undefined,
       copy_source_task_id: values.copy_source_task_id || undefined,
       inherit_source_headers: Boolean(values.inherit_source_headers),
-      inherit_source_dataset: Boolean(values.inherit_source_dataset),
+      inherit_source_dataset:
+        values.dataset_source === 'upload' &&
+        Boolean(values.inherit_source_dataset),
       ...(protocol === 'a2a'
         ? {
             a2a_mode: values.a2a_mode,
@@ -374,7 +398,9 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
         throw new Error(t('components.createAgentTaskForm.datasetPathMissing'));
       }
       form.setFieldsValue({
+        dataset_source: 'upload',
         dataset_file: datasetPath,
+        dataset_id: undefined,
         inherit_source_dataset: false,
       });
       setDatasetFileName(file.name);
@@ -720,9 +746,6 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
             )}
           </Button>
         </Form.Item>
-        <Form.Item name='dataset_file' hidden>
-          <Input />
-        </Form.Item>
         <Form.Item name='copy_source_task_id' hidden>
           <Input />
         </Form.Item>
@@ -732,44 +755,36 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
         <Form.Item name='inherit_source_dataset' hidden>
           <Input />
         </Form.Item>
-        <Form.Item
-          label={labelWithTooltip(
-            t('components.createAgentTaskForm.optionalDataset'),
-            t('components.createAgentTaskForm.protocolDatasetTooltip')
+        <TaskDatasetFields
+          source={datasetSource}
+          sourceName='dataset_source'
+          datasetType={protocol}
+          uploadValueName='dataset_file'
+          uploadValueRequired={!inheritSourceDataset}
+          uploadFileName={datasetFileName}
+          uploadLoading={datasetUploading}
+          uploadTitle={t('components.createAgentTaskForm.uploadJsonlPrompt')}
+          uploadHint={t(
+            protocol === 'a2a'
+              ? 'components.createAgentTaskForm.a2aJsonlHint'
+              : 'components.createAgentTaskForm.mcpJsonlHint'
           )}
-        >
-          <Dragger
-            accept='.jsonl,application/jsonl'
-            maxCount={1}
-            customRequest={handleDatasetUpload}
-            onRemove={handleDatasetRemove}
-            fileList={
-              datasetFileName
-                ? [
-                    {
-                      uid: '-1',
-                      name: datasetFileName,
-                      status: 'done' as const,
-                    },
-                  ]
-                : []
-            }
-            disabled={datasetUploading}
-            showUploadList={{ showRemoveIcon: true }}
-          >
-            <p className='ant-upload-drag-icon'>
-              <UploadOutlined />
-            </p>
-            <p>{t('components.createAgentTaskForm.uploadJsonlPrompt')}</p>
-            <Text type='secondary'>
-              {t(
-                protocol === 'a2a'
-                  ? 'components.createAgentTaskForm.a2aJsonlHint'
-                  : 'components.createAgentTaskForm.mcpJsonlHint'
-              )}
-            </Text>
-          </Dragger>
-        </Form.Item>
+          showUploadRemoveIcon
+          sourceTooltip={t(
+            'components.createAgentTaskForm.protocolDatasetTooltip'
+          )}
+          onSourceChange={source => {
+            setDatasetFileName('');
+            form.setFieldsValue({
+              dataset_id: undefined,
+              dataset_file: undefined,
+              inherit_source_dataset: false,
+              dataset_source: source,
+            });
+          }}
+          onUpload={handleDatasetUpload}
+          onUploadRemove={handleDatasetRemove}
+        />
         {protocol === 'a2a' ? (
           <>
             <Form.Item

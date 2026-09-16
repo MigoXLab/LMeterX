@@ -5,7 +5,8 @@
  * @copyright 2025
  */
 
-import { Typography } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Button, Typography } from 'antd';
 import React from 'react';
 
 const { Title, Text } = Typography;
@@ -23,6 +24,10 @@ interface PageHeaderProps {
   extra?: React.ReactNode;
   /** Custom className */
   className?: string;
+  /** Optional back action shown at the top-left */
+  onBack?: () => void;
+  /** Label for the back button */
+  backText?: React.ReactNode;
 }
 
 /**
@@ -35,9 +40,21 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   level = 3,
   extra,
   className = 'page-header',
+  onBack,
+  backText,
 }) => {
   return (
     <div className={className}>
+      {onBack && (
+        <Button
+          type='link'
+          icon={<ArrowLeftOutlined />}
+          onClick={onBack}
+          style={{ paddingLeft: 0, marginBottom: 4, height: 28 }}
+        >
+          {backText}
+        </Button>
+      )}
       <div className='flex justify-between align-center'>
         <div
           style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 0 }}

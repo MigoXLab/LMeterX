@@ -683,7 +683,6 @@ def _serialize_task(task, task_type: str) -> dict:
                 "key_file": getattr(task, "key_file", None),
                 "warmup_enabled": getattr(task, "warmup_enabled", 1),
                 "warmup_duration": getattr(task, "warmup_duration", 120),
-                "chat_type": getattr(task, "chat_type", 0),
                 "test_data": getattr(task, "test_data", ""),
             }
         )

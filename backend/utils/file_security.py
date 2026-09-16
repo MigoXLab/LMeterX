@@ -196,7 +196,14 @@ def validate_upload_path(upload_path: str, base_upload_dir: str) -> None:
     real_base_dir = os.path.realpath(base_upload_dir)
     real_upload_path = os.path.realpath(upload_path)
 
-    if not real_upload_path.startswith(real_base_dir):
+    try:
+        is_within_upload_dir = (
+            os.path.commonpath([real_base_dir, real_upload_path]) == real_base_dir
+        )
+    except ValueError:
+        is_within_upload_dir = False
+
+    if not is_within_upload_dir:
         raise ValueError("Upload path is outside allowed directory")
 
 

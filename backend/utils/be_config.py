@@ -15,10 +15,12 @@ if os.path.exists("/app") and os.getcwd().startswith("/app"):
     # Docker environment: use /app/xxx
     LOG_DIR = "/app/logs"
     UPLOAD_FOLDER = "/app/upload_files"
+    DATA_FOLDER = "/app/data"
 else:
     # Local development
     LOG_DIR = os.path.join(BASE_DIR, "logs")
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "upload_files")
+    DATA_FOLDER = os.path.join(BASE_DIR, "data")
 
 LOG_TASK_DIR = os.path.join(LOG_DIR, "task")
 

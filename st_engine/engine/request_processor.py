@@ -493,16 +493,18 @@ class StreamProcessor:
                         metrics.usage[dest_key] = val
 
         # 2. Extract Reasoning Content (Chain of Thought)
-        if field_mapping.reasoning_content:
-            reasoning_chunk_raw = StreamProcessor.get_field_value(
-                chunk_data, field_mapping.reasoning_content
-            )
-            # Only treat actual non-empty strings as valid reasoning content.
-            # get_field_value returns "" for missing/null fields; non-str types
-            # (dict, list, int …) are never valid text content.
-            reasoning_chunk = (
-                reasoning_chunk_raw if isinstance(reasoning_chunk_raw, str) else ""
-            )
+        if field_mapping.reasoning_content or field_mapping.reasoning_content_aliases:
+            reasoning_chunk = ""
+            for path in (
+                field_mapping.reasoning_content,
+                *field_mapping.reasoning_content_aliases,
+            ):
+                if not path:
+                    continue
+                value = StreamProcessor.get_field_value(chunk_data, path)
+                if isinstance(value, str) and value:
+                    reasoning_chunk = value
+                    break
 
             if reasoning_chunk:
                 if not metrics.reasoning_is_active:
@@ -1050,6 +1052,15 @@ class PayloadBuilder:
             if not user_message_found:
                 messages.append(user_message)
 
+        system_prompt = prompt_data.get("system_prompt") if prompt_data else None
+        if isinstance(system_prompt, str):
+            for msg in messages:
+                if isinstance(msg, dict) and msg.get("role") == "system":
+                    msg["content"] = system_prompt
+                    break
+            else:
+                messages.insert(0, {"role": "system", "content": system_prompt})
+
         # Update messages in payload (preserves all other parameters)
         payload["messages"] = messages
 
@@ -1202,6 +1213,9 @@ class PayloadBuilder:
 
         # Update messages in payload (preserves all other parameters)
         payload["messages"] = messages
+        system_prompt = prompt_data.get("system_prompt") if prompt_data else None
+        if isinstance(system_prompt, str):
+            payload["system"] = system_prompt
 
     def _update_embeddings_payload(
         self, payload: Dict[str, Any], user_prompt: str

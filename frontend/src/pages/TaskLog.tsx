@@ -34,7 +34,7 @@ import React, {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { jobApi, logApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingState';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -126,13 +126,13 @@ const sortRenderedLogLines = (lines: string[]): string[] =>
 
 const TaskLogs: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [logSource] = useState<'engine' | 'backend'>('engine');
   const [loading, setLoading] = useState(true);
   const [logLoading, setLogLoading] = useState(false);
   const [hasLogLoadCompleted, setHasLogLoadCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string>('');
   const [filteredLogs, setFilteredLogs] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [fullscreen, setFullscreen] = useState(false);
@@ -187,7 +187,6 @@ const TaskLogs: React.FC = () => {
     setHasLogLoadCompleted(false);
     setIsHistoryLoading(false);
     setHasMoreHistory(false);
-    setLogs('');
     setFilteredLogs('');
     setScrollTop(0);
     lastLogScrollTopRef.current = 0;
@@ -250,7 +249,6 @@ const TaskLogs: React.FC = () => {
     hasMoreHistoryRef.current = false;
     logEntryKeysRef.current.clear();
     setHasMoreHistory(false);
-    setLogs(content);
     setFilteredLogs(content);
     return content;
   };
@@ -460,15 +458,13 @@ const TaskLogs: React.FC = () => {
 
       if (hasSlsLines) {
         slsCursorRef.current = nextCursor;
-        setLogs(prev => {
+        setFilteredLogs(prev => {
           const baseLines = cursor ? prev.split('\n').filter(Boolean) : [];
           const next = Array.from(new Set([...baseLines, ...lines]));
           const sortedLines = sortRenderedLogLines(next);
-          const trimmed = (
+          return (
             tailLines === 0 ? sortedLines : sortedLines.slice(-tailLines)
           ).join('\n');
-          setFilteredLogs(trimmed);
-          return trimmed;
         });
       } else if (cursor) {
         slsCursorRef.current = nextCursor;
@@ -492,7 +488,6 @@ const TaskLogs: React.FC = () => {
           if (fetchError) setFetchError(null);
           return;
         } catch (fallbackErr) {
-          setLogs('');
           setFilteredLogs('');
           if (error) setError(null);
           return;
@@ -512,7 +507,6 @@ const TaskLogs: React.FC = () => {
       }
 
       if (slsUnavailable) {
-        setLogs('');
         setFilteredLogs('');
         if (error) setError(null);
         if (fetchError) setFetchError(null);
@@ -603,14 +597,12 @@ const TaskLogs: React.FC = () => {
       setHasMoreHistory(nextOffset > 0);
 
       if (olderLines.length > 0) {
-        setLogs(prev => {
-          const next = sortRenderedLogLines([
+        setFilteredLogs(prev =>
+          sortRenderedLogLines([
             ...olderLines,
             ...prev.split('\n').filter(Boolean),
-          ]).join('\n');
-          setFilteredLogs(next);
-          return next;
-        });
+          ]).join('\n')
+        );
 
         requestAnimationFrame(() => {
           const currentContainer = logContainerRef.current;
@@ -1364,6 +1356,8 @@ const TaskLogs: React.FC = () => {
               title={t('pages.taskLog.title', '任务日志')}
               icon={<MonitorOutlined />}
               level={3}
+              onBack={() => navigate('/jobs')}
+              backText={t('pages.results.backToJobs')}
               extra={
                 isStatusRefreshing && (
                   <Tooltip title='refreshing...'>
@@ -1413,6 +1407,8 @@ const TaskLogs: React.FC = () => {
           title={t('pages.taskLog.title', '任务日志')}
           icon={<MonitorOutlined />}
           level={3}
+          onBack={() => navigate('/jobs')}
+          backText={t('pages.results.backToJobs')}
           extra={
             isStatusRefreshing && (
               <Tooltip title='refreshing...'>

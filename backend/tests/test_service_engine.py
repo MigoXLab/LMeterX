@@ -181,7 +181,6 @@ class TestClaimTask:
         task.key_file = None
         task.warmup_enabled = 1
         task.warmup_duration = 120
-        task.chat_type = 0
         task.test_data = ""
         task.load_mode = "fixed"
         task.step_start_users = None

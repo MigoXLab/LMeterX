@@ -9,11 +9,27 @@ import tempfile
 import pytest
 
 from utils.dataset_loader import (
+    init_prompt_queue,
     init_prompt_queue_from_string,
     load_dataset_file,
     load_dataset_string,
     parse_data_line,
 )
+
+
+def test_init_prompt_queue_loads_explicit_dataset_path(tmp_path):
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text('{"id":"1","prompt":"hello"}\n', encoding="utf-8")
+
+    prompt_queue = init_prompt_queue(test_data=str(dataset))
+
+    assert prompt_queue.qsize() == 1
+    assert prompt_queue.get()["prompt"] == "hello"
+
+
+def test_init_prompt_queue_rejects_legacy_default_marker():
+    with pytest.raises(ValueError, match="Invalid test_data"):
+        init_prompt_queue(test_data="default")
 
 
 @pytest.fixture

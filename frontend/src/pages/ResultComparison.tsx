@@ -190,10 +190,10 @@ const TOOLTIP_METRIC_LABELS: Record<
   avg_total_tokens_per_req: 'Avg Total Tokens/Req',
   avg_completion_tokens_per_req: 'Avg Completion Tokens/Req',
   rps: 'RPS',
-  avg_response_time: 'Avg Response Time',
-  p95_response_time: 'P95 Response Time',
-  min_response_time: 'Min Response Time',
-  max_response_time: 'Max Response Time',
+  avg_response_time: 'Avg Latency',
+  p95_response_time: 'P95 Latency',
+  min_response_time: 'Min Latency',
+  max_response_time: 'Max Latency',
   success_rate: 'Success Rate',
 };
 
@@ -1404,45 +1404,45 @@ const ResultComparison: React.FC = () => {
     () => [
       {
         metricKey: 'avg_response_time',
-        title: t('pages.results.avgResponseTime', 'Avg Response Time'),
+        title: t('pages.results.meanLatency', 'Avg Latency (s)'),
         description: t(
           'pages.resultComparison.metricDescriptions.avgResponseTime',
-          'Average response time (seconds)'
+          'Average latency (seconds)'
         ),
-        chartTitle: t('pages.results.avgResponseTime', 'Avg Response Time'),
+        chartTitle: t('pages.results.meanLatency', 'Avg Latency (s)'),
         unit: 's',
         decimals: 3,
       },
       {
         metricKey: 'p95_response_time',
-        title: t('pages.results.p95ResponseTime', 'P95 Response Time'),
+        title: t('pages.results.p95Latency', 'P95 Latency (s)'),
         description: t(
           'pages.resultComparison.metricDescriptions.p95ResponseTime',
-          '95th percentile response time (seconds)'
+          '95th percentile latency (seconds)'
         ),
-        chartTitle: t('pages.results.p95ResponseTime', 'P95 Response Time'),
+        chartTitle: t('pages.results.p95Latency', 'P95 Latency (s)'),
         unit: 's',
         decimals: 3,
       },
       {
         metricKey: 'min_response_time',
-        title: t('pages.results.minResponseTime', 'Min Response Time'),
+        title: t('pages.results.minLatency', 'Min Latency (s)'),
         description: t(
           'pages.resultComparison.metricDescriptions.minResponseTime',
-          'Minimum response time (seconds)'
+          'Minimum latency (seconds)'
         ),
-        chartTitle: t('pages.results.minResponseTime', 'Min Response Time'),
+        chartTitle: t('pages.results.minLatency', 'Min Latency (s)'),
         unit: 's',
         decimals: 3,
       },
       {
         metricKey: 'max_response_time',
-        title: t('pages.results.maxResponseTime', 'Max Response Time'),
+        title: t('pages.results.maxLatency', 'Max Latency (s)'),
         description: t(
           'pages.resultComparison.metricDescriptions.maxResponseTime',
-          'Maximum response time (seconds)'
+          'Maximum latency (seconds)'
         ),
-        chartTitle: t('pages.results.maxResponseTime', 'Max Response Time'),
+        chartTitle: t('pages.results.maxLatency', 'Max Latency (s)'),
         unit: 's',
         decimals: 3,
       },

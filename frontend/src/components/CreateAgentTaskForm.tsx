@@ -565,7 +565,9 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
           if (msg && typeof msg === 'object' && Array.isArray(msg.parts)) {
             const scenarioId = msg.messageId || `scenario-${Date.now()}`;
             const scenarioName =
-              msg.parts?.[0]?.text?.slice(0, 30) || 'SendMessage';
+              msg.messageId ||
+              msg.parts?.[0]?.text?.slice(0, 30) ||
+              'SendMessage';
             const newScenario = {
               id: scenarioId,
               name: scenarioName,

@@ -16,8 +16,27 @@ import gevent
 from locust import HttpUser, events, task
 from locust.exception import StopUser
 
+# grpcio's C core drives I/O completion through background threads.  Locust
+# runs under gevent monkey-patching, which turns those threads into greenlets.
+# Because gevent is cooperative, the background greenlet that signals channel
+# readiness / response completion never runs while the main greenlet is blocked
+# in ``channel_ready_future().result()`` or ``unary_unary()()``, deadlocking the
+# user.  ``init_gevent()`` swaps grpc's pollset for a gevent-compatible one so
+# the two cooperate.  Must be called after gevent is patched (Locust patches
+# before importing the locustfile) and before any channel is created.
+try:
+    import gevent.monkey as _gevent_monkey
+
+    if _gevent_monkey.is_module_patched("socket"):
+        import grpc.experimental.gevent as _grpc_gevent
+
+        _grpc_gevent.init_gevent()
+except ImportError:
+    pass
+
 from engine.agent_protocol import (
     A2A_INTERRUPTED_STATES,
+    A2A_REST_METHODS,
     A2A_TERMINAL_STATES,
     WeightedScenarioCursor,
     a2a_message_request,
@@ -304,12 +323,14 @@ class AgentProtocolUser(HttpUser):
         self.protocol = self.config["protocol"]
         self.protocol_version = self.config["protocol_version"]
         self.endpoint = self.config["api_path"]
+        self.a2a_binding = self.config.get("a2a_binding", "jsonrpc")
         self.headers = dict(self.config.get("headers") or {})
         self.request_timeout = float(self.config.get("request_timeout", 30))
         self.rpc_id = 0
         self.session_id: Optional[str] = None
         self.mcp_tools: dict[str, dict[str, Any]] = {}
         self.task_id = self.environment.parsed_options.task_id
+        self._grpc_channel = None
         if self.protocol == "mcp":
             if self.config.get("token_count_path"):
                 METRICS.increment("token_count_configured")
@@ -321,6 +342,19 @@ class AgentProtocolUser(HttpUser):
             except Exception as exc:
                 METRICS.increment("failed_requests")
                 raise StopUser() from exc
+
+    def on_stop(self) -> None:
+        self._close_grpc_channel()
+
+    def _close_grpc_channel(self) -> None:
+        channel = self._grpc_channel
+        self._grpc_channel = None
+        if channel is None:
+            return
+        try:
+            channel.close()
+        except Exception:
+            logger.debug("error closing gRPC channel", exc_info=True)
 
     def _next_id(self) -> int:
         self.rpc_id += 1
@@ -486,6 +520,114 @@ class AgentProtocolUser(HttpUser):
                     response.status_code,
                 )
 
+    def _post_rest(
+        self,
+        rest_path: str,
+        body: dict[str, Any],
+        metric_name: str,
+        *,
+        timeout: Optional[float] = None,
+    ) -> tuple[list[dict[str, Any]], float, float, int]:
+        """HTTP+JSON (REST) binding – POST directly without JSON-RPC envelope."""
+        headers = {
+            **self.headers,
+            **self._trace_headers(),
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "A2A-Version": self.protocol_version,
+        }
+        endpoint = self.endpoint.rstrip("/") + rest_path
+        started = time.perf_counter()
+        with self.client.post(
+            endpoint,
+            json=body,
+            headers=headers,
+            name=metric_name,
+            timeout=timeout or self.request_timeout,
+            catch_response=True,
+            stream=True,
+        ) as response:
+            if response.status_code >= 400:
+                response.failure(f"HTTP {response.status_code}")
+                return (
+                    [],
+                    0.0,
+                    (time.perf_counter() - started) * 1000,
+                    response.status_code,
+                )
+            try:
+                messages, ttft, _ = self._read_response(response, started)
+                elapsed = (time.perf_counter() - started) * 1000
+                response.request_meta["response_time"] = elapsed
+                response.success()
+                return messages, ttft, elapsed, response.status_code
+            except (ValueError, json.JSONDecodeError) as exc:
+                response.failure(str(exc))
+                return (
+                    [],
+                    0.0,
+                    (time.perf_counter() - started) * 1000,
+                    response.status_code,
+                )
+
+    def _post_grpc(
+        self,
+        method: str,
+        params: dict[str, Any],
+        metric_name: str,
+        *,
+        timeout: Optional[float] = None,
+    ) -> tuple[list[dict[str, Any]], float, float, int]:
+        """gRPC binding – call A2AService/{method} via grpcio."""
+        try:
+            import grpc  # type: ignore[import-untyped]
+        except ImportError:
+            logger.error("grpcio not installed; gRPC binding unavailable")
+            return [], 0.0, 0.0, 500
+
+        if self._grpc_channel is None:
+            host = self.client.base_url
+            target = (
+                str(host).replace("http://", "").replace("https://", "").rstrip("/")
+            )
+            self._grpc_channel = grpc.insecure_channel(target)
+            try:
+                grpc.channel_ready_future(self._grpc_channel).result(timeout=10)
+            except grpc.FutureTimeoutError:
+                logger.error("gRPC channel not ready after 10s")
+                self._grpc_channel = None
+                return [], 0.0, 0.0, 503
+
+        full_method = f"/a2a.A2AService/{method}"
+        request_bytes = json.dumps(params).encode("utf-8")
+        started = time.perf_counter()
+        try:
+            response_bytes = self._grpc_channel.unary_unary(
+                full_method,
+                request_serializer=lambda x: x,
+                response_deserializer=lambda x: x,
+            )(request_bytes, timeout=timeout or self.request_timeout)
+            elapsed = (time.perf_counter() - started) * 1000
+            response_data = json.loads(response_bytes)
+            events.request.fire(
+                request_type="gRPC",
+                name=metric_name,
+                response_time=elapsed,
+                response_length=len(response_bytes),
+                exception=None,
+            )
+            return [response_data], elapsed, elapsed, 200
+        except Exception as exc:
+            elapsed = (time.perf_counter() - started) * 1000
+            events.request.fire(
+                request_type="gRPC",
+                name=metric_name,
+                response_time=elapsed,
+                response_length=0,
+                exception=exc,
+            )
+            return [], 0.0, elapsed, 500
+
     def _mcp_initialize(self) -> None:
         messages, _, _, status = self._post_rpc(
             "initialize",
@@ -642,16 +784,33 @@ class AgentProtocolUser(HttpUser):
             return_immediately=mode == "async_poll",
             tenant=self.config.get("a2a_tenant"),
         )
-        messages, first_event, submit_elapsed, status = self._post_rpc(
-            method,
-            params,
-            f"A2A {method} [{case['name']}]",
-            timeout=(
-                float(self.config.get("task_timeout", 300))
-                if mode == "stream"
-                else None
-            ),
+        binding = self.a2a_binding
+        task_timeout = (
+            float(self.config.get("task_timeout", 300)) if mode == "stream" else None
         )
+        metric_label = f"A2A {method} [{case['name']}]"
+        if binding == "http_json":
+            rest_path = A2A_REST_METHODS.get(method, "/message:send")
+            messages, first_event, submit_elapsed, status = self._post_rest(
+                rest_path,
+                params,
+                metric_label,
+                timeout=task_timeout,
+            )
+        elif binding == "grpc":
+            messages, first_event, submit_elapsed, status = self._post_grpc(
+                method,
+                params,
+                metric_label,
+                timeout=task_timeout,
+            )
+        else:
+            messages, first_event, submit_elapsed, status = self._post_rpc(
+                method,
+                params,
+                metric_label,
+                timeout=task_timeout,
+            )
         if status >= 400 or not is_a2a_send_response(messages):
             METRICS.increment("failed_requests")
             METRICS.increment("a2a_request_failures")
@@ -749,9 +908,25 @@ class AgentProtocolUser(HttpUser):
             if self.config.get("a2a_tenant") is not None:
                 params["tenant"] = self.config["a2a_tenant"]
             METRICS.increment("a2a_request_attempts")
-            messages, _, _, status = self._post_rpc(
-                "GetTask", params, f"A2A GetTask [{case_name}]"
-            )
+            poll_label = f"A2A GetTask [{case_name}]"
+            if self.a2a_binding == "http_json":
+                messages, _, _, status = self._post_rest(
+                    f"/tasks/{task_id}",
+                    {},
+                    poll_label,
+                )
+            elif self.a2a_binding == "grpc":
+                messages, _, _, status = self._post_grpc(
+                    "GetTask",
+                    params,
+                    poll_label,
+                )
+            else:
+                messages, _, _, status = self._post_rpc(
+                    "GetTask",
+                    params,
+                    poll_label,
+                )
             if status >= 400 or not messages:
                 METRICS.increment("a2a_request_failures")
                 continue

@@ -512,6 +512,22 @@ def test_mcp_sse_parser_reads_jsonrpc_response():
     assert _parse_sse_or_json(response)["result"]["tools"] == []
 
 
+def test_a2a_sse_parser_reads_http_json_task():
+    import httpx
+
+    response = httpx.Response(
+        200,
+        headers={"content-type": "text/event-stream"},
+        text=(
+            'event: message\ndata: {"task":{"id":"t1",'
+            '"status":{"state":"completed"}}}\n\n'
+        ),
+    )
+    payload = _parse_sse_or_json(response)
+    assert payload["task"]["id"] == "t1"
+    assert payload["task"]["status"]["state"] == "completed"
+
+
 def test_mcp_2026_metadata_matches_protocol_version():
     metadata = _mcp_2026_meta("2026-07-28")
     assert metadata["io.modelcontextprotocol/protocolVersion"] == "2026-07-28"
@@ -710,3 +726,320 @@ def test_rerun_copies_dataset_to_independent_task_directory(tmp_path, monkeypatc
     assert (tmp_path / "new-task" / "a2a.jsonl").read_text(encoding="utf-8") == (
         '{"id":"1"}\n'
     )
+
+
+def _fake_response(
+    status_code: int, payload: dict | None = None, *, text: str | None = None
+):
+    import httpx
+
+    request = httpx.Request("GET", "https://target.example.com")
+    if text is not None:
+        return httpx.Response(
+            status_code,
+            headers={"content-type": "text/event-stream"},
+            text=text,
+            request=request,
+        )
+    return httpx.Response(status_code, json=payload or {}, request=request)
+
+
+class _FakeAsyncClient:
+    """A minimal httpx.AsyncClient double that serves scripted responses."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.posts = []
+        self.gets = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, url, headers=None):
+        self.gets.append((url, headers))
+        return self._responses.pop(0)
+
+    async def post(self, url, headers=None, json=None):
+        self.posts.append((url, headers, json))
+        return self._responses.pop(0)
+
+
+def _a2a_card_payload(target_url: str, *, binding: str = "JSONRPC", tenant=None):
+    interface = {
+        "protocolVersion": "1.0",
+        "protocolBinding": binding,
+        "url": target_url,
+    }
+    if tenant is not None:
+        interface["tenant"] = tenant
+    return {
+        "name": "Echo",
+        "description": "echo",
+        "version": "1.0",
+        "capabilities": {"streaming": False},
+        "defaultInputModes": ["text"],
+        "defaultOutputModes": ["text"],
+        "skills": [],
+        "supportedInterfaces": [interface],
+    }
+
+
+@pytest.mark.asyncio
+async def test_a2a_connection_runs_discovery_then_real_sendmessage(monkeypatch):
+    import service.agent_task_service as service
+
+    target = "https://agent.example.com/a2a"
+    card = _a2a_card_payload(target)
+    send_result = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"status": {"state": "completed"}},
+    }
+    client = _FakeAsyncClient(
+        [_fake_response(200, card), _fake_response(200, send_result)]
+    )
+    monkeypatch.setattr(service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    body = AgentTaskCreateReq(
+        name="probe",
+        protocol="a2a",
+        target_url=target,
+        a2a_mode="sync",
+        a2a_scenarios=[
+            {
+                "id": "s1",
+                "name": "s1",
+                "message": {"role": "ROLE_USER", "parts": [{"text": "hi"}]},
+            }
+        ],
+    )
+    result = await run_agent_connection_test(body)
+
+    assert result["status"] == "success"
+    assert result["protocol"] == "a2a"
+    # The reported HTTP status is the business request, not the card fetch.
+    assert result["http_status"] == 200
+    assert result["operation"] == "a2a/sendmessage"
+    assert result["discovery_operation"] == "agent-card/get"
+    assert result["discovery_http_status"] == 200
+    assert result["agent_card"]["name"] == "Echo"
+    assert result["response"]["status_code"] == 200
+    # Discovery GET + one business POST were issued.
+    assert len(client.gets) == 1
+    assert len(client.posts) == 1
+    assert client.posts[0][2]["method"] == "SendMessage"
+
+
+@pytest.mark.asyncio
+async def test_a2a_connection_accepts_http_jsonrpc_binding(monkeypatch):
+    import service.agent_task_service as service
+
+    target = "https://agent.example.com/a2a/"
+    # Card advertises HTTP+JSONRPC and a trailing slash; configured URL has none.
+    card = _a2a_card_payload(target, binding="HTTP+JSONRPC")
+    send_result = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"status": {"state": "completed"}},
+    }
+    client = _FakeAsyncClient(
+        [_fake_response(200, card), _fake_response(200, send_result)]
+    )
+    monkeypatch.setattr(service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    body = AgentTaskCreateReq(
+        name="probe",
+        protocol="a2a",
+        target_url="https://agent.example.com/a2a",
+        a2a_mode="sync",
+        a2a_scenarios=[
+            {
+                "id": "s1",
+                "name": "s1",
+                "message": {"role": "ROLE_USER", "parts": [{"text": "hi"}]},
+            }
+        ],
+    )
+    result = await run_agent_connection_test(body)
+
+    assert result["status"] == "success"
+    assert result["operation"] == "a2a/sendmessage"
+
+
+@pytest.mark.asyncio
+async def test_a2a_connection_accepts_http_json_binding(monkeypatch):
+    import service.agent_task_service as service
+
+    target = "https://agent.example.com/a2a/"
+    card = _a2a_card_payload(target, binding="HTTP+JSON")
+    send_result = {"status": {"state": "completed"}}
+    client = _FakeAsyncClient(
+        [_fake_response(200, card), _fake_response(200, send_result)]
+    )
+    monkeypatch.setattr(service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    body = AgentTaskCreateReq(
+        name="probe",
+        protocol="a2a",
+        target_url="https://agent.example.com/a2a",
+        a2a_binding="http_json",
+        a2a_mode="sync",
+        a2a_scenarios=[
+            {
+                "id": "s1",
+                "name": "s1",
+                "message": {"role": "ROLE_USER", "parts": [{"text": "hi"}]},
+            }
+        ],
+    )
+    result = await run_agent_connection_test(body)
+
+    assert result["status"] == "success"
+    assert result["operation"] == "a2a/rest/message:send"
+
+
+def test_a2a_binding_field_in_config_json():
+    body = AgentTaskCreateReq(
+        name="probe",
+        protocol="a2a",
+        target_url="https://agent.example.com/a2a",
+        a2a_binding="http_json",
+        a2a_scenarios=[
+            {
+                "id": "s1",
+                "name": "s1",
+                "message": {"role": "ROLE_USER", "parts": [{"text": "hi"}]},
+            }
+        ],
+    )
+    import json
+
+    config = json.loads(body.config_json())
+    assert config["a2a_binding"] == "http_json"
+
+
+def test_grpc_binding_rejects_http_url():
+    import pytest as _pt
+
+    with _pt.raises(Exception, match="gRPC target_url must be host:port"):
+        AgentTaskCreateReq(
+            name="probe",
+            protocol="a2a",
+            target_url="https://grpc.example.com:443",
+            a2a_binding="grpc",
+            a2a_scenarios=[
+                {
+                    "id": "s1",
+                    "name": "s1",
+                    "message": {"role": "ROLE_USER", "parts": [{"text": "hi"}]},
+                }
+            ],
+        )
+
+
+def test_grpc_binding_accepts_host_port():
+    body = AgentTaskCreateReq(
+        name="probe",
+        protocol="a2a",
+        target_url="grpc.example.com:443",
+        a2a_binding="grpc",
+        a2a_scenarios=[
+            {
+                "id": "s1",
+                "name": "s1",
+                "message": {"role": "ROLE_USER", "parts": [{"text": "hi"}]},
+            }
+        ],
+    )
+    assert body.a2a_binding == "grpc"
+
+
+@pytest.mark.asyncio
+async def test_a2a_connection_reports_business_request_401(monkeypatch):
+    import service.agent_task_service as service
+
+    target = "https://agent.example.com/a2a"
+    card = _a2a_card_payload(target)
+    client = _FakeAsyncClient(
+        [
+            _fake_response(200, card),
+            _fake_response(401, {"error": "invalid credentials"}),
+        ]
+    )
+    monkeypatch.setattr(service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    body = AgentTaskCreateReq(
+        name="probe",
+        protocol="a2a",
+        target_url=target,
+        a2a_scenarios=[
+            {
+                "id": "s1",
+                "name": "s1",
+                "message": {"role": "ROLE_USER", "parts": [{"text": "hi"}]},
+            }
+        ],
+    )
+    result = await run_agent_connection_test(body)
+
+    # The card fetch succeeded (discovery), but the real SendMessage returned 401.
+    assert result["status"] == "error"
+    assert result["error_type"] == "http_error"
+    assert result["http_status"] == 401
+    assert result["operation"] == "a2a/sendmessage"
+    assert result["response"]["status_code"] == 401
+    assert result["response"]["data"] == {"error": "invalid credentials"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_stateless_connection_runs_discovery_then_real_tools_call(
+    monkeypatch,
+):
+    import service.agent_task_service as service
+
+    target = "https://mcp.example.com/mcp"
+    tools_list = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "resultType": "complete",
+            "tools": [{"name": "get_weather", "inputSchema": {}}],
+        },
+    }
+    call_result = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"resultType": "complete", "content": []},
+    }
+    client = _FakeAsyncClient(
+        [_fake_response(200, tools_list), _fake_response(200, call_result)]
+    )
+    monkeypatch.setattr(service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    body = AgentTaskCreateReq(
+        name="probe",
+        protocol="mcp",
+        protocol_version="2026-07-28",
+        target_url=target,
+        mcp_calls=[
+            {"id": "w", "name": "w", "tool_name": "get_weather", "arguments": {}}
+        ],
+    )
+    result = await run_agent_connection_test(body)
+
+    assert result["status"] == "success"
+    assert result["protocol"] == "mcp"
+    assert result["http_status"] == 200
+    assert result["operation"] == "mcp/tools-call"
+    assert result["discovery_operation"] == "tools/list"
+    assert result["tools"][0]["name"] == "get_weather"
+    assert result["response"]["status_code"] == 200
+    assert len(client.posts) == 2
+    assert client.posts[0][2]["method"] == "tools/list"
+    assert client.posts[1][2]["method"] == "tools/call"
+    # The business probe carries the stateless MCP routing headers.
+    assert client.posts[1][1]["Mcp-Method"] == "tools/call"
+    assert client.posts[1][1]["Mcp-Name"] == "get_weather"

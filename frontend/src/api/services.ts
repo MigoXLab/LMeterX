@@ -7,6 +7,7 @@
 
 import { Dataset } from '../types';
 import { LoginResponse, UserInfo } from '../types/auth';
+import { getToken } from '../utils/auth';
 import {
   AgentTask,
   AgentTaskPayload,
@@ -99,15 +100,36 @@ const extractFile = (fileLike: FileLike): File => {
 
 // Dataset API methods
 export const datasetApi = {
-  // Get all datasets
-  getAllDatasets: () => api.get<Dataset[]>('/datasets'),
+  getAllDatasets: (params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+    dataset_type?: string;
+  }) =>
+    api.get<{
+      data: Dataset[];
+      pagination: {
+        total: number;
+        page: number;
+        page_size: number;
+        total_pages: number;
+      };
+    }>('/datasets', { params }),
 
   // Get a specific dataset by ID
   getDataset: (id: string) => api.get<Dataset>(`/datasets/${id}`),
 
   // Create a new dataset
-  createDataset: (formData: FormData) =>
-    api.uploadFile<Dataset>('/datasets', formData),
+  createDataset: (
+    formData: FormData,
+    onUploadProgress?: (progress: { loaded: number; total?: number }) => void
+  ) =>
+    api.uploadFile<Dataset>('/datasets', formData, {
+      onUploadProgress,
+      // Large datasets can take longer than the default API timeout to upload
+      // and validate on the server.
+      timeout: 30 * 60 * 1000,
+    }),
 
   // Update a dataset
   updateDataset: (id: string, data: Partial<Dataset>) =>
@@ -115,6 +137,21 @@ export const datasetApi = {
 
   // Delete a dataset
   deleteDataset: (id: string) => api.delete<void>(`/datasets/${id}`),
+
+  downloadDataset: async (id: string): Promise<Blob> => {
+    const token = getToken();
+    const response = await fetch(
+      `${getApiBaseUrl()}/datasets/${encodeURIComponent(id)}/download`,
+      {
+        credentials: 'include',
+        headers: token ? { 'X-Authorization': `Bearer ${token}` } : {},
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`Download failed (${response.status})`);
+    }
+    return response.blob();
+  },
 };
 
 // Cluster API methods
@@ -248,6 +285,80 @@ export const agentTaskApi = {
     api.post('/agent-tasks/test-connection', data),
   stop: (id: string) => api.post(`/agent-tasks/${id}/stop`),
   delete: (id: string) => api.delete(`/agent-tasks/${id}`),
+};
+
+// Unified task lookup that resolves a task ID across LLM, agent (A2A/MCP) and
+// HTTP task stores. The task log page receives only a task ID from the URL, so
+// it cannot know upfront which kind of task it is dealing with. We probe the
+// stores in order and cache the resolved kind so subsequent status polls hit
+// the right endpoint directly instead of re-issuing 404s every cycle.
+type TaskKind = 'llm' | 'agent' | 'http';
+
+const taskKindCache = new Map<string, TaskKind>();
+
+const TASK_KIND_ORDER: TaskKind[] = ['llm', 'agent', 'http'];
+
+const isNotFoundResponse = (err: any): boolean => {
+  const status = err?.status || err?.response?.status;
+  return status === 404;
+};
+
+const orderedKindsFor = (id: string): TaskKind[] => {
+  const cached = taskKindCache.get(id);
+  if (!cached) return TASK_KIND_ORDER;
+  return [cached, ...TASK_KIND_ORDER.filter(kind => kind !== cached)];
+};
+
+const buildNotFoundError = (id: string) => {
+  const error: any = new Error(`Task '${id}' not found`);
+  error.status = 404;
+  return error;
+};
+
+type TaskFetcher = (id: string) => Promise<{ data: any }>;
+
+const TASK_FETCHERS: Record<
+  TaskKind,
+  { get: TaskFetcher; getStatus: TaskFetcher }
+> = {
+  llm: { get: llmTaskApi.getJob, getStatus: llmTaskApi.getJobStatus },
+  agent: { get: agentTaskApi.get, getStatus: agentTaskApi.getStatus },
+  http: { get: httpTaskApi.getJob, getStatus: httpTaskApi.getJobStatus },
+};
+
+// Sequential fallback: try cached kind first, then the remaining stores.
+// Continue only on 404; any other error is surfaced immediately.
+const probeTask = (
+  id: string,
+  fetchByKind: (kind: TaskKind) => Promise<{ data: any }>
+): Promise<{ data: any }> => {
+  const tryNext = (kinds: TaskKind[]): Promise<{ data: any }> => {
+    if (kinds.length === 0) {
+      taskKindCache.delete(id);
+      return Promise.reject(buildNotFoundError(id));
+    }
+    const [kind, ...remaining] = kinds;
+    return fetchByKind(kind).then(
+      res => {
+        taskKindCache.set(id, kind);
+        return res;
+      },
+      err => {
+        if (!isNotFoundResponse(err)) {
+          throw err;
+        }
+        return tryNext(remaining);
+      }
+    );
+  };
+  return tryNext(orderedKindsFor(id));
+};
+
+export const unifiedTaskApi = {
+  get: (id: string): Promise<{ data: any }> =>
+    probeTask(id, kind => TASK_FETCHERS[kind].get(id)),
+  getStatus: (id: string): Promise<{ data: any }> =>
+    probeTask(id, kind => TASK_FETCHERS[kind].getStatus(id)),
 };
 
 // Results API methods

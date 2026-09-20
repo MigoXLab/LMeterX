@@ -106,10 +106,19 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
           ? body
           : Array.isArray(body?.data)
             ? body.data
-            : Array.isArray(body?.data?.data)
-              ? body.data.data
-              : [];
-        setClusters(values);
+            : Array.isArray(body?.data?.clusters)
+              ? body.data.clusters
+              : Array.isArray(body?.data?.data)
+                ? body.data.data
+                : [];
+        const sorted = [...values].sort((a, b) => {
+          const aHasSlots = (a.available_slots || 0) > 0;
+          const bHasSlots = (b.available_slots || 0) > 0;
+          if (aHasSlots && !bHasSlots) return -1;
+          if (!aHasSlots && bHasSlots) return 1;
+          return (a.id || '').localeCompare(b.id || '');
+        });
+        setClusters(sorted);
       })
       .catch(() => setClusters([]));
   }, [loadTasks]);
@@ -523,11 +532,7 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
             ? t('pages.jobs.copyAgentTitle', {
                 protocol: protocol.toUpperCase(),
               })
-            : t(
-                protocol === 'a2a'
-                  ? 'components.createAgentTaskForm.createA2aTitle'
-                  : 'components.createAgentTaskForm.createMcpTitle'
-              )
+            : t('components.createAgentTaskForm.createTitle')
         }
         open={modalOpen}
         onCancel={() => {

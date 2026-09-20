@@ -88,7 +88,6 @@ class TestTaskAPI:
             "duration": 300,
             "concurrent_users": 10,
             "spawn_rate": 2,
-            "chat_type": 1,
             "stream_mode": True,
             "headers": [],
         }
@@ -209,7 +208,6 @@ class TestTaskErrors:
             "duration": 300,
             "concurrent_users": 10,
             "spawn_rate": 2,
-            "chat_type": 1,
             "stream_mode": True,
             "headers": [],
         }

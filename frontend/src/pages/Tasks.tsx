@@ -103,14 +103,9 @@ const withDatasetFields = <T extends Record<string, any>>(
   if (source.test_data !== undefined && source.test_data !== null) {
     next.test_data = source.test_data;
   }
-  if (source.chat_type !== undefined && source.chat_type !== null) {
-    next.chat_type = source.chat_type;
-  }
-
   // Copy mode relies on this form-only field to avoid resetting dataset type.
   if (next.test_data !== undefined && next.test_data !== null) {
     const testDataStr = String(next.test_data).trim();
-    const isDefault = testDataStr === 'default';
     const isEmpty = testDataStr === '';
     const looksLikePath =
       /\/upload_files\//i.test(testDataStr) ||
@@ -119,9 +114,7 @@ const withDatasetFields = <T extends Record<string, any>>(
     const looksLikeInlineJson =
       testDataStr.startsWith('{') || testDataStr.includes('\n');
 
-    if (isDefault) {
-      next.test_data_input_type = 'default';
-    } else if (isEmpty) {
+    if (isEmpty) {
       next.test_data_input_type = 'none';
     } else if (looksLikePath) {
       next.test_data_input_type = 'upload';
@@ -1628,7 +1621,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <ApiOutlined />
                   </span>
-                  {t('pages.jobs.httpApiTab') || 'HTTP API Load Test'}
+                  {t('pages.jobs.httpApiTab') || 'Regular API'}
                 </span>
               ),
             },
@@ -1639,7 +1632,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <RobotOutlined />
                   </span>
-                  {t('pages.jobs.llmTab') || 'LLM Load Test'}
+                  {t('pages.jobs.llmTab') || 'Inference API'}
                 </span>
               ),
             },
@@ -1650,7 +1643,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <ClusterOutlined />
                   </span>
-                  {t('pages.jobs.a2aTab') || 'A2A Agent 协作'}
+                  {t('pages.jobs.a2aTab') || 'A2A Call'}
                 </span>
               ),
             },
@@ -1661,7 +1654,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <ToolOutlined />
                   </span>
-                  {t('pages.jobs.mcpTab') || 'MCP 工具调用'}
+                  {t('pages.jobs.mcpTab') || 'MCP Call'}
                 </span>
               ),
             },

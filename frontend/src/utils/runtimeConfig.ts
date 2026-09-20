@@ -2,6 +2,7 @@ export type RuntimeConfig = {
   VITE_API_BASE_URL?: string;
   VITE_LDAP_ENABLED?: string | boolean;
   VITE_PERSIST_ACCESS_TOKEN?: string | boolean;
+  VITE_SLS_ENABLED?: string | boolean;
 };
 
 const normalizeEnvFlag = (value?: string | boolean): boolean => {
@@ -35,5 +36,12 @@ export const getPersistAccessToken = (): boolean =>
   normalizeEnvFlag(
     readRuntimeConfig().VITE_PERSIST_ACCESS_TOKEN ??
       import.meta.env.VITE_PERSIST_ACCESS_TOKEN ??
+      'true'
+  );
+
+export const getSlsEnabled = (): boolean =>
+  normalizeEnvFlag(
+    readRuntimeConfig().VITE_SLS_ENABLED ??
+      import.meta.env.VITE_SLS_ENABLED ??
       'true'
   );

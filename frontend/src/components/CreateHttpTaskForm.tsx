@@ -6,7 +6,6 @@ import {
   BugOutlined,
   CopyOutlined,
   InfoCircleOutlined,
-  UploadOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -27,14 +26,13 @@ import {
   Tag,
   Tooltip,
   Typography,
-  Upload,
-  theme,
 } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { clusterApi, httpTaskApi, uploadDatasetFile } from '@/api/services';
 import RequestHeadersEditor from '@/components/RequestHeadersEditor';
+import TaskDatasetFields from '@/components/TaskDatasetFields';
 import { Cluster, HttpTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
 import parseCurlCommand from '@/utils/curl';
@@ -45,7 +43,6 @@ import {
 } from '@/utils/requestHeaders';
 
 const { TextArea } = Input;
-const { Dragger } = Upload;
 const { Text } = Typography;
 
 interface Props {
@@ -83,7 +80,6 @@ const CreateHttpTaskForm: React.FC<Props> = ({
   const [tempTaskId, setTempTaskId] = useState(`temp-${Date.now()}`);
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
-  const { token } = theme.useToken();
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [clustersLoading, setClustersLoading] = useState(false);
@@ -118,17 +114,6 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       .catch(() => setClusters([]))
       .finally(() => setClustersLoading(false));
   }, []);
-
-  const toSingleUploadFileList = (filename?: string, uid: string = '-1') =>
-    filename
-      ? [
-          {
-            uid,
-            name: String(filename),
-            status: 'done' as const,
-          },
-        ]
-      : [];
 
   const methodValue = Form.useWatch('method', form);
   const urlValue = Form.useWatch('target_url', form);
@@ -169,6 +154,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
     curl_command: '',
     dataset_source: 'none',
     dataset_file: '',
+    dataset_id: undefined,
     // Success assertion defaults
     success_assert_field: 'code',
     success_assert_operator: 'eq',
@@ -221,9 +207,11 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         request_body: requestBodyValue,
         dataset_source:
           (initialData as any).dataset_source ??
-          ((initialData as any).dataset_file
-            ? 'upload'
-            : defaultValues.dataset_source),
+          ((initialData as any).dataset_id
+            ? 'managed'
+            : (initialData as any).dataset_file
+              ? 'upload'
+              : defaultValues.dataset_source),
         dataset_file:
           (initialData as any).dataset_file ?? defaultValues.dataset_file,
         temp_task_id: tempTaskId, // Always use new tempTaskId
@@ -299,6 +287,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
         request_body: '',
         dataset_source: 'none',
         dataset_file: '',
+        dataset_id: undefined,
       });
       setDatasetFileName('');
     }
@@ -310,6 +299,10 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       hasBody && values.dataset_source === 'upload'
         ? values.dataset_file || ''
         : '';
+    const datasetId =
+      hasBody && values.dataset_source === 'managed'
+        ? values.dataset_id || undefined
+        : undefined;
 
     const mode = values.load_mode || 'fixed';
 
@@ -350,6 +343,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       response_mode: values.response_mode,
       request_body: hasBody ? values.request_body || '' : '',
       dataset_file: datasetFile,
+      dataset_id: datasetId,
       dataset_source: hasBody ? values.dataset_source || 'none' : 'none',
       success_assert: successAssert || null,
       headers: headersForSubmission(
@@ -536,6 +530,7 @@ const CreateHttpTaskForm: React.FC<Props> = ({
       }
       form.setFieldsValue({
         dataset_file: datasetPath,
+        dataset_id: undefined,
         temp_task_id: (res as any)?.task_id || effectiveTaskId,
         dataset_source: 'upload', // explicitly set to avoid any ambiguity
       });
@@ -751,76 +746,31 @@ const CreateHttpTaskForm: React.FC<Props> = ({
               />
             </Form.Item>
 
-            <Form.Item
-              label={t('components.createHttpTaskForm.datasetSource')}
-              name='dataset_source'
-              tooltip={t(
+            <TaskDatasetFields
+              source={datasetSource || 'none'}
+              sourceName='dataset_source'
+              datasetType='business'
+              uploadValueName='dataset_file'
+              uploadFileName={datasetFileName}
+              uploadLoading={datasetUploading}
+              uploadAccept='.jsonl,.json'
+              uploadTitle={t('components.createHttpTaskForm.datasetUploadTip')}
+              sourceTooltip={t(
                 'components.createHttpTaskForm.datasetInfoTip',
                 'If not using dataset, original body will be used; if upload, provide full request body JSONL.'
               )}
-            >
-              <Select
-                options={[
-                  {
-                    label: t('components.createHttpTaskForm.datasetNone'),
-                    value: 'none',
-                  },
-                  {
-                    label: t('components.createHttpTaskForm.datasetUpload'),
-                    value: 'upload',
-                  },
-                ]}
-              />
-            </Form.Item>
-
-            {datasetSource === 'upload' && (
-              <Form.Item
-                label={t('components.createHttpTaskForm.datasetFile')}
-                required
-              >
-                <Form.Item
-                  name='dataset_file'
-                  noStyle
-                  rules={[
-                    {
-                      required: true,
-                      message: t(
-                        'components.createHttpTaskForm.datasetFileRequired'
-                      ),
-                    },
-                  ]}
-                >
-                  <Input type='hidden' />
-                </Form.Item>
-                <Dragger
-                  name='file'
-                  maxCount={1}
-                  accept='.jsonl,.json'
-                  customRequest={handleDatasetUpload}
-                  onRemove={handleDatasetRemove}
-                  disabled={datasetUploading}
-                  fileList={toSingleUploadFileList(datasetFileName)}
-                  showUploadList={{ showRemoveIcon: false }}
-                  style={{
-                    borderRadius: 12,
-                    borderColor: token.colorBorderSecondary,
-                    background: token.colorFillAlter,
-                  }}
-                >
-                  <p
-                    className='ant-upload-drag-icon'
-                    style={{ marginBottom: 12 }}
-                  >
-                    <UploadOutlined
-                      style={{ color: token.colorPrimary, fontSize: 24 }}
-                    />
-                  </p>
-                  <Text strong style={{ fontSize: 16 }}>
-                    {t('components.createHttpTaskForm.datasetUploadTip')}
-                  </Text>
-                </Dragger>
-              </Form.Item>
-            )}
+              onSourceChange={source => {
+                if (source !== 'managed') {
+                  form.setFieldsValue({ dataset_id: undefined });
+                }
+                if (source !== 'upload') {
+                  form.setFieldsValue({ dataset_file: undefined });
+                  setDatasetFileName('');
+                }
+              }}
+              onUpload={handleDatasetUpload}
+              onUploadRemove={handleDatasetRemove}
+            />
           </>
         )}
 

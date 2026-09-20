@@ -13,7 +13,8 @@ cat <<EOF > /usr/share/nginx/html/env.js
 window.RUNTIME_CONFIG = {
   VITE_API_BASE_URL: "${VITE_API_BASE_URL:-/api}",
   VITE_LDAP_ENABLED: $(normalize_bool "${VITE_LDAP_ENABLED:-false}"),
-  VITE_PERSIST_ACCESS_TOKEN: $(normalize_bool "${VITE_PERSIST_ACCESS_TOKEN:-true}")
+  VITE_PERSIST_ACCESS_TOKEN: $(normalize_bool "${VITE_PERSIST_ACCESS_TOKEN:-true}"),
+  VITE_SLS_ENABLED: $(normalize_bool "${VITE_SLS_ENABLED:-true}")
 };
 EOF
 

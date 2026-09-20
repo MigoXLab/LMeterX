@@ -30,7 +30,6 @@ export interface LlmTask {
   dataset_id?: string;
   duration: number;
   concurrency?: number;
-  chat_type?: number;
   stream_mode?: boolean;
   headers?: Array<{
     key: string;
@@ -111,6 +110,7 @@ export interface HttpTask {
   }>;
   request_body?: string;
   dataset_file?: string;
+  dataset_id?: string;
   curl_command?: string;
   success_assert?: string;
   concurrent_users: number;
@@ -188,6 +188,8 @@ export interface AgentTask {
   };
   request_timeout?: number;
   dataset_file?: string;
+  dataset_id?: string;
+  a2a_binding?: 'jsonrpc' | 'http_json' | 'grpc';
   a2a_mode?: 'sync' | 'stream' | 'async_poll';
   agent_card_url?: string;
   a2a_tenant?: string;
@@ -211,9 +213,11 @@ export interface AgentTaskPayload {
   request_timeout: number;
   cluster_id: string;
   dataset_file?: string;
+  dataset_id?: string;
   copy_source_task_id?: string;
   inherit_source_headers?: boolean;
   inherit_source_dataset?: boolean;
+  a2a_binding?: 'jsonrpc' | 'http_json' | 'grpc';
   a2a_mode?: 'sync' | 'stream' | 'async_poll';
   agent_card_url?: string;
   a2a_tenant?: string;

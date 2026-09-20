@@ -63,7 +63,11 @@ def _normalize_log_message(value: str) -> str:
 
 def _require_sls_enabled(settings: SLSSettings) -> None:
     if not settings.is_configured:
-        raise ErrorResponse(503, "SLS logging is not configured")
+        raise ErrorResponse(
+            503,
+            "SLS logging is not configured",
+            code="sls_not_configured",
+        )
 
 
 def _client(settings: SLSSettings):

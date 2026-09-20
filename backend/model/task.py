@@ -157,6 +157,9 @@ class TaskCreateReq(BaseModel):
     """
 
     temp_task_id: str = Field(..., max_length=100, description="Temporary task ID")
+    dataset_id: Optional[str] = Field(
+        default=None, max_length=40, description="Reusable dataset ID"
+    )
     name: str = Field(..., min_length=1, max_length=100, description="Name of the task")
     target_host: str = Field(
         ..., min_length=1, max_length=255, description="Target model API host"
@@ -178,15 +181,6 @@ class TaskCreateReq(BaseModel):
     )
     spawn_rate: int = Field(
         ge=1, le=1000, description="Number of users to spawn per second (1-1000)"
-    )
-    chat_type: Optional[int] = Field(
-        default=0,
-        ge=0,
-        le=2,
-        description=(
-            "Built-in dataset selector: 0=text self-built, "
-            "1=ShareGPT partial, 2=vision self-built"
-        ),
     )
     warmup_enabled: bool = Field(
         default=True, description="Whether to enable warmup mode"
@@ -751,11 +745,8 @@ class Task(Base):
     step_duration = Column(Integer, nullable=True)
     step_max_users = Column(Integer, nullable=True)
     step_sustain_duration = Column(Integer, nullable=True)
-    chat_type = Column(Integer, nullable=True)
     warmup_enabled = Column(Integer, nullable=True, default=1, server_default="1")
     warmup_duration = Column(Integer, nullable=True, default=120, server_default="120")
-    log_file = Column(Text, nullable=True)
-    result_file = Column(Text, nullable=True)
     cert_file = Column(String(255), nullable=True)
     key_file = Column(String(255), nullable=True)
     headers = Column(Text, nullable=True)

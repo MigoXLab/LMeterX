@@ -308,6 +308,13 @@ def jsonrpc_request(
     return body
 
 
+A2A_REST_METHODS: dict[str, str] = {
+    "SendMessage": "/message:send",
+    "SendStreamingMessage": "/message:stream",
+    "GetTask": "/tasks",
+}
+
+
 def a2a_message_request(
     message: dict[str, Any],
     *,

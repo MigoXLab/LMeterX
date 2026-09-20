@@ -59,7 +59,6 @@ class TestLocustRunner:
         task.concurrent_users = 10
         task.spawn_rate = 2
         task.duration = 60
-        task.chat_type = 0
         task.headers = '{"Content-Type": "application/json"}'
         task.created_at = datetime.now()
         task.updated_at = datetime.now()
@@ -196,9 +195,6 @@ class TestLocustRunner:
 
             if hasattr(task, "stream_mode") and task.stream_mode:
                 cmd.extend(["--stream-mode", task.stream_mode])
-
-            if hasattr(task, "chat_type") and task.chat_type is not None:
-                cmd.extend(["--chat-type", str(task.chat_type)])
 
             return cmd
 

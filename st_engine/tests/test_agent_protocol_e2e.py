@@ -275,29 +275,45 @@ def _a2a_headers_and_card() -> tuple[dict[str, str], str, dict[str, Any]]:
     return headers, card_url, card
 
 
-def _a2a_payload(mode: str, dataset_file: str) -> dict[str, Any]:
+_A2A_CARD_BINDINGS: dict[str, set[str]] = {
+    "jsonrpc": {"JSONRPC", "HTTP+JSONRPC"},
+    "http_json": {"HTTP+JSON"},
+    "grpc": {"GRPC"},
+}
+
+
+def _a2a_payload(
+    mode: str, dataset_file: str, binding: str = "jsonrpc"
+) -> dict[str, Any]:
     headers, card_url, card = _a2a_headers_and_card()
     interfaces = card.get("supportedInterfaces") or []
+    accepted = _A2A_CARD_BINDINGS[binding]
     interface = next(
         (
             item
             for item in interfaces
             if isinstance(item, dict)
             and item.get("protocolVersion") == "1.0"
-            and str(item.get("protocolBinding", "")).upper() == "JSONRPC"
+            and str(item.get("protocolBinding", "")).upper() in accepted
         ),
         None,
     )
-    assert interface, "EP Agent Card has no A2A 1.0 JSON-RPC interface"
+    if not interface:
+        pytest.skip(f"EP Agent Card has no A2A 1.0 {binding} interface")
+    assert interface is not None
     if mode == "stream":
         assert card.get("capabilities", {}).get("streaming") is True
     target_url = str(interface["url"])
-    return {
-        "name": f"e2e-ep-agent-{mode}-{uuid.uuid4().hex[:8]}",
+    if binding == "grpc":
+        target_url = target_url.replace("grpc://", "").replace("grpcs://", "")
+        if target_url.startswith(("http://", "https://")):
+            pytest.skip("GRPC interface url is an HTTP URL; cannot use as gRPC target")
+    payload: dict[str, Any] = {
+        "name": f"e2e-ep-agent-{binding}-{mode}-{uuid.uuid4().hex[:8]}",
         "protocol": "a2a",
         "protocol_version": "1.0",
         "target_url": target_url,
-        "agent_card_url": card_url,
+        "a2a_binding": binding,
         "a2a_tenant": interface.get("tenant"),
         "headers": [{"key": key, "value": value} for key, value in headers.items()],
         "a2a_mode": mode,
@@ -329,13 +345,17 @@ def _a2a_payload(mode: str, dataset_file: str) -> dict[str, Any]:
             },
         ],
     }
+    if binding != "grpc":
+        payload["agent_card_url"] = card_url
+    return payload
 
 
+@pytest.mark.parametrize("binding", ["jsonrpc", "http_json", "grpc"])
 @pytest.mark.parametrize("mode", ["sync", "stream", "async_poll"])
 def test_a2a_real_execution_modes_weight_and_uploaded_dataset(
-    backend_client: httpx.Client, mode: str
+    backend_client: httpx.Client, mode: str, binding: str
 ) -> None:
-    """Exercise SendMessage, SendStreamingMessage, and GetTask against EP Agent."""
+    """Exercise all three A2A bindings × SendMessage / stream / GetTask."""
     rows = [
         {
             "id": "ep-capabilities",
@@ -354,14 +374,17 @@ def test_a2a_real_execution_modes_weight_and_uploaded_dataset(
             },
         },
     ]
-    dataset_file = _upload_jsonl(backend_client, f"ep-agent-{mode}-e2e.jsonl", rows)
-    payload = _a2a_payload(mode, dataset_file)
+    dataset_file = _upload_jsonl(
+        backend_client, f"ep-agent-{binding}-{mode}-e2e.jsonl", rows
+    )
+    payload = _a2a_payload(mode, dataset_file, binding=binding)
 
     connection = _assert_ok(
         backend_client.post("/api/agent-tasks/test-connection", json=payload)
     )
     assert connection["protocol"] == "a2a"
-    assert connection["agent_card"]["name"]
+    if binding != "grpc":
+        assert connection["agent_card"]["name"]
 
     for _, metrics in _run_task(backend_client, payload):
         assert metrics["protocol"] == "a2a"

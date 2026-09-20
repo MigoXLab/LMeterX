@@ -25,7 +25,6 @@ import {
   App,
   Button,
   Card,
-  CardProps,
   Col,
   Collapse,
   Descriptions,
@@ -53,10 +52,15 @@ import {
   uploadDatasetFile,
 } from '@/api/services';
 import RequestHeadersEditor from '@/components/RequestHeadersEditor';
+import TaskDatasetFields, {
+  TaskDatasetSource,
+} from '@/components/TaskDatasetFields';
 import { useI18n } from '@/hooks/useI18n';
 import { Cluster, LlmTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
+import parseCurlCommand from '@/utils/curl';
 import { safeJsonParse } from '@/utils/data';
+import { parseJsonlObjects } from '@/utils/jsonl';
 import {
   headersForSubmission,
   prepareHeadersForEditor,
@@ -77,6 +81,43 @@ const isStandardChatApiType = (type: string): boolean =>
   type === 'openai-chat' ||
   type === 'openai-responses' ||
   type === 'claude-chat';
+
+const DATA_LOAD_FIELD_ROOTS = new Set([
+  'test_data',
+  'dataset_id',
+  'test_data_input_type',
+  'test_data_file',
+  'load_mode',
+  'duration',
+  'concurrent_users',
+  'spawn_rate',
+  'step_start_users',
+  'step_increment',
+  'step_duration',
+  'step_max_users',
+  'step_sustain_duration',
+  'warmup_enabled',
+  'warmup_duration',
+]);
+
+/** Map a form field to the tab that contains it, so validation can jump back. */
+const getTabKeyForField = (
+  fieldName: string | number | (string | number)[] | undefined,
+  apiType: string
+): string => {
+  const root = Array.isArray(fieldName) ? fieldName[0] : fieldName;
+  const rootKey = root == null ? '' : String(root);
+  const isStandard = isStandardChatApiType(apiType);
+  const dataLoadTabKey = isStandard ? '2' : '3';
+
+  if (rootKey === 'field_mapping') {
+    return isStandard ? '1' : '2';
+  }
+  if (DATA_LOAD_FIELD_ROOTS.has(rootKey)) {
+    return dataLoadTabKey;
+  }
+  return '1';
+};
 
 /** Reconstruct the original stream text. Network fragments already contain newlines and should be concatenated; line-split chunks need `\n` restored. */
 const joinStreamChunks = (chunks: string[]): string => {
@@ -410,6 +451,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         // Tab 1: Basic Configuration and Request Configuration
         const requiredFields = [
           'name',
+          'cluster_id',
           'api_type',
           'target_host',
           'api_path',
@@ -463,22 +505,16 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           );
         }
 
-        // Add chat_type validation when using default dataset and chat API
         const currentTestDataInputType =
-          form.getFieldValue('test_data_input_type') ||
-          (isStandardChatApi ? 'default' : 'none');
-        if (
-          currentTestDataInputType === 'default' &&
-          isStandardChatApiType(currentApiType)
-        ) {
-          requiredFields.push('chat_type');
-        }
+          form.getFieldValue('test_data_input_type') || 'managed';
 
         // Add validation for custom data input and file upload
         if (currentTestDataInputType === 'input') {
           requiredFields.push('test_data');
         } else if (currentTestDataInputType === 'upload') {
           requiredFields.push('test_data_file');
+        } else if (currentTestDataInputType === 'managed') {
+          requiredFields.push('dataset_id');
         }
 
         await form.validateFields(requiredFields);
@@ -495,9 +531,18 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     const isValid = await isCurrentTabValid();
     if (isValid) {
       goToNextTab();
-    } else {
-      message.error(t('components.createJobForm.pleaseFillRequiredFields'));
+      return;
     }
+    const errorFields = form
+      .getFieldsError()
+      .filter(field => field.errors.length > 0);
+    const messages = [
+      ...new Set(errorFields.flatMap(field => field.errors).filter(Boolean)),
+    ];
+    message.error(
+      messages.slice(0, 3).join('；') ||
+        t('components.createJobForm.pleaseFillRequiredFields')
+    );
   };
 
   // Body class management removed — Drawer handles overflow natively
@@ -676,25 +721,12 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         dataToFill.test_data_file = extractFilename(dataToFill.test_data);
       }
 
-      // Dataset source defaults must match API type (no built-in option for embeddings/custom-chat)
-      const fillApiType = dataToFill.api_type || 'openai-chat';
-      const isFillChatApi = isStandardChatApiType(fillApiType);
-      if (isFillChatApi) {
-        if (
-          dataToFill.test_data_input_type === undefined ||
-          dataToFill.test_data_input_type === null ||
-          dataToFill.test_data_input_type === ''
-        ) {
-          dataToFill.test_data_input_type = 'default';
-        }
-      } else if (
+      if (
         dataToFill.test_data_input_type === undefined ||
         dataToFill.test_data_input_type === null ||
-        dataToFill.test_data_input_type === '' ||
-        dataToFill.test_data_input_type === 'default'
+        dataToFill.test_data_input_type === ''
       ) {
         dataToFill.test_data_input_type = 'none';
-        dataToFill.chat_type = undefined;
       }
 
       // clean fields that should not be copied directly or provided by the user
@@ -927,6 +959,73 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     }
   };
 
+  const handleCurlParse = () => {
+    const curl = form.getFieldValue('curl_command') as string;
+    if (!curl) {
+      message.warning(t('components.createJobForm.curlParseEmpty'));
+      return;
+    }
+    const maxCurlLength = 8000;
+    if (curl.length > maxCurlLength) {
+      message.warning(
+        t('components.createJobForm.curlTooLong', { max: maxCurlLength })
+      );
+    }
+    const parsed = parseCurlCommand(curl);
+    if (!parsed.url) {
+      message.error(t('components.createJobForm.curlParseNoUrl'));
+      return;
+    }
+
+    try {
+      const urlObj = new URL(parsed.url);
+      const host = `${urlObj.protocol}//${urlObj.host}`;
+      const path = urlObj.pathname + urlObj.search;
+      form.setFieldsValue({ target_host: host, api_path: path });
+
+      const pathLower = path.toLowerCase();
+      if (pathLower.includes('/chat/completions')) {
+        form.setFieldsValue({ api_type: 'openai-chat' });
+      } else if (pathLower.includes('/responses')) {
+        form.setFieldsValue({ api_type: 'openai-responses' });
+      } else if (pathLower.includes('/messages')) {
+        form.setFieldsValue({ api_type: 'claude-chat' });
+      } else if (pathLower.includes('/embeddings')) {
+        form.setFieldsValue({ api_type: 'embeddings' });
+      }
+    } catch {
+      form.setFieldsValue({ target_host: parsed.url });
+    }
+
+    if (parsed.headers?.length) {
+      const userHeaders = parsed.headers.filter(
+        h => h.key.toLowerCase() !== 'content-type'
+      );
+      if (userHeaders.length) {
+        form.setFieldsValue({
+          headers: prepareHeadersForEditor(userHeaders),
+        });
+      }
+    }
+
+    if (parsed.body) {
+      form.setFieldsValue({ request_payload: parsed.body });
+      try {
+        const bodyObj = JSON.parse(parsed.body);
+        if (bodyObj.model && typeof bodyObj.model === 'string') {
+          form.setFieldsValue({ model: bodyObj.model });
+        }
+        if (typeof bodyObj.stream === 'boolean') {
+          form.setFieldsValue({ stream_mode: bodyObj.stream });
+        }
+      } catch {
+        // body is not valid JSON – skip field extraction
+      }
+    }
+
+    message.success(t('components.createJobForm.curlParseSuccess'));
+  };
+
   // Test API endpoint
   const handleTestAPI = async () => {
     try {
@@ -1101,6 +1200,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     try {
       setSubmitting(true);
       const values = await form.validateFields();
+      delete values.curl_command;
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
       normalizeWarmupDuration(values);
@@ -1230,10 +1330,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       }
 
       // Handle test data input type
-      const submitApiType = values.api_type || 'openai-chat';
-      const isSubmitChatApi = isStandardChatApiType(submitApiType);
-      const inputType =
-        values.test_data_input_type || (isSubmitChatApi ? 'default' : 'none');
+      const inputType = values.test_data_input_type || 'none';
       if (inputType === 'upload') {
         // validateFields() may omit unmounted fields; read from form store as fallback.
         const storedTestData = form.getFieldValue('test_data');
@@ -1283,12 +1380,21 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         }
       }
 
+      if (inputType === 'managed') {
+        if (!values.dataset_id) {
+          message.error(t('components.createJobForm.pleaseSelectDataset'));
+          setSubmitting(false);
+          return;
+        }
+        values.test_data = '';
+      } else {
+        delete values.dataset_id;
+      }
+
       // Clean up temporary dataset holder
       delete values.test_data_file;
 
-      if (inputType === 'default') {
-        values.test_data = 'default'; // use default dataset
-      } else if (inputType === 'input') {
+      if (inputType === 'input') {
         // test_data is already set from the form field
       } else if (inputType === 'none') {
         // No dataset mode - clear test_data
@@ -1304,9 +1410,34 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
       );
 
       await onSubmit(values);
-    } catch (error) {
+    } catch (error: any) {
       setSubmitting(false); // Only reset state here when error occurs
       setUploading(false);
+
+      const errorFields = error?.errorFields;
+      if (Array.isArray(errorFields) && errorFields.length > 0) {
+        const messages = [
+          ...new Set(
+            errorFields
+              .flatMap((field: { errors?: string[] }) => field.errors || [])
+              .filter(Boolean)
+          ),
+        ] as string[];
+        message.error(
+          messages.slice(0, 3).join('；') ||
+            t('components.createJobForm.pleaseFillRequiredFields')
+        );
+
+        const firstFieldName = errorFields[0]?.name;
+        const apiType = form.getFieldValue('api_type') || 'openai-chat';
+        const targetTab = getTabKeyForField(firstFieldName, apiType);
+        if (targetTab !== activeTabKey) {
+          setActiveTabKey(targetTab);
+        }
+        window.setTimeout(() => {
+          form.scrollToField(firstFieldName);
+        }, 200);
+      }
     }
   };
 
@@ -1691,6 +1822,49 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         </Col>
       </Row>
 
+      {/* Section 2: Request Configuration */}
+      <div
+        style={{
+          margin: '32px 0 16px',
+          fontWeight: 'bold',
+          fontSize: '18px',
+          paddingBottom: '8px',
+        }}
+      >
+        <Space>
+          <CloudOutlined />
+          <span>{t('components.createJobForm.requestConfiguration')}</span>
+        </Space>
+      </div>
+
+      <Row gutter={24}>
+        <Col span={24}>
+          <Form.Item
+            label={
+              <Space>
+                {t('components.createJobForm.curlLabel')}
+                <Tooltip title={t('components.createJobForm.curlParseHint')}>
+                  <InfoCircleOutlined />
+                </Tooltip>
+              </Space>
+            }
+            name='curl_command'
+          >
+            <TextArea
+              rows={3}
+              placeholder={t('components.createJobForm.curlPlaceholder')}
+            />
+          </Form.Item>
+          <Button
+            type='primary'
+            onClick={handleCurlParse}
+            style={{ marginBottom: 12 }}
+          >
+            {t('components.createJobForm.curlParseButton')}
+          </Button>
+        </Col>
+      </Row>
+
       <Row gutter={24}>
         <Col span={12}>
           <Form.Item
@@ -1881,21 +2055,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         </Col>
       </Row>
 
-      {/* Section 2: Request Configuration */}
-      <div
-        style={{
-          margin: '32px 0 16px',
-          fontWeight: 'bold',
-          fontSize: '18px',
-          paddingBottom: '8px',
-        }}
-      >
-        <Space>
-          <CloudOutlined />
-          <span>{t('components.createJobForm.requestConfiguration')}</span>
-        </Space>
-      </div>
-
       {/* Request Method and Response Mode */}
       <Row gutter={24}>
         <Col span={12}>
@@ -2063,328 +2222,135 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           const inputType = getFieldValue('test_data_input_type');
           const currentApiType = getFieldValue('api_type') || 'openai-chat';
           const isChatApi = isStandardChatApiType(currentApiType);
+          const isPromptSystemChatApi =
+            currentApiType === 'openai-chat' ||
+            currentApiType === 'claude-chat';
 
-          const cardStyle = {
-            background: token.colorFillAlter,
-            borderRadius: 12,
-            boxShadow: token.boxShadowTertiary,
-            border: `1px solid ${token.colorBorder}`,
-          };
-
-          const cardBodyStyle = { padding: '16px 20px' };
-          const cardProps: CardProps = {
-            variant: 'borderless',
-            style: cardStyle,
-            bodyStyle: cardBodyStyle,
-          };
-
-          const renderBuiltInDatasetPanel = () => {
-            if (!isChatApi) {
-              return null;
-            }
-
-            return (
+          const renderManualDatasetPanel = () => (
+            <Space direction='vertical' size={12} style={{ width: '100%' }}>
+              <Text type='secondary' style={{ fontSize: 12 }}>
+                {isChatApi
+                  ? t(
+                      isPromptSystemChatApi
+                        ? 'components.createJobForm.jsonlDataTooltip'
+                        : 'components.createJobForm.jsonlDataTooltipResponses'
+                    )
+                  : t('components.createJobForm.jsonlDataTooltipPayload')}
+              </Text>
               <Form.Item
-                name='chat_type'
-                label={
-                  <Space size={6}>
-                    <span>{t('components.createJobForm.datasetType')}</span>
-                  </Space>
-                }
+                name='test_data'
+                style={{ marginBottom: 0 }}
                 rules={[
                   {
-                    required: true,
-                    message: t(
-                      'components.createJobForm.pleaseSelectDatasetType'
-                    ),
+                    required: inputType === 'input',
+                    message: t('components.createJobForm.pleaseEnterJsonlData'),
                   },
                   {
-                    type: 'number',
-                    min: 0,
-                    max: 2,
-                    message: t('components.createJobForm.chatTypeRangeLimit'),
+                    validator: (_, value) => {
+                      if (inputType !== 'input' || !value) {
+                        return Promise.resolve();
+                      }
+                      try {
+                        let customError = '';
+                        parseJsonlObjects(value).forEach(jsonObj => {
+                          if (isChatApi) {
+                            if (
+                              !jsonObj.id ||
+                              (!jsonObj.prompt &&
+                                (!jsonObj.messages ||
+                                  !Array.isArray(jsonObj.messages)))
+                            ) {
+                              customError =
+                                t(
+                                  'components.createJobForm.eachLineMustContainIdAndMessages'
+                                ) ||
+                                'Each line must contain "id" and "prompt" or "messages" array';
+                              throw new Error(customError);
+                            }
+                          }
+                        });
+                        return Promise.resolve();
+                      } catch (e: any) {
+                        return Promise.reject(
+                          new Error(
+                            e.message ===
+                              t(
+                                'components.createJobForm.eachLineMustContainFields'
+                              ) ||
+                              e.message ===
+                                (t(
+                                  'components.createJobForm.eachLineMustContainIdAndMessages'
+                                ) ||
+                                  'Each line must contain "id" and "prompt" or "messages" array')
+                              ? e.message
+                              : isChatApi
+                                ? t(
+                                    'components.createJobForm.invalidJsonlFormat'
+                                  )
+                                : t(
+                                    'components.createJobForm.invalidJsonlFormatBasic'
+                                  ) ||
+                                  'Invalid JSONL format. Each line must be valid JSON.'
+                          )
+                        );
+                      }
+                    },
                   },
                 ]}
               >
-                <Select
-                  size='large'
-                  placeholder={t('components.createJobForm.datasetType')}
-                >
-                  <Select.Option value={0}>
-                    {t('components.createJobForm.datasetOptionTextSelfBuilt')}
-                  </Select.Option>
-                  <Select.Option value={1}>
-                    {t('components.createJobForm.datasetOptionShareGPTPartial')}
-                  </Select.Option>
-                  <Select.Option value={2}>
-                    {t('components.createJobForm.datasetOptionVisionSelfBuilt')}
-                  </Select.Option>
-                </Select>
-              </Form.Item>
-            );
-          };
-
-          const renderUploadDatasetPanel = () => (
-            <Form.Item
-              style={{ marginBottom: 0 }}
-              rules={[
-                {
-                  validator: () => {
-                    if (inputType !== 'upload') {
-                      return Promise.resolve();
-                    }
-                    const selectedFileName =
-                      form.getFieldValue('test_data_file');
-                    const existingDatasetRef = form.getFieldValue('test_data');
-                    const canReuseExistingPath = looksLikeDatasetPath(
-                      typeof existingDatasetRef === 'string'
-                        ? existingDatasetRef
-                        : undefined
-                    );
-                    if (selectedFileName || canReuseExistingPath) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(
-                        t('components.createJobForm.pleaseUploadDatasetFile')
-                      )
-                    );
-                  },
-                },
-              ]}
-            >
-              <Upload.Dragger
-                maxCount={1}
-                accept='.json,.jsonl'
-                customRequest={handleDatasetFileUpload}
-                onRemove={handleDatasetFileRemove}
-                // Show the filename when copying a task that used an uploaded dataset
-                fileList={toSingleUploadFileList(
-                  getFieldValue('test_data_file'),
-                  '-dataset-file'
-                )}
-                showUploadList={{ showRemoveIcon: false }}
-                style={{
-                  borderRadius: 12,
-                  borderColor: token.colorBorderSecondary,
-                  background: token.colorFillAlter,
-                }}
-              >
-                <p
-                  className='ant-upload-drag-icon'
-                  style={{ marginBottom: 12 }}
-                >
-                  <UploadOutlined
-                    style={{ color: token.colorPrimary, fontSize: 24 }}
-                  />
-                </p>
-                <Text strong style={{ fontSize: 16 }}>
-                  {t('components.createJobForm.selectDatasetFile')}
-                </Text>
-                <div
+                <TextArea
+                  rows={6}
+                  placeholder={
+                    isChatApi
+                      ? isPromptSystemChatApi
+                        ? t('components.createJobForm.jsonlDataPlaceholderChat')
+                        : `{"id": "1", "messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "Hello!"}]}\n{"id": "2", "messages": [{"role": "user", "content": "What is AI?"}]}`
+                      : currentApiType === 'custom-chat'
+                        ? `{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"Hello, how are you?"}]}\n{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"What is artificial intelligence?"}]}`
+                        : `{"id": "1", "input": "Hello, how are you?", "model": "text-embedding-3-small"}\n{"id": "2", "input": "What is artificial intelligence?", "model": "text-embedding-3-small"}`
+                  }
+                  maxLength={50000}
+                  showCount
                   style={{
-                    marginTop: 12,
-                    color: token.colorTextSecondary,
-                    fontSize: 12,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
+                    fontFamily: 'Monaco, Consolas, "Courier New", monospace',
                   }}
-                >
-                  <span style={{ whiteSpace: 'pre-line' }}>
-                    {isChatApi
-                      ? t(
-                          'components.createJobForm.datasetFileFormatDescriptionChat'
-                        ) ||
-                        'Supports JSONL format:\n• JSONL: one JSON object per line {"id": "...", "messages": [...]}'
-                      : t(
-                          'components.createJobForm.datasetFileFormatDescriptionCustom'
-                        ) ||
-                        'Supports JSONL format:\n• JSONL: one JSON object per line, representing the full request payload'}
-                  </span>
-                  {isChatApi && (
-                    <span>
-                      {t('components.createJobForm.datasetImageMountWarning')}
-                    </span>
-                  )}
-                </div>
-              </Upload.Dragger>
-            </Form.Item>
+                />
+              </Form.Item>
+            </Space>
           );
-
-          const renderManualDatasetPanel = () => (
-            <Card {...cardProps}>
-              <Space direction='vertical' size={12} style={{ width: '100%' }}>
-                <Text strong>{t('components.createJobForm.jsonlData')}</Text>
-                <Text type='secondary' style={{ fontSize: 12 }}>
-                  {isChatApi
-                    ? t('components.createJobForm.jsonlDataTooltip')
-                    : t('components.createJobForm.jsonlDataTooltipPayload')}
-                </Text>
-                <Form.Item
-                  name='test_data'
-                  style={{ marginBottom: 0 }}
-                  rules={[
-                    {
-                      required: inputType === 'input',
-                      message: t(
-                        'components.createJobForm.pleaseEnterJsonlData'
-                      ),
-                    },
-                    {
-                      validator: (_, value) => {
-                        if (inputType !== 'input' || !value) {
-                          return Promise.resolve();
-                        }
-                        try {
-                          const lines = value
-                            .trim()
-                            .split('\n')
-                            .filter(line => line.trim());
-
-                          let customError = '';
-                          lines.forEach(line => {
-                            const jsonObj = JSON.parse(line);
-                            if (isChatApi) {
-                              if (
-                                !jsonObj.id ||
-                                (!jsonObj.prompt &&
-                                  (!jsonObj.messages ||
-                                    !Array.isArray(jsonObj.messages)))
-                              ) {
-                                customError =
-                                  t(
-                                    'components.createJobForm.eachLineMustContainIdAndMessages'
-                                  ) ||
-                                  'Each line must contain "id" and "prompt" or "messages" array';
-                                throw new Error(customError);
-                              }
-                            }
-                          });
-                          return Promise.resolve();
-                        } catch (e: any) {
-                          return Promise.reject(
-                            new Error(
-                              e.message ===
-                                t(
-                                  'components.createJobForm.eachLineMustContainFields'
-                                ) ||
-                                e.message ===
-                                  (t(
-                                    'components.createJobForm.eachLineMustContainIdAndMessages'
-                                  ) ||
-                                    'Each line must contain "id" and "prompt" or "messages" array')
-                                ? e.message
-                                : isChatApi
-                                  ? t(
-                                      'components.createJobForm.invalidJsonlFormat'
-                                    )
-                                  : t(
-                                      'components.createJobForm.invalidJsonlFormatBasic'
-                                    ) ||
-                                    'Invalid JSONL format. Each line must be valid JSON.'
-                            )
-                          );
-                        }
-                      },
-                    },
-                  ]}
-                >
-                  <TextArea
-                    rows={6}
-                    placeholder={
-                      isChatApi
-                        ? `{"id": "1", "messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "Hello!"}]}\n{"id": "2", "messages": [{"role": "user", "content": "What is AI?"}]}`
-                        : currentApiType === 'custom-chat'
-                          ? `{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"Hello, how are you?"}]}\n{"model":"custom-chat-model","stream":true,"messages":[{"role":"user","content":"What is artificial intelligence?"}]}`
-                          : `{"id": "1", "input": "Hello, how are you?", "model": "text-embedding-3-small"}\n{"id": "2", "input": "What is artificial intelligence?", "model": "text-embedding-3-small"}`
-                    }
-                    maxLength={50000}
-                    showCount
-                    style={{
-                      fontFamily: 'Monaco, Consolas, "Courier New", monospace',
-                    }}
-                  />
-                </Form.Item>
-              </Space>
-            </Card>
-          );
-
-          let additionalContent: React.ReactNode = null;
-          if (inputType === 'default') {
-            additionalContent = renderBuiltInDatasetPanel();
-          } else if (inputType === 'upload') {
-            additionalContent = renderUploadDatasetPanel();
-          } else if (inputType === 'input') {
-            additionalContent = renderManualDatasetPanel();
-          }
 
           const datasetSourceTooltip = t(
             'components.createJobForm.datasetSourceTooltip'
           );
+          const uploadHint = isChatApi
+            ? t(
+                isPromptSystemChatApi
+                  ? 'components.createJobForm.datasetFileFormatDescriptionChat'
+                  : 'components.createJobForm.datasetFileFormatDescriptionResponses'
+              ) ||
+              'Supports JSONL format:\n• JSONL: one JSON object per line {"id": "...", "messages": [...]}'
+            : t(
+                'components.createJobForm.datasetFileFormatDescriptionCustom'
+              ) ||
+              'Supports JSONL format:\n• JSONL: one JSON object per line, representing the full request payload';
 
           return (
-            <Space
-              direction='vertical'
-              size={16}
-              style={{ display: 'flex', width: '100%' }}
-            >
-              <Form.Item
-                name='test_data_input_type'
-                label={
-                  <span>
-                    {t('components.createJobForm.datasetSource')}
-                    <Tooltip title={datasetSourceTooltip}>
-                      <InfoCircleOutlined style={{ marginLeft: 5 }} />
-                    </Tooltip>
-                  </span>
-                }
-                rules={[
-                  {
-                    required: true,
-                    message: t(
-                      'components.createJobForm.pleaseSelectDatasetSource'
-                    ),
-                  },
-                ]}
-                style={{ marginBottom: 0 }}
-              >
-                <Select
-                  size='large'
-                  placeholder={t('components.createJobForm.datasetSource')}
-                >
-                  {isChatApi ? (
-                    <>
-                      <Select.Option value='default'>
-                        {t('components.createJobForm.builtInDataset')}
-                      </Select.Option>
-                      <Select.Option value='none'>
-                        {t('components.createJobForm.noDataset')}
-                      </Select.Option>
-                      <Select.Option value='upload'>
-                        {t('components.createJobForm.uploadJsonlFile')}
-                      </Select.Option>
-                      <Select.Option value='input'>
-                        {t('components.createJobForm.customJsonlData')}
-                      </Select.Option>
-                    </>
-                  ) : (
-                    <>
-                      <Select.Option value='none'>
-                        {t('components.createJobForm.noDataset')}
-                      </Select.Option>
-                      <Select.Option value='upload'>
-                        {t('components.createJobForm.uploadJsonlFile')}
-                      </Select.Option>
-                      <Select.Option value='input'>
-                        {t('components.createJobForm.customJsonlData')}
-                      </Select.Option>
-                    </>
-                  )}
-                </Select>
-              </Form.Item>
-              {additionalContent}
-            </Space>
+            <TaskDatasetFields
+              source={(inputType || 'managed') as TaskDatasetSource}
+              sourceName='test_data_input_type'
+              datasetType='llm'
+              allowCustomJsonl
+              uploadValueName='test_data_file'
+              uploadFileName={getFieldValue('test_data_file')}
+              uploadLoading={uploading}
+              uploadTitle={t('components.createJobForm.selectDatasetFile')}
+              uploadHint={uploadHint}
+              uploadAccept='.json,.jsonl'
+              sourceTooltip={datasetSourceTooltip}
+              onUpload={handleDatasetFileUpload}
+              onUploadRemove={handleDatasetFileRemove}
+              customJsonlContent={renderManualDatasetPanel()}
+            />
           );
         }}
       </Form.Item>
@@ -3504,8 +3470,8 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           stream_mode: true,
           spawn_rate: 1,
           concurrent_users: 1,
-          chat_type: 2,
-          test_data_input_type: 'default',
+          test_data_input_type: 'managed',
+          dataset_id: undefined,
           temp_task_id: tempTaskId,
           target_host: '',
           api_path: '/v1/chat/completions',
@@ -3565,16 +3531,14 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
               // Update dataset settings based on API type
               if (isStandardChatApiType(newApiType)) {
                 form.setFieldsValue({
-                  test_data_input_type: 'default',
-                  chat_type: 2,
+                  test_data_input_type: 'managed',
                 });
               } else if (
                 newApiType === 'embeddings' ||
                 newApiType === 'custom-chat'
               ) {
                 form.setFieldsValue({
-                  test_data_input_type: 'none',
-                  chat_type: undefined,
+                  test_data_input_type: 'managed',
                 });
               }
 
@@ -3686,31 +3650,20 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           if ('test_data_input_type' in changedValues) {
             const newInputType = changedValues.test_data_input_type;
             setDatasetFile(null);
+            if (newInputType !== 'managed') {
+              form.setFieldsValue({ dataset_id: undefined });
+            }
             if (newInputType === 'input') {
               // Clear test_data_file and test_data when switching to custom input
               form.setFieldsValue({
                 test_data_file: undefined,
                 test_data: undefined,
-                chat_type: undefined,
               });
-            } else if (newInputType === 'upload') {
-              // Keep existing dataset path for copy/rerun reuse.
-              form.setFieldsValue({
-                chat_type: undefined,
-              });
-            } else if (newInputType === 'default') {
-              // Reset dataset-related fields when switching back to built-in dataset
-              form.setFieldsValue({
-                test_data: undefined,
-                test_data_file: undefined,
-                chat_type: 0,
-              });
-            } else {
+            } else if (newInputType !== 'upload') {
               // Clear dataset-related fields when no dataset is selected
               form.setFieldsValue({
                 test_data: undefined,
                 test_data_file: undefined,
-                chat_type: undefined,
               });
             }
           }
@@ -3758,6 +3711,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             const tabItems = [
               {
                 key: '1',
+                forceRender: true,
                 label: (
                   <span className='tab-label'>
                     <span className='tab-icon'>
@@ -3774,6 +3728,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             if (!isStandardChatApi) {
               tabItems.push({
                 key: '2',
+                forceRender: true,
                 label: (
                   <span className='tab-label'>
                     <span className='tab-icon'>
@@ -3789,6 +3744,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
             // Data/Load tab - always show
             tabItems.push({
               key: isStandardChatApi ? '2' : '3',
+              forceRender: true,
               label: (
                 <span className='tab-label'>
                   <span className='tab-icon'>

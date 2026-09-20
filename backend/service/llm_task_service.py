@@ -17,7 +17,6 @@ from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
-from model.http_task import HttpTask
 from model.llm_task import (
     ComparisonMetrics,
     ComparisonRequest,
@@ -49,6 +48,7 @@ from utils.converters import (
     truthy,
 )
 from utils.error_handler import ErrorMessages, ErrorResponse
+from utils.file_cleanup import cleanup_task_files
 from utils.logger import logger
 from utils.request_headers import (
     merge_headers,
@@ -138,7 +138,6 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
         "concurrent_users": task.concurrent_users,
         "duration": task.duration,
         "spawn_rate": task.spawn_rate,
-        "chat_type": task.chat_type,
         "stream_mode": truthy(task.stream_mode),
         "headers": "",
         "cookies": "",
@@ -181,7 +180,6 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "duration": task.duration,
         "concurrent_users": task.concurrent_users,
         "spawn_rate": task.spawn_rate,
-        "chat_type": task.chat_type,
         "stream_mode": truthy(task.stream_mode),
         "headers": dict_to_kv_list(headers_dict),
         "cookies": dict_to_kv_list(cookies_dict),
@@ -206,37 +204,6 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         ),
         "engine_id": task.engine_id,
         "cluster_id": task.cluster_id or "local",
-        "created_at": safe_isoformat(task.created_at),
-        "updated_at": safe_isoformat(task.updated_at),
-    }
-
-
-def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
-    """Build a task-like payload for HTTP API tasks so shared pages work."""
-    mapped_status = _map_status(cast(Optional[str], task.status))
-    return {
-        "id": task.id,
-        "name": task.name,
-        "status": mapped_status,
-        "created_by": getattr(task, "created_by", None),
-        "target_host": task.target_host,
-        "model": task.method,  # reuse method label for display
-        "duration": task.duration,
-        "concurrent_users": task.concurrent_users,
-        "spawn_rate": task.spawn_rate,
-        "chat_type": 0,
-        "stream_mode": False,
-        "headers": [],
-        "cookies": [],
-        "cert_config": {"cert_file": "", "key_file": ""},
-        "api_path": getattr(task, "api_path", ""),
-        "request_payload": task.request_body or "",
-        "field_mapping": {},
-        "api_type": "common-api",
-        "test_data": task.request_body or "",
-        "error_message": task.error_message,
-        "engine_id": getattr(task, "engine_id", None),
-        "cluster_id": getattr(task, "cluster_id", None) or "local",
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -525,6 +492,7 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
     headers_json = json.dumps(await _resolved_copy_headers(request, body))
     cookies_json = json.dumps(kv_items_to_dict(body.cookies))
 
+    managed_dataset_path: Optional[str] = None
     test_data = body.test_data or ""
 
     request_payload_dict = _prepare_request_payload(body)
@@ -532,6 +500,20 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
 
     db = request.state.db
     try:
+        from service.dataset_service import (
+            authorize_managed_dataset_path,
+            resolve_dataset_for_task,
+        )
+
+        managed_dataset_path = await resolve_dataset_for_task(
+            request, body.dataset_id, "llm", task_id
+        )
+        if not managed_dataset_path:
+            managed_dataset_path = await authorize_managed_dataset_path(
+                request, body.test_data, "llm", task_id
+            )
+        test_data = managed_dataset_path or test_data
+
         # Resolve creator from authenticated user
         user = get_current_user(request)
         created_by: Optional[str] = None
@@ -564,7 +546,6 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             duration=body.duration,
             concurrent_users=body.concurrent_users,
             spawn_rate=body.spawn_rate if body.spawn_rate else body.concurrent_users,
-            chat_type=body.chat_type,
             warmup_enabled=1 if body.warmup_enabled else 0,
             warmup_duration=body.warmup_duration,
             stream_mode=str(body.stream_mode),
@@ -606,8 +587,15 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             status="created",
             message="Task created successfully",
         )
+    except ErrorResponse:
+        await db.rollback()
+        if managed_dataset_path:
+            cleanup_task_files(task_id, test_data_path=managed_dataset_path)
+        raise
     except Exception as e:
         await db.rollback()
+        if managed_dataset_path:
+            cleanup_task_files(task_id, test_data_path=managed_dataset_path)
         error_msg = "Failed to create task in database"
         logger.error("Failed to create task in database: {}", e, exc_info=True)
         raise ErrorResponse.internal_server_error(error_msg)
@@ -765,11 +753,6 @@ async def get_task_svc(request: Request, task_id: str):
         if task and getattr(task, "is_deleted", 0) == 0:
             return _build_task_detail(task)
 
-        # Fallback to HTTP API task to support shared log/detail pages
-        http_task = await db.get(HttpTask, task_id)
-        if http_task and getattr(http_task, "is_deleted", 0) == 0:
-            return _build_http_task_detail(http_task)
-
         logger.warning("Get request for non-existent task ID: {}", task_id)
         raise ErrorResponse.not_found("Task not found")
     except ErrorResponse:
@@ -847,30 +830,6 @@ async def get_task_status_svc(request: Request, task_id: str):
         task_data = result.first()
 
         if not task_data:
-            # Fallback to HTTP task
-            common_query = (
-                select(
-                    HttpTask.id,
-                    HttpTask.name,
-                    HttpTask.status,
-                    HttpTask.error_message,
-                    HttpTask.updated_at,
-                )
-                .where(HttpTask.id == task_id)
-                .where(HttpTask.is_deleted == 0)
-            )
-            common_result = await db.execute(common_query)
-            common_data = common_result.first()
-            if common_data:
-                mapped_status = _map_status(common_data.status)
-                return {
-                    "id": common_data.id,
-                    "name": common_data.name,
-                    "status": mapped_status,
-                    "error_message": common_data.error_message,
-                    "updated_at": safe_isoformat(common_data.updated_at),
-                }
-
             logger.warning("Status request for non-existent task ID: {}", task_id)
             raise ErrorResponse.not_found("Task not found")
 

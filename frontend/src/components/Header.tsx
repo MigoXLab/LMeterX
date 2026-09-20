@@ -71,6 +71,10 @@ const Header: React.FC = () => {
       label: t('sidebar.testTasks'),
     },
     {
+      key: '/datasets',
+      label: t('sidebar.datasets', '数据集'),
+    },
+    {
       key: '/collections',
       label: t('sidebar.collections') || '测试集',
     },

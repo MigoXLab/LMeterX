@@ -555,7 +555,6 @@ Examples:
 
         temp_task_id = f"llm_{uuid.uuid4().hex[:8]}"
         test_data = args.test_data
-        chat_type = 2 if test_data else 0
         create_payload = {
             "temp_task_id": temp_task_id,
             "name": task_name,
@@ -571,7 +570,6 @@ Examples:
             "request_payload": body or "",
             "api_type": api_type,
             "test_data": test_data,
-            "chat_type": chat_type,
             "warmup_enabled": False,
             "warmup_duration": 120,
             "load_mode": "fixed",

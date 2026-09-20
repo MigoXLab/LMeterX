@@ -1,12 +1,14 @@
 import {
   BugOutlined,
+  CloudOutlined,
   CopyOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
-  ExperimentOutlined,
   InfoCircleOutlined,
   PlusOutlined,
-  UploadOutlined,
+  RocketOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -23,27 +25,41 @@ import {
   Row,
   Select,
   Space,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
-  Upload,
 } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { agentTaskApi, uploadDatasetFile } from '@/api/services';
 import RequestHeadersEditor from '@/components/RequestHeadersEditor';
+import TaskDatasetFields, {
+  TaskDatasetSource,
+} from '@/components/TaskDatasetFields';
 import { useI18n } from '@/hooks/useI18n';
 import { AgentTask, AgentTaskPayload, Cluster } from '@/types/job';
+import { detectAgentCurl } from '@/utils/agentCurl';
 import { copyToClipboard } from '@/utils/clipboard';
-import { INHERITED_SECRET_PLACEHOLDER } from '@/utils/requestHeaders';
+import parseCurlCommand from '@/utils/curl';
+import {
+  prepareHeadersForEditor,
+  INHERITED_SECRET_PLACEHOLDER,
+} from '@/utils/requestHeaders';
 
 const { TextArea } = Input;
-const { Dragger } = Upload;
 const { Text } = Typography;
 const SYSTEM_CONTENT_TYPE_HEADER = {
   key: 'Content-Type',
   value: 'application/json',
   fixed: true,
+};
+const CONNECTION_TEST_PLACEHOLDER_NAME = 'connection-test';
+const sectionTitleStyle: React.CSSProperties = {
+  margin: '32px 0 16px',
+  fontWeight: 'bold',
+  fontSize: '18px',
+  paddingBottom: '8px',
 };
 const MANAGED_AGENT_HEADERS = new Set([
   'accept',
@@ -90,6 +106,63 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
   const [datasetUploading, setDatasetUploading] = useState(false);
   const [datasetFileName, setDatasetFileName] = useState('');
   const [tempTaskId, setTempTaskId] = useState(`temp-${Date.now()}`);
+  const [activeTabKey, setActiveTabKey] = useState('1');
+  const dataLoadFieldNames = useMemo(
+    () =>
+      new Set([
+        'dataset_source',
+        'dataset_file',
+        'dataset_id',
+        'concurrent_users',
+        'spawn_rate',
+        'duration',
+      ]),
+    []
+  );
+  const datasetSource =
+    (Form.useWatch('dataset_source', form) as TaskDatasetSource | undefined) ||
+    'none';
+  const inheritSourceDataset = Boolean(
+    Form.useWatch('inherit_source_dataset', form)
+  );
+  const a2aBinding =
+    (Form.useWatch('a2a_binding', form) as string | undefined) || 'jsonrpc';
+  const a2aMode =
+    (Form.useWatch('a2a_mode', form) as string | undefined) || 'async_poll';
+  const targetUrl = Form.useWatch('target_url', form) as string | undefined;
+
+  const resolvedRequestPaths = useMemo(() => {
+    const base = (targetUrl || '').trim().replace(/\/+$/, '');
+    if (!base || protocol !== 'a2a') return [];
+    if (a2aBinding === 'jsonrpc') {
+      const method =
+        a2aMode === 'stream' ? 'SendStreamingMessage' : 'SendMessage';
+      return [`POST ${base}`, `{"jsonrpc":"2.0","method":"${method}", …}`];
+    }
+    if (a2aBinding === 'http_json') {
+      const route = a2aMode === 'stream' ? '/message:stream' : '/message:send';
+      const paths = [`POST ${base}${route}`];
+      if (a2aMode === 'async_poll') {
+        paths.push(`GET ${base}/tasks/{taskId}`);
+      }
+      return paths;
+    }
+    if (a2aBinding === 'grpc') {
+      const method =
+        a2aMode === 'stream' ? 'SendStreamingMessage' : 'SendMessage';
+      return [`gRPC ${base} → a2a.A2AService/${method}`];
+    }
+    return [];
+  }, [targetUrl, a2aBinding, a2aMode, protocol]);
+  const resolvedPathJoiner = a2aBinding === 'jsonrpc' ? '→' : '+';
+  const isTestButtonEnabled = useMemo(() => {
+    const url = (targetUrl || '').trim();
+    if (!url) return false;
+    if (protocol === 'a2a' && a2aBinding === 'grpc') {
+      return true;
+    }
+    return /^https?:\/\//i.test(url);
+  }, [a2aBinding, protocol, targetUrl]);
 
   const initialValues = useMemo(
     () => ({
@@ -97,16 +170,17 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
       protocol,
       target_url: '',
       protocol_version: protocol === 'a2a' ? '1.0' : '2026-07-28',
+      a2a_binding: 'jsonrpc',
       agent_card_url: '',
       a2a_tenant: '',
       a2a_mode: 'async_poll',
       headers: [{ ...SYSTEM_CONTENT_TYPE_HEADER }],
+      dataset_source: 'none',
       dataset_file: '',
+      dataset_id: undefined,
       copy_source_task_id: undefined,
       inherit_source_headers: false,
       inherit_source_dataset: false,
-      cascade_paths: '',
-      token_count_path: '',
       concurrent_users: 1,
       spawn_rate: 1,
       duration: 60,
@@ -134,10 +208,16 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
     form.setFieldsValue({
       ...initialData,
       headers: [{ ...SYSTEM_CONTENT_TYPE_HEADER }, ...customHeaders],
-      cascade_paths: (initialData.cascade_count_paths || []).join('\n'),
       copy_source_task_id: initialData.copy_source_task_id,
       inherit_source_headers: initialData.inherit_source_headers || false,
       inherit_source_dataset: initialData.inherit_source_dataset || false,
+      dataset_source: initialData.dataset_id
+        ? 'managed'
+        : initialData.dataset_file ||
+            initialData.dataset_configured ||
+            initialData.inherit_source_dataset
+          ? 'upload'
+          : 'none',
     });
     const cases =
       protocol === 'a2a' ? initialData.a2a_scenarios : initialData.mcp_calls;
@@ -160,7 +240,10 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
     </span>
   );
 
-  const buildPayload = (values: any): AgentTaskPayload => {
+  const buildPayload = (
+    values: any,
+    options?: { forTest?: boolean }
+  ): AgentTaskPayload => {
     const inheritedKeys = new Set(
       (initialData?.redacted_header_keys || []).map(key => key.toLowerCase())
     );
@@ -191,7 +274,9 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
       throw new Error(t('components.createAgentTaskForm.testCasesRequired'));
     }
     return {
-      name: values.name.trim(),
+      name:
+        String(values.name || '').trim() ||
+        (options?.forTest ? CONNECTION_TEST_PLACEHOLDER_NAME : ''),
       protocol,
       target_url: values.target_url.trim(),
       protocol_version: values.protocol_version.trim(),
@@ -201,26 +286,31 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
       spawn_rate: values.spawn_rate,
       request_timeout: values.request_timeout,
       cluster_id: values.cluster_id || 'local',
-      dataset_file: values.dataset_file || undefined,
+      dataset_file:
+        values.dataset_source === 'upload'
+          ? values.dataset_file || undefined
+          : undefined,
+      dataset_id:
+        values.dataset_source === 'managed'
+          ? values.dataset_id || undefined
+          : undefined,
       copy_source_task_id: values.copy_source_task_id || undefined,
       inherit_source_headers: Boolean(values.inherit_source_headers),
-      inherit_source_dataset: Boolean(values.inherit_source_dataset),
+      inherit_source_dataset:
+        values.dataset_source === 'upload' &&
+        Boolean(values.inherit_source_dataset),
       ...(protocol === 'a2a'
         ? {
+            a2a_binding: values.a2a_binding || 'jsonrpc',
             a2a_mode: values.a2a_mode,
             agent_card_url: values.agent_card_url?.trim() || undefined,
             a2a_tenant: values.a2a_tenant || undefined,
             poll_interval: values.poll_interval,
             task_timeout: values.task_timeout,
             a2a_scenarios: scenarioCases,
-            cascade_count_paths: String(values.cascade_paths || '')
-              .split('\n')
-              .map((item: string) => item.trim())
-              .filter(Boolean),
           }
         : {
             mcp_calls: scenarioCases,
-            token_count_path: values.token_count_path?.trim() || undefined,
           }),
     };
   };
@@ -238,9 +328,19 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
         setScenarioCases([]);
         setDatasetFileName('');
         setTempTaskId(`temp-${Date.now()}`);
+        setActiveTabKey('1');
       }
     } catch (error: any) {
-      if (error?.errorFields) return;
+      if (error?.errorFields) {
+        const hasDataLoadError = error.errorFields.some(
+          (field: { name?: unknown }) =>
+            dataLoadFieldNames.has(
+              String(Array.isArray(field.name) ? field.name[0] : field.name)
+            )
+        );
+        setActiveTabKey(hasDataLoadError ? '2' : '1');
+        return;
+      }
       message.error(
         error?.message || t('components.createAgentTaskForm.createFailed')
       );
@@ -374,7 +474,9 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
         throw new Error(t('components.createAgentTaskForm.datasetPathMissing'));
       }
       form.setFieldsValue({
+        dataset_source: 'upload',
         dataset_file: datasetPath,
+        dataset_id: undefined,
         inherit_source_dataset: false,
       });
       setDatasetFileName(file.name);
@@ -400,10 +502,141 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
     return true;
   };
 
+  const handleCurlParse = () => {
+    const curl = form.getFieldValue('curl_command') as string;
+    if (!curl) {
+      message.warning(t('components.createAgentTaskForm.curlParseEmpty'));
+      return;
+    }
+    const maxCurlLength = 8000;
+    if (curl.length > maxCurlLength) {
+      message.warning(
+        t('components.createAgentTaskForm.curlTooLong', { max: maxCurlLength })
+      );
+    }
+    const parsed = parseCurlCommand(curl);
+    const detected = detectAgentCurl(parsed, curl);
+    const parsedTargetUrl = detected.targetUrl || parsed.url;
+    if (!parsedTargetUrl) {
+      message.error(t('components.createAgentTaskForm.curlParseNoUrl'));
+      return;
+    }
+
+    if (detected.protocol !== 'unknown' && detected.protocol !== protocol) {
+      message.warning(
+        t('components.createAgentTaskForm.curlParseProtocolMismatch', {
+          detected: detected.protocol.toUpperCase(),
+          current: protocol.toUpperCase(),
+        })
+      );
+    }
+
+    const nextValues: Record<string, unknown> = {
+      target_url: parsedTargetUrl,
+    };
+    if (protocol === 'a2a') {
+      if (detected.a2aBinding) nextValues.a2a_binding = detected.a2aBinding;
+      if (detected.a2aMode) nextValues.a2a_mode = detected.a2aMode;
+    }
+    if (detected.protocolVersion && detected.protocol === protocol) {
+      nextValues.protocol_version = detected.protocolVersion;
+    }
+    form.setFieldsValue(nextValues);
+
+    const userHeaders = (parsed.headers || []).filter(
+      h => !MANAGED_AGENT_HEADERS.has(h.key.toLowerCase())
+    );
+    if (userHeaders.length) {
+      form.setFieldsValue({
+        headers: prepareHeadersForEditor(userHeaders),
+      });
+    }
+
+    const extractFor =
+      detected.protocol === 'unknown' ? protocol : detected.protocol;
+    if (parsed.body && extractFor === protocol) {
+      try {
+        const body = JSON.parse(parsed.body);
+        if (protocol === 'a2a') {
+          const msg =
+            body.message ??
+            body.params?.message ??
+            (body.params && !body.params.message ? undefined : undefined);
+          if (msg && typeof msg === 'object' && Array.isArray(msg.parts)) {
+            const scenarioId = msg.messageId || `scenario-${Date.now()}`;
+            const scenarioName =
+              msg.parts?.[0]?.text?.slice(0, 30) || 'SendMessage';
+            const newScenario = {
+              id: scenarioId,
+              name: scenarioName,
+              weight: 1,
+              message: msg,
+            };
+            setScenarioCases(prev => {
+              if (prev.some(s => s.id === scenarioId)) return prev;
+              return [...prev, newScenario];
+            });
+          }
+        } else {
+          const toolName = body.params?.name ?? body.name ?? body.method ?? '';
+          const args =
+            body.params?.arguments ?? body.arguments ?? body.params ?? {};
+          if (toolName) {
+            const scenarioId = `tool-${Date.now()}`;
+            const newScenario = {
+              id: scenarioId,
+              name: toolName,
+              weight: 1,
+              tool_name: toolName,
+              arguments:
+                typeof args === 'object' && !Array.isArray(args) ? args : {},
+            };
+            setScenarioCases(prev => {
+              if (
+                prev.some(s => s.tool_name === toolName && s.name === toolName)
+              )
+                return prev;
+              return [...prev, newScenario];
+            });
+          }
+        }
+      } catch {
+        // body is not valid JSON – skip scenario extraction
+      }
+    }
+
+    if (protocol === 'a2a' && (detected.a2aBinding || detected.a2aMode)) {
+      const bindingLabels: Record<string, string> = {
+        jsonrpc: 'JSON-RPC',
+        http_json: 'HTTP+JSON',
+        grpc: 'gRPC',
+      };
+      const modeLabels: Record<string, string> = {
+        async_poll: t('components.createAgentTaskForm.asyncPoll'),
+        stream: t('components.createAgentTaskForm.streamSse'),
+        sync: t('components.createAgentTaskForm.sync'),
+      };
+      message.success(
+        t('components.createAgentTaskForm.curlParseSuccessDetected', {
+          binding: detected.a2aBinding
+            ? bindingLabels[detected.a2aBinding]
+            : t('components.createAgentTaskForm.curlParseKeepCurrent'),
+          mode: detected.a2aMode
+            ? modeLabels[detected.a2aMode]
+            : t('components.createAgentTaskForm.curlParseKeepCurrent'),
+        })
+      );
+      return;
+    }
+    message.success(t('components.createAgentTaskForm.curlParseSuccess'));
+  };
+
   const handleTest = async () => {
     let payload: AgentTaskPayload | undefined;
     try {
-      payload = await validatePayload();
+      await form.validateFields(['target_url', 'protocol_version']);
+      const values = form.getFieldsValue(true);
+      payload = buildPayload(values, { forTest: true });
       setTesting(true);
       const response = await agentTaskApi.testConnection(payload);
       const body: any = response.data;
@@ -479,250 +712,6 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
   return (
     <>
       <Form form={form} layout='vertical' initialValues={initialValues}>
-        <Row>
-          <Col span={24}>
-            <Form.Item
-              name='name'
-              label={t('components.createJobForm.taskName')}
-              rules={[
-                {
-                  required: true,
-                  message: t('components.createJobForm.pleaseEnterTaskName'),
-                },
-              ]}
-            >
-              <Input
-                placeholder={
-                  protocol === 'a2a'
-                    ? t('components.createAgentTaskForm.a2aTaskNamePlaceholder')
-                    : t('components.createAgentTaskForm.mcpTaskNamePlaceholder')
-                }
-              />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Row gutter={16}>
-          <Col span={16}>
-            <Form.Item
-              name='target_url'
-              label={labelWithTooltip(
-                t(
-                  protocol === 'a2a'
-                    ? 'components.createAgentTaskForm.a2aTargetUrl'
-                    : 'components.createAgentTaskForm.mcpTargetUrl'
-                ),
-                t(
-                  protocol === 'a2a'
-                    ? 'components.createAgentTaskForm.a2aTargetUrlTooltip'
-                    : 'components.createAgentTaskForm.mcpTargetUrlTooltip'
-                )
-              )}
-              rules={[
-                {
-                  required: true,
-                  message: t(
-                    'components.createAgentTaskForm.targetUrlRequired'
-                  ),
-                },
-                {
-                  type: 'url',
-                  message: t('components.createJobForm.invalidUrlFormat'),
-                },
-              ]}
-            >
-              <Input
-                placeholder={
-                  protocol === 'a2a'
-                    ? 'https://agent.example.com/a2a'
-                    : 'https://mcp.example.com/mcp'
-                }
-              />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item
-              name='protocol_version'
-              label={labelWithTooltip(
-                t('components.createAgentTaskForm.protocolVersion'),
-                t('components.createAgentTaskForm.protocolVersionTooltip')
-              )}
-              rules={[
-                {
-                  required: true,
-                  message: t(
-                    'components.createAgentTaskForm.protocolVersionRequired'
-                  ),
-                },
-              ]}
-            >
-              <Select
-                options={
-                  protocol === 'a2a'
-                    ? [{ label: '1.0', value: '1.0' }]
-                    : [
-                        {
-                          label: `2026-07-28 (${t(
-                            'components.createAgentTaskForm.stateless'
-                          )})`,
-                          value: '2026-07-28',
-                        },
-                        {
-                          label: `2025-11-25 (${t(
-                            'components.createAgentTaskForm.compatible'
-                          )})`,
-                          value: '2025-11-25',
-                        },
-                      ]
-                }
-              />
-            </Form.Item>
-          </Col>
-        </Row>
-        {protocol === 'a2a' && (
-          <>
-            <Row gutter={16}>
-              <Col span={16}>
-                <Form.Item
-                  name='agent_card_url'
-                  label={labelWithTooltip(
-                    t('components.createAgentTaskForm.agentCardUrl'),
-                    t('components.createAgentTaskForm.agentCardUrlTooltip')
-                  )}
-                >
-                  <Input
-                    placeholder={t(
-                      'components.createAgentTaskForm.agentCardUrlPlaceholder'
-                    )}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item
-                  name='a2a_mode'
-                  label={labelWithTooltip(
-                    t('components.createAgentTaskForm.executionMode'),
-                    t('components.createAgentTaskForm.executionModeTooltip')
-                  )}
-                >
-                  <Select
-                    options={[
-                      {
-                        label: t('components.createAgentTaskForm.asyncPoll'),
-                        value: 'async_poll',
-                      },
-                      {
-                        label: t('components.createAgentTaskForm.streamSse'),
-                        value: 'stream',
-                      },
-                      {
-                        label: t('components.createAgentTaskForm.sync'),
-                        value: 'sync',
-                      },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Form.Item
-              name='a2a_tenant'
-              label={labelWithTooltip(
-                t('components.createAgentTaskForm.a2aTenant'),
-                t('components.createAgentTaskForm.a2aTenantTooltip')
-              )}
-            >
-              <Input
-                placeholder={t(
-                  'components.createAgentTaskForm.a2aTenantPlaceholder'
-                )}
-              />
-            </Form.Item>
-          </>
-        )}
-        <RequestHeadersEditor
-          form={form}
-          title={t('components.createAgentTaskForm.requestHeaders')}
-          tooltip={t('components.createAgentTaskForm.requestHeadersTooltip')}
-          redactedHeaderKeys={initialData?.redacted_header_keys}
-          managedHeaderNames={MANAGED_AGENT_HEADERS}
-          maxValueLength={4000}
-        />
-        <Form.Item
-          required
-          label={t(
-            protocol === 'a2a'
-              ? 'components.createAgentTaskForm.a2aScenarioWeights'
-              : 'components.createAgentTaskForm.mcpScenarioWeights'
-          )}
-        >
-          <List
-            bordered
-            locale={{
-              emptyText: t('components.createAgentTaskForm.noScenarios'),
-            }}
-            dataSource={scenarioCases}
-            renderItem={(item, index) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key='edit'
-                    type='text'
-                    icon={<EditOutlined />}
-                    aria-label={t(
-                      'components.createAgentTaskForm.editScenario'
-                    )}
-                    onClick={() => openScenarioEditor(index)}
-                  />,
-                  <Button
-                    key='delete'
-                    type='text'
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label={t(
-                      'components.createAgentTaskForm.deleteScenario'
-                    )}
-                    onClick={() => removeScenario(index)}
-                  />,
-                ]}
-              >
-                <List.Item.Meta
-                  title={item.name}
-                  description={
-                    <Space direction='vertical' size={0}>
-                      <span>
-                        {protocol === 'a2a'
-                          ? `SendMessage · ${item.message?.parts?.length || 0} Part`
-                          : `tools/call · ${item.tool_name}`}
-                      </span>
-                      <Text type='secondary' copyable={{ text: item.id }}>
-                        scenario_id: {item.id}
-                      </Text>
-                    </Space>
-                  }
-                />
-                <Text strong>
-                  {t('components.createAgentTaskForm.weightValue', {
-                    weight: item.weight || 1,
-                  })}
-                </Text>
-              </List.Item>
-            )}
-          />
-          <Button
-            block
-            style={{ marginTop: 8 }}
-            icon={<PlusOutlined />}
-            onClick={() => openScenarioEditor()}
-          >
-            {t(
-              protocol === 'a2a'
-                ? 'components.createAgentTaskForm.addA2aScenario'
-                : 'components.createAgentTaskForm.addMcpScenario'
-            )}
-          </Button>
-        </Form.Item>
-        <Form.Item name='dataset_file' hidden>
-          <Input />
-        </Form.Item>
         <Form.Item name='copy_source_task_id' hidden>
           <Input />
         </Form.Item>
@@ -732,195 +721,678 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
         <Form.Item name='inherit_source_dataset' hidden>
           <Input />
         </Form.Item>
-        <Form.Item
-          label={labelWithTooltip(
-            t('components.createAgentTaskForm.optionalDataset'),
-            t('components.createAgentTaskForm.protocolDatasetTooltip')
-          )}
-        >
-          <Dragger
-            accept='.jsonl,application/jsonl'
-            maxCount={1}
-            customRequest={handleDatasetUpload}
-            onRemove={handleDatasetRemove}
-            fileList={
-              datasetFileName
-                ? [
-                    {
-                      uid: '-1',
-                      name: datasetFileName,
-                      status: 'done' as const,
-                    },
-                  ]
-                : []
-            }
-            disabled={datasetUploading}
-            showUploadList={{ showRemoveIcon: true }}
-          >
-            <p className='ant-upload-drag-icon'>
-              <UploadOutlined />
-            </p>
-            <p>{t('components.createAgentTaskForm.uploadJsonlPrompt')}</p>
-            <Text type='secondary'>
-              {t(
-                protocol === 'a2a'
-                  ? 'components.createAgentTaskForm.a2aJsonlHint'
-                  : 'components.createAgentTaskForm.mcpJsonlHint'
-              )}
-            </Text>
-          </Dragger>
-        </Form.Item>
-        {protocol === 'a2a' ? (
-          <>
-            <Form.Item
-              name='cascade_paths'
-              label={labelWithTooltip(
-                t('components.createAgentTaskForm.cascadePaths'),
-                t('components.createAgentTaskForm.cascadePathsTooltip')
-              )}
-            >
-              <TextArea
-                rows={2}
-                placeholder='result.task.metadata.metrics.mcpCallCount'
-              />
-            </Form.Item>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name='poll_interval'
-                  label={labelWithTooltip(
-                    t('components.createAgentTaskForm.pollInterval'),
-                    t('components.createAgentTaskForm.pollIntervalTooltip')
-                  )}
-                >
-                  <InputNumber min={0.05} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name='task_timeout'
-                  label={labelWithTooltip(
-                    t('components.createAgentTaskForm.taskTimeout'),
-                    t('components.createAgentTaskForm.taskTimeoutTooltip')
-                  )}
-                >
-                  <InputNumber min={1} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-            </Row>
-          </>
-        ) : (
-          <Form.Item
-            name='token_count_path'
-            label={labelWithTooltip(
-              t('components.createAgentTaskForm.tokenCountPath'),
-              t('components.createAgentTaskForm.tokenCountPathTooltip')
-            )}
-          >
-            <Input placeholder='result.usage.outputTokens' />
-          </Form.Item>
-        )}
-        <Row gutter={16}>
-          <Col span={6}>
-            <Form.Item
-              name='concurrent_users'
-              label={labelWithTooltip(
-                t('components.createJobForm.concurrentUsers'),
-                t('components.createJobForm.concurrentUsersTooltip')
-              )}
-              rules={[
-                {
-                  required: true,
-                  message: t(
-                    'components.createJobForm.pleaseEnterConcurrentUsers'
-                  ),
-                },
-              ]}
-            >
-              <InputNumber min={1} max={5000} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={6}>
-            <Form.Item
-              name='spawn_rate'
-              label={labelWithTooltip(
-                t('components.createJobForm.userSpawnRate'),
-                t('components.createJobForm.userSpawnRateTooltip')
-              )}
-              rules={[
-                {
-                  required: true,
-                  message: t('components.createJobForm.pleaseEnterSpawnRate'),
-                },
-              ]}
-            >
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={6}>
-            <Form.Item
-              name='duration'
-              label={labelWithTooltip(
-                t('components.createJobForm.testDuration'),
-                t('components.createJobForm.testDurationTooltip')
-              )}
-              rules={[
-                {
-                  required: true,
-                  message: t(
-                    'components.createJobForm.pleaseEnterTestDuration'
-                  ),
-                },
-              ]}
-            >
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={6}>
-            <Form.Item
-              name='request_timeout'
-              label={labelWithTooltip(
-                t('components.createJobForm.requestTimeout'),
-                t('components.createAgentTaskForm.requestTimeoutTooltip')
-              )}
-            >
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Form.Item
-          name='cluster_id'
-          label={labelWithTooltip(
-            t('components.createJobForm.env'),
-            t('components.createAgentTaskForm.envTooltip')
-          )}
-          rules={[
+        <Tabs
+          activeKey={activeTabKey}
+          onChange={setActiveTabKey}
+          tabPosition='top'
+          size='large'
+          className='unified-tabs'
+          items={[
             {
-              required: true,
-              message: t('components.createJobForm.envRequired'),
+              key: '1',
+              forceRender: true,
+              label: (
+                <span className='tab-label'>
+                  <span className='tab-icon'>
+                    <SettingOutlined />
+                  </span>
+                  {t('components.createJobForm.basicRequest')}
+                </span>
+              ),
+              children: (
+                <>
+                  <Row>
+                    <Col span={24}>
+                      <Form.Item
+                        name='name'
+                        label={t('components.createJobForm.taskName')}
+                        rules={[
+                          {
+                            required: true,
+                            message: t(
+                              'components.createJobForm.pleaseEnterTaskName'
+                            ),
+                          },
+                          {
+                            min: 1,
+                            max: 100,
+                            message: t(
+                              'components.createJobForm.taskNameLengthLimit'
+                            ),
+                          },
+                        ]}
+                        normalize={value => value?.trim() || ''}
+                      >
+                        <Input
+                          placeholder={
+                            protocol === 'a2a'
+                              ? t(
+                                  'components.createAgentTaskForm.a2aTaskNamePlaceholder'
+                                )
+                              : t(
+                                  'components.createAgentTaskForm.mcpTaskNamePlaceholder'
+                                )
+                          }
+                          maxLength={100}
+                          showCount
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Form.Item
+                    name='cluster_id'
+                    label={labelWithTooltip(
+                      t('components.createJobForm.env'),
+                      t('components.createAgentTaskForm.envTooltip')
+                    )}
+                    rules={[
+                      {
+                        required: true,
+                        message: t('components.createJobForm.envRequired'),
+                      },
+                    ]}
+                  >
+                    <Select
+                      placeholder={t('components.createJobForm.envPlaceholder')}
+                      options={clusters.map(item => ({
+                        value: item.id,
+                        label: `${item.name} (${t('components.createJobForm.envSlots', { slots: item.available_slots })})`,
+                      }))}
+                    />
+                  </Form.Item>
+                  <div style={{ ...sectionTitleStyle, marginTop: 24 }}>
+                    <Space>
+                      <CloudOutlined />
+                      <span>
+                        {t('components.createJobForm.requestConfiguration')}
+                      </span>
+                    </Space>
+                  </div>
+                  <Form.Item
+                    label={
+                      <Space>
+                        {t('components.createAgentTaskForm.curlLabel')}
+                        <Tooltip
+                          title={t(
+                            'components.createAgentTaskForm.curlParseHint'
+                          )}
+                        >
+                          <InfoCircleOutlined />
+                        </Tooltip>
+                      </Space>
+                    }
+                    name='curl_command'
+                  >
+                    <TextArea
+                      rows={3}
+                      placeholder={t(
+                        'components.createAgentTaskForm.curlPlaceholder'
+                      )}
+                    />
+                  </Form.Item>
+                  <Button
+                    type='primary'
+                    onClick={handleCurlParse}
+                    style={{ marginBottom: 12 }}
+                  >
+                    {t('components.createAgentTaskForm.curlParseButton')}
+                  </Button>
+
+                  {protocol === 'a2a' && (
+                    <Row gutter={16}>
+                      <Col span={24}>
+                        <Form.Item
+                          name='a2a_binding'
+                          label={labelWithTooltip(
+                            t('components.createAgentTaskForm.a2aBinding'),
+                            t(
+                              'components.createAgentTaskForm.a2aBindingTooltip'
+                            )
+                          )}
+                          rules={[
+                            {
+                              required: true,
+                              message: t(
+                                'components.createAgentTaskForm.a2aBindingRequired'
+                              ),
+                            },
+                          ]}
+                        >
+                          <Select
+                            options={[
+                              {
+                                label: 'JSON-RPC',
+                                value: 'jsonrpc',
+                              },
+                              {
+                                label: `HTTP+JSON (REST)`,
+                                value: 'http_json',
+                              },
+                              {
+                                label: 'gRPC',
+                                value: 'grpc',
+                              },
+                            ]}
+                          />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  )}
+                  <Row gutter={16}>
+                    <Col span={16}>
+                      <Form.Item
+                        name='target_url'
+                        label={labelWithTooltip(
+                          t(
+                            protocol === 'a2a'
+                              ? 'components.createAgentTaskForm.a2aBaseUrl'
+                              : 'components.createAgentTaskForm.mcpTargetUrl'
+                          ),
+                          t(
+                            protocol === 'a2a'
+                              ? 'components.createAgentTaskForm.a2aBaseUrlTooltip'
+                              : 'components.createAgentTaskForm.mcpTargetUrlTooltip'
+                          )
+                        )}
+                        rules={[
+                          {
+                            required: true,
+                            message: t(
+                              'components.createAgentTaskForm.targetUrlRequired'
+                            ),
+                          },
+                          ...(a2aBinding === 'grpc'
+                            ? []
+                            : [
+                                {
+                                  type: 'url' as const,
+                                  message: t(
+                                    'components.createJobForm.invalidUrlFormat'
+                                  ),
+                                },
+                              ]),
+                        ]}
+                      >
+                        <Input
+                          placeholder={
+                            protocol === 'a2a'
+                              ? a2aBinding === 'grpc'
+                                ? 'agent.example.com:443'
+                                : 'https://agent.example.com/a2a'
+                              : 'https://mcp.example.com/mcp'
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item
+                        name='protocol_version'
+                        label={labelWithTooltip(
+                          t('components.createAgentTaskForm.protocolVersion'),
+                          t(
+                            'components.createAgentTaskForm.protocolVersionTooltip'
+                          )
+                        )}
+                        rules={[
+                          {
+                            required: true,
+                            message: t(
+                              'components.createAgentTaskForm.protocolVersionRequired'
+                            ),
+                          },
+                        ]}
+                      >
+                        <Select
+                          options={
+                            protocol === 'a2a'
+                              ? [{ label: '1.0', value: '1.0' }]
+                              : [
+                                  {
+                                    label: `2026-07-28 (${t(
+                                      'components.createAgentTaskForm.stateless'
+                                    )})`,
+                                    value: '2026-07-28',
+                                  },
+                                  {
+                                    label: `2025-11-25 (${t(
+                                      'components.createAgentTaskForm.compatible'
+                                    )})`,
+                                    value: '2025-11-25',
+                                  },
+                                ]
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  {protocol === 'a2a' && resolvedRequestPaths.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: -8,
+                        marginBottom: 16,
+                      }}
+                    >
+                      <Typography.Text
+                        type='secondary'
+                        style={{
+                          fontSize: 12,
+                          lineHeight: '22px',
+                          display: 'block',
+                          marginBottom: 4,
+                        }}
+                      >
+                        {t('components.createAgentTaskForm.resolvedUrlLabel')}
+                      </Typography.Text>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          justifyContent: 'flex-start',
+                          alignItems: 'flex-start',
+                          columnGap: 8,
+                          rowGap: 4,
+                        }}
+                      >
+                        {resolvedRequestPaths.map((path, index) => (
+                          <Typography.Text
+                            key={`${index}-${path}`}
+                            code
+                            style={{
+                              fontSize: 11,
+                              lineHeight: '22px',
+                              textAlign: 'left',
+                              wordBreak: 'break-all',
+                              overflowWrap: 'anywhere',
+                              whiteSpace: 'normal',
+                              maxWidth: '100%',
+                            }}
+                          >
+                            {index > 0 ? `${resolvedPathJoiner} ${path}` : path}
+                          </Typography.Text>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {protocol === 'a2a' && (
+                    <>
+                      <Row gutter={16}>
+                        <Col span={16}>
+                          <Form.Item
+                            name='agent_card_url'
+                            label={labelWithTooltip(
+                              t('components.createAgentTaskForm.agentCardUrl'),
+                              t(
+                                'components.createAgentTaskForm.agentCardUrlTooltip'
+                              )
+                            )}
+                          >
+                            <Input
+                              placeholder={t(
+                                'components.createAgentTaskForm.agentCardUrlPlaceholder'
+                              )}
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            name='a2a_mode'
+                            label={labelWithTooltip(
+                              t('components.createAgentTaskForm.executionMode'),
+                              t(
+                                'components.createAgentTaskForm.executionModeTooltip'
+                              )
+                            )}
+                            rules={[
+                              {
+                                required: true,
+                                message: t(
+                                  'components.createAgentTaskForm.executionModeRequired'
+                                ),
+                              },
+                            ]}
+                          >
+                            <Select
+                              options={[
+                                {
+                                  label: t(
+                                    'components.createAgentTaskForm.asyncPoll'
+                                  ),
+                                  value: 'async_poll',
+                                },
+                                {
+                                  label: t(
+                                    'components.createAgentTaskForm.streamSse'
+                                  ),
+                                  value: 'stream',
+                                },
+                                {
+                                  label: t(
+                                    'components.createAgentTaskForm.sync'
+                                  ),
+                                  value: 'sync',
+                                },
+                              ]}
+                            />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Form.Item
+                        name='a2a_tenant'
+                        label={labelWithTooltip(
+                          t('components.createAgentTaskForm.a2aTenant'),
+                          t('components.createAgentTaskForm.a2aTenantTooltip')
+                        )}
+                      >
+                        <Input
+                          placeholder={t(
+                            'components.createAgentTaskForm.a2aTenantPlaceholder'
+                          )}
+                        />
+                      </Form.Item>
+                    </>
+                  )}
+                  <RequestHeadersEditor
+                    form={form}
+                    title={t('components.createAgentTaskForm.requestHeaders')}
+                    tooltip={t(
+                      'components.createAgentTaskForm.requestHeadersTooltip'
+                    )}
+                    redactedHeaderKeys={initialData?.redacted_header_keys}
+                    managedHeaderNames={MANAGED_AGENT_HEADERS}
+                    maxValueLength={4000}
+                  />
+                  <Form.Item
+                    required
+                    label={t(
+                      protocol === 'a2a'
+                        ? 'components.createAgentTaskForm.a2aScenarioWeights'
+                        : 'components.createAgentTaskForm.mcpScenarioWeights'
+                    )}
+                  >
+                    <List
+                      bordered
+                      locale={{
+                        emptyText: t(
+                          'components.createAgentTaskForm.noScenarios'
+                        ),
+                      }}
+                      dataSource={scenarioCases}
+                      renderItem={(item, index) => (
+                        <List.Item
+                          actions={[
+                            <Button
+                              key='edit'
+                              type='text'
+                              icon={<EditOutlined />}
+                              aria-label={t(
+                                'components.createAgentTaskForm.editScenario'
+                              )}
+                              onClick={() => openScenarioEditor(index)}
+                            />,
+                            <Button
+                              key='delete'
+                              type='text'
+                              danger
+                              icon={<DeleteOutlined />}
+                              aria-label={t(
+                                'components.createAgentTaskForm.deleteScenario'
+                              )}
+                              onClick={() => removeScenario(index)}
+                            />,
+                          ]}
+                        >
+                          <List.Item.Meta
+                            title={item.name}
+                            description={
+                              <Space direction='vertical' size={0}>
+                                <span>
+                                  {protocol === 'a2a'
+                                    ? `SendMessage · ${item.message?.parts?.length || 0} Part`
+                                    : `tools/call · ${item.tool_name}`}
+                                </span>
+                                <Text
+                                  type='secondary'
+                                  copyable={{ text: item.id }}
+                                >
+                                  scenario_id: {item.id}
+                                </Text>
+                              </Space>
+                            }
+                          />
+                          <Text strong>
+                            {t('components.createAgentTaskForm.weightValue', {
+                              weight: item.weight || 1,
+                            })}
+                          </Text>
+                        </List.Item>
+                      )}
+                    />
+                    <Button
+                      block
+                      style={{ marginTop: 8 }}
+                      icon={<PlusOutlined />}
+                      onClick={() => openScenarioEditor()}
+                    >
+                      {t(
+                        protocol === 'a2a'
+                          ? 'components.createAgentTaskForm.addA2aScenario'
+                          : 'components.createAgentTaskForm.addMcpScenario'
+                      )}
+                    </Button>
+                  </Form.Item>
+                  {protocol === 'a2a' ? (
+                    <Row gutter={16}>
+                      {a2aMode === 'async_poll' && (
+                        <Col span={8}>
+                          <Form.Item
+                            name='poll_interval'
+                            label={labelWithTooltip(
+                              t('components.createAgentTaskForm.pollInterval'),
+                              t(
+                                'components.createAgentTaskForm.pollIntervalTooltip'
+                              )
+                            )}
+                          >
+                            <InputNumber min={0.05} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      )}
+                      <Col span={a2aMode === 'async_poll' ? 8 : 12}>
+                        <Form.Item
+                          name='task_timeout'
+                          label={labelWithTooltip(
+                            t('components.createAgentTaskForm.taskTimeout'),
+                            t(
+                              'components.createAgentTaskForm.taskTimeoutTooltip'
+                            )
+                          )}
+                        >
+                          <InputNumber min={1} style={{ width: '100%' }} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={a2aMode === 'async_poll' ? 8 : 12}>
+                        <Form.Item
+                          name='request_timeout'
+                          label={labelWithTooltip(
+                            t('components.createJobForm.requestTimeout'),
+                            t(
+                              'components.createAgentTaskForm.requestTimeoutTooltip'
+                            )
+                          )}
+                        >
+                          <InputNumber min={1} style={{ width: '100%' }} />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  ) : (
+                    <Form.Item
+                      name='request_timeout'
+                      label={labelWithTooltip(
+                        t('components.createJobForm.requestTimeout'),
+                        t(
+                          'components.createAgentTaskForm.requestTimeoutTooltip'
+                        )
+                      )}
+                    >
+                      <InputNumber min={1} style={{ width: '100%' }} />
+                    </Form.Item>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: '2',
+              forceRender: true,
+              label: (
+                <span className='tab-label'>
+                  <span className='tab-icon'>
+                    <DatabaseOutlined />
+                  </span>
+                  {t('components.createJobForm.dataLoad')}
+                </span>
+              ),
+              children: (
+                <>
+                  <div style={{ ...sectionTitleStyle, marginTop: 0 }}>
+                    <Space>
+                      <DatabaseOutlined />
+                      <span>{t('components.createJobForm.testData')}</span>
+                    </Space>
+                  </div>
+                  <TaskDatasetFields
+                    source={datasetSource}
+                    sourceName='dataset_source'
+                    datasetType={protocol}
+                    uploadValueName='dataset_file'
+                    uploadValueRequired={!inheritSourceDataset}
+                    uploadFileName={datasetFileName}
+                    uploadLoading={datasetUploading}
+                    uploadTitle={t(
+                      'components.createAgentTaskForm.uploadJsonlPrompt'
+                    )}
+                    uploadHint={t(
+                      protocol === 'a2a'
+                        ? 'components.createAgentTaskForm.a2aJsonlHint'
+                        : 'components.createAgentTaskForm.mcpJsonlHint'
+                    )}
+                    showUploadRemoveIcon
+                    sourceTooltip={t(
+                      'components.createAgentTaskForm.protocolDatasetTooltip'
+                    )}
+                    onSourceChange={source => {
+                      setDatasetFileName('');
+                      form.setFieldsValue({
+                        dataset_id: undefined,
+                        dataset_file: undefined,
+                        inherit_source_dataset: false,
+                        dataset_source: source,
+                      });
+                    }}
+                    onUpload={handleDatasetUpload}
+                    onUploadRemove={handleDatasetRemove}
+                  />
+                  <div style={sectionTitleStyle}>
+                    <Space>
+                      <RocketOutlined />
+                      <span>
+                        {t('components.createJobForm.loadConfiguration')}
+                      </span>
+                    </Space>
+                  </div>
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item
+                        name='concurrent_users'
+                        label={labelWithTooltip(
+                          t('components.createJobForm.concurrentUsers'),
+                          t('components.createJobForm.concurrentUsersTooltip')
+                        )}
+                        rules={[
+                          {
+                            required: true,
+                            message: t(
+                              'components.createJobForm.pleaseEnterConcurrentUsers'
+                            ),
+                          },
+                        ]}
+                      >
+                        <InputNumber
+                          min={1}
+                          max={5000}
+                          style={{ width: '100%' }}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item
+                        name='spawn_rate'
+                        label={labelWithTooltip(
+                          t('components.createJobForm.userSpawnRate'),
+                          t('components.createJobForm.userSpawnRateTooltip')
+                        )}
+                        rules={[
+                          {
+                            required: true,
+                            message: t(
+                              'components.createJobForm.pleaseEnterSpawnRate'
+                            ),
+                          },
+                        ]}
+                      >
+                        <InputNumber min={1} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item
+                        name='duration'
+                        label={labelWithTooltip(
+                          t('components.createJobForm.testDuration'),
+                          t('components.createJobForm.testDurationTooltip')
+                        )}
+                        rules={[
+                          {
+                            required: true,
+                            message: t(
+                              'components.createJobForm.pleaseEnterTestDuration'
+                            ),
+                          },
+                        ]}
+                      >
+                        <InputNumber min={1} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </>
+              ),
             },
           ]}
-        >
-          <Select
-            placeholder={t('components.createJobForm.envPlaceholder')}
-            options={(clusters.length
-              ? clusters
-              : [{ id: 'local', name: 'Local' }]
-            ).map(item => ({ label: item.name, value: item.id }))}
-          />
-        </Form.Item>
-        <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
-          <Space>
-            <Button
-              icon={<ExperimentOutlined />}
-              loading={testing}
-              onClick={handleTest}
-            >
-              {t('components.createAgentTaskForm.testConnection')}
+        />
+      </Form>
+      <div
+        className='form-actions'
+        style={{ marginTop: '24px', textAlign: 'right' }}
+      >
+        <Space>
+          {activeTabKey === '2' && (
+            <Button onClick={() => setActiveTabKey('1')}>
+              {t('components.createJobForm.previousStep')}
             </Button>
-            <Button onClick={onCancel}>
-              {t('components.createAgentTaskForm.cancel')}
+          )}
+          <Button
+            type='primary'
+            icon={<BugOutlined />}
+            loading={testing}
+            disabled={!isTestButtonEnabled || testing}
+            onClick={handleTest}
+          >
+            {t('components.createJobForm.testIt')}
+          </Button>
+          <Button onClick={onCancel}>{t('common.cancel')}</Button>
+          {activeTabKey === '1' ? (
+            <Button type='primary' onClick={() => setActiveTabKey('2')}>
+              {t('components.createJobForm.nextStep')}
             </Button>
+          ) : (
             <Button
               type='primary'
               className='modern-button-primary'
@@ -929,9 +1401,9 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
             >
               {t('components.createAgentTaskForm.create')}
             </Button>
-          </Space>
-        </Form.Item>
-      </Form>
+          )}
+        </Space>
+      </div>
       <Drawer
         title={
           <Space>
@@ -971,6 +1443,26 @@ const CreateAgentTaskForm: React.FC<CreateAgentTaskFormProps> = ({
               {testResult.protocol && (
                 <Descriptions.Item label='Protocol'>
                   {String(testResult.protocol).toUpperCase()}
+                </Descriptions.Item>
+              )}
+              {testResult.discovery_operation && (
+                <Descriptions.Item
+                  label={t('components.createAgentTaskForm.discoveryStage')}
+                >
+                  {testResult.discovery_operation}
+                  {testResult.discovery_http_status !== undefined && (
+                    <Tag
+                      style={{ marginLeft: 8 }}
+                      color={
+                        testResult.discovery_http_status >= 200 &&
+                        testResult.discovery_http_status < 300
+                          ? 'green'
+                          : 'red'
+                      }
+                    >
+                      {testResult.discovery_http_status}
+                    </Tag>
+                  )}
                 </Descriptions.Item>
               )}
               {testResult.http_status !== undefined && (

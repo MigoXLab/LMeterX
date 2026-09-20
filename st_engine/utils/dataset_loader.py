@@ -8,22 +8,9 @@ import os
 import queue
 from typing import Any, Dict, List, Optional, Set
 
-from config.base import DATA_DIR, MAX_QUEUE_SIZE
+from config.base import MAX_QUEUE_SIZE
 from utils.common import is_url
 from utils.logger import logger
-
-# === BUILT-IN DATASET CONFIGURATION ===
-# Mapping between chat_type (dataset selector) and concrete dataset filenames.
-# 0 -> Pure text dataset (self-built), JSONL format
-# 1 -> Pure text ShareGPT dataset, JSON array format
-# 2 -> Comprehensive dataset (self-built), JSONL format
-BUILTIN_DATASET_FILES: Dict[int, str] = {
-    0: "text_self-built.jsonl",
-    1: "ShareGPT_V3_partial.json",
-    2: "comprehensive_self-build.jsonl",
-}
-
-DEFAULT_CHAT_TYPE = 0
 
 
 # === DATA CLASSES ===
@@ -39,6 +26,7 @@ class PromptData:
         image_path: str = "",
         messages: Optional[List[Dict[str, Any]]] = None,
         raw_data: Optional[Dict[str, Any]] = None,
+        system_prompt: Optional[str] = None,
     ):
         """Initialize the PromptData object."""
         self.id = prompt_id
@@ -48,6 +36,7 @@ class PromptData:
         self.image_path = image_path
         self.messages = messages or []
         self.raw_data = raw_data or {}
+        self.system_prompt = system_prompt
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
@@ -60,6 +49,8 @@ class PromptData:
             result["image_path"] = self.image_path
         if self.messages:
             result["messages"] = self.messages
+        if self.system_prompt is not None:
+            result["system_prompt"] = self.system_prompt
         if self.raw_data:
             result["raw_data"] = self.raw_data
         return result
@@ -75,6 +66,7 @@ class PromptData:
             image_path=data.get("image_path", ""),
             messages=data.get("messages", []),
             raw_data=data.get("raw_data", {}),
+            system_prompt=data.get("system_prompt"),
         )
 
 
@@ -242,6 +234,11 @@ def _parse_json_obj(
         image_path,
         messages_list,
         json_obj,
+        (
+            json_obj.get("system_prompt")
+            if isinstance(json_obj.get("system_prompt"), str)
+            else None
+        ),
     )
 
 
@@ -377,7 +374,6 @@ def load_dataset_file(
 
 # === DATASET ROUTING ===
 def _resolve_dataset_items(
-    chat_type: int = 0,
     test_data: str = "",
     api_type: str = "",
     task_logger=None,
@@ -397,46 +393,18 @@ def _resolve_dataset_items(
     if not test_data or test_data.strip() == "":
         return None
 
-    # Case 2: "default" — use built-in dataset based on chat_type
-    if test_data.strip().lower() == "default":
-        dataset_index = DEFAULT_CHAT_TYPE
-        try:
-            dataset_index = int(chat_type)
-        except (TypeError, ValueError):
-            effective_logger.warning(
-                "Invalid chat_type '%s' detected, fallback to default dataset index %s",
-                chat_type,
-                DEFAULT_CHAT_TYPE,
-            )
-
-        dataset_filename = BUILTIN_DATASET_FILES.get(dataset_index)
-        if not dataset_filename:
-            effective_logger.warning(
-                "Unsupported built-in dataset index '%s', fallback to default dataset '%s'",
-                chat_type,
-                BUILTIN_DATASET_FILES[DEFAULT_CHAT_TYPE],
-            )
-            dataset_filename = BUILTIN_DATASET_FILES[DEFAULT_CHAT_TYPE]
-
-        data_file = os.path.join(DATA_DIR, dataset_filename)
-
-        if not os.path.exists(data_file):
-            raise ValueError(f"Default data file not found: {data_file}")
-
-        return load_dataset_file(data_file, api_type, task_logger)
-
-    # Case 3: JSONL content string (starts with "{") or JSON array (starts with "[")
+    # Case 2: JSONL content string (starts with "{") or JSON array (starts with "[")
     if test_data.strip().startswith("{") or test_data.strip().startswith("["):
         return load_dataset_string(test_data, api_type, task_logger)
 
-    # Case 4: File path
+    # Case 3: File path
     if os.path.exists(test_data):
         return load_dataset_file(test_data, api_type, task_logger)
 
     preview = test_data[:200] + "..." if len(test_data) > 200 else test_data
     raise ValueError(
         f"Invalid test_data provided: '{preview}'. "
-        f"Expected empty string, 'default', JSONL/JSON content string, or valid file path."
+        "Expected empty string, JSONL/JSON content string, or valid file path."
     )
 
 
@@ -530,24 +498,22 @@ def init_prompt_queue_from_file(
 
 
 def init_prompt_queue(
-    chat_type: int = 0,
     test_data: str = "",
     api_type: str = "",
     task_logger=None,
 ) -> queue.Queue:
-    """Initializes the test data queue based on the chat type and custom test data.
+    """Initializes the test data queue from configured test data.
 
     Args:
-        chat_type (int): The chat type, 0 for text-only, 1 for multimodal.
         test_data (str, optional): Custom test data - can be JSONL/JSON string content,
-            file path, "default", or empty.
+            file path or empty.
         api_type: API type for format-specific handling.
         task_logger: An optional task-specific logger instance.
 
     Returns:
         queue.Queue: A queue containing the data.
     """
-    items = _resolve_dataset_items(chat_type, test_data, api_type, task_logger)
+    items = _resolve_dataset_items(test_data, api_type, task_logger)
 
     # None means no-dataset mode
     if items is None:
@@ -570,7 +536,6 @@ def init_prompt_queue(
 
 
 def init_shared_dataset(
-    chat_type: int = 0,
     test_data: str = "",
     api_type: str = "",
     task_logger=None,
@@ -585,7 +550,7 @@ def init_shared_dataset(
     effective_logger = task_logger or logger
 
     try:
-        items = _resolve_dataset_items(chat_type, test_data, api_type, task_logger)
+        items = _resolve_dataset_items(test_data, api_type, task_logger)
 
         if not items:
             return None

@@ -17,7 +17,6 @@ from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
-from model.http_task import HttpTask
 from model.task import (
     ComparisonMetrics,
     ComparisonRequest,
@@ -96,7 +95,6 @@ def _build_task_summary(task: Task) -> Dict[str, Any]:
         "concurrent_users": task.concurrent_users,
         "duration": task.duration,
         "spawn_rate": task.spawn_rate,
-        "chat_type": task.chat_type,
         "stream_mode": truthy(task.stream_mode),
         "headers": "",
         "cookies": "",
@@ -131,7 +129,6 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "duration": task.duration,
         "concurrent_users": task.concurrent_users,
         "spawn_rate": task.spawn_rate,
-        "chat_type": task.chat_type,
         "stream_mode": truthy(task.stream_mode),
         "headers": dict_to_kv_list(headers_dict),
         "cookies": dict_to_kv_list(cookies_dict),
@@ -149,35 +146,6 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         "step_max_users": task.step_max_users,
         "step_sustain_duration": task.step_sustain_duration,
         "engine_id": task.engine_id,
-        "created_at": safe_isoformat(task.created_at),
-        "updated_at": safe_isoformat(task.updated_at),
-    }
-
-
-def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
-    """Build a task-like payload for http API tasks so shared pages work."""
-    return {
-        "id": task.id,
-        "name": task.name,
-        "status": task.status,
-        "created_by": getattr(task, "created_by", None),
-        "target_host": task.target_host,
-        "model": task.method,  # reuse method label for display
-        "duration": task.duration,
-        "concurrent_users": task.concurrent_users,
-        "spawn_rate": task.spawn_rate,
-        "chat_type": 0,
-        "stream_mode": False,
-        "headers": [],
-        "cookies": [],
-        "cert_config": {"cert_file": "", "key_file": ""},
-        "api_path": getattr(task, "api_path", ""),
-        "request_payload": task.request_body or "",
-        "field_mapping": {},
-        "api_type": "http-api",
-        "test_data": task.request_body or "",
-        "error_message": task.error_message,
-        "engine_id": getattr(task, "engine_id", None),
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -486,7 +454,6 @@ async def create_task_svc(request: Request, body: TaskCreateReq):
             duration=body.duration,
             concurrent_users=body.concurrent_users,
             spawn_rate=body.spawn_rate if body.spawn_rate else body.concurrent_users,
-            chat_type=body.chat_type,
             warmup_enabled=1 if body.warmup_enabled else 0,
             warmup_duration=body.warmup_duration,
             stream_mode=str(body.stream_mode),
@@ -668,11 +635,6 @@ async def get_task_svc(request: Request, task_id: str):
         if task and getattr(task, "is_deleted", 0) == 0:
             return _build_task_detail(task)
 
-        # Fallback to http API task to support shared log/detail pages
-        http_task = await db.get(HttpTask, task_id)
-        if http_task and getattr(http_task, "is_deleted", 0) == 0:
-            return _build_http_task_detail(http_task)
-
         logger.warning("Get request for non-existent task ID: {}", task_id)
         raise ErrorResponse.not_found("Task not found")
     except ErrorResponse:
@@ -707,29 +669,6 @@ async def get_task_status_svc(request: Request, task_id: str):
         task_data = result.first()
 
         if not task_data:
-            # Fallback to http task
-            http_query = (
-                select(
-                    HttpTask.id,
-                    HttpTask.name,
-                    HttpTask.status,
-                    HttpTask.error_message,
-                    HttpTask.updated_at,
-                )
-                .where(HttpTask.id == task_id)
-                .where(HttpTask.is_deleted == 0)
-            )
-            http_result = await db.execute(http_query)
-            http_data = http_result.first()
-            if http_data:
-                return {
-                    "id": http_data.id,
-                    "name": http_data.name,
-                    "status": http_data.status,
-                    "error_message": http_data.error_message,
-                    "updated_at": safe_isoformat(http_data.updated_at),
-                }
-
             logger.warning("Status request for non-existent task ID: {}", task_id)
             raise ErrorResponse.not_found("Task not found")
 

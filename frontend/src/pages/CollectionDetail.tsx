@@ -72,13 +72,8 @@ const withDatasetFields = <T extends Record<string, any>>(
   if (source.test_data !== undefined && source.test_data !== null) {
     next.test_data = source.test_data;
   }
-  if (source.chat_type !== undefined && source.chat_type !== null) {
-    next.chat_type = source.chat_type;
-  }
-
   if (next.test_data !== undefined && next.test_data !== null) {
     const testDataStr = String(next.test_data).trim();
-    const isDefault = testDataStr === 'default';
     const isEmpty = testDataStr === '';
     const looksLikePath =
       /\/upload_files\//i.test(testDataStr) ||
@@ -87,9 +82,7 @@ const withDatasetFields = <T extends Record<string, any>>(
     const looksLikeInlineJson =
       testDataStr.startsWith('{') || testDataStr.includes('\n');
 
-    if (isDefault) {
-      next.test_data_input_type = 'default';
-    } else if (isEmpty) {
+    if (isEmpty) {
       next.test_data_input_type = 'none';
     } else if (looksLikePath) {
       next.test_data_input_type = 'upload';

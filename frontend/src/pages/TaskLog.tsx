@@ -34,8 +34,8 @@ import React, {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
-import { jobApi, logApi } from '../api/services';
+import { useNavigate, useParams } from 'react-router-dom';
+import { logApi, unifiedTaskApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingState';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Job } from '../types/job';
@@ -45,6 +45,7 @@ import {
   normalizeLogTimestamp,
   stripNestedLogPrefix,
 } from '../utils/logFormat';
+import { getSlsEnabled } from '../utils/runtimeConfig';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -101,6 +102,11 @@ const isSlsUnavailableError = (err: any): boolean => {
   );
 };
 
+const isSlsNotConfiguredError = (err: any): boolean => {
+  const code = err?.data?.code || err?.response?.data?.code;
+  return code === 'sls_not_configured';
+};
+
 const getRenderedLogTimestampSortKey = (line: string): string => {
   const separatorIndex = line.indexOf(' | ');
   if (separatorIndex < 0) {
@@ -126,13 +132,13 @@ const sortRenderedLogLines = (lines: string[]): string[] =>
 
 const TaskLogs: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [logSource] = useState<'engine' | 'backend'>('engine');
   const [loading, setLoading] = useState(true);
   const [logLoading, setLogLoading] = useState(false);
   const [hasLogLoadCompleted, setHasLogLoadCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string>('');
   const [filteredLogs, setFilteredLogs] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [fullscreen, setFullscreen] = useState(false);
@@ -171,6 +177,7 @@ const TaskLogs: React.FC = () => {
   >(null!);
   const slsCursorRef = useRef<number | null>(null);
   const slsPausedUntilRef = useRef(0);
+  const slsDisabledRef = useRef<boolean>(!getSlsEnabled());
   const finalLogRefreshDeadlineRef = useRef<number | null>(null);
   const searchTermRef = useRef('');
   const lineHeight = 24;
@@ -187,7 +194,6 @@ const TaskLogs: React.FC = () => {
     setHasLogLoadCompleted(false);
     setIsHistoryLoading(false);
     setHasMoreHistory(false);
-    setLogs('');
     setFilteredLogs('');
     setScrollTop(0);
     lastLogScrollTopRef.current = 0;
@@ -250,7 +256,6 @@ const TaskLogs: React.FC = () => {
     hasMoreHistoryRef.current = false;
     logEntryKeysRef.current.clear();
     setHasMoreHistory(false);
-    setLogs(content);
     setFilteredLogs(content);
     return content;
   };
@@ -395,6 +400,16 @@ const TaskLogs: React.FC = () => {
         return;
       }
 
+      if (slsDisabledRef.current) {
+        await fetchLocalTaskLogs(requestGeneration);
+        if (requestGeneration !== logRequestGenerationRef.current) {
+          return;
+        }
+        if (error) setError(null);
+        if (fetchError) setFetchError(null);
+        return;
+      }
+
       do {
         // eslint-disable-next-line no-await-in-loop -- SLS pagination must follow the previous page cursor.
         const contentResponse = await logApi.queryRealtimeTaskLogs(id, {
@@ -460,15 +475,13 @@ const TaskLogs: React.FC = () => {
 
       if (hasSlsLines) {
         slsCursorRef.current = nextCursor;
-        setLogs(prev => {
+        setFilteredLogs(prev => {
           const baseLines = cursor ? prev.split('\n').filter(Boolean) : [];
           const next = Array.from(new Set([...baseLines, ...lines]));
           const sortedLines = sortRenderedLogLines(next);
-          const trimmed = (
+          return (
             tailLines === 0 ? sortedLines : sortedLines.slice(-tailLines)
           ).join('\n');
-          setFilteredLogs(trimmed);
-          return trimmed;
         });
       } else if (cursor) {
         slsCursorRef.current = nextCursor;
@@ -478,6 +491,11 @@ const TaskLogs: React.FC = () => {
       const slsUnavailable = isSlsUnavailableError(err);
       if (slsUnavailable) {
         slsPausedUntilRef.current = Date.now() + SLS_UNAVAILABLE_BACKOFF_MS;
+      }
+      if (isSlsNotConfiguredError(err)) {
+        // Backend reports SLS is permanently off; stop retrying SLS this session.
+        slsDisabledRef.current = true;
+        slsCursorRef.current = null;
       }
 
       // If 404 (log file not found), treat as "no logs" instead of error
@@ -492,7 +510,6 @@ const TaskLogs: React.FC = () => {
           if (fetchError) setFetchError(null);
           return;
         } catch (fallbackErr) {
-          setLogs('');
           setFilteredLogs('');
           if (error) setError(null);
           return;
@@ -512,7 +529,6 @@ const TaskLogs: React.FC = () => {
       }
 
       if (slsUnavailable) {
-        setLogs('');
         setFilteredLogs('');
         if (error) setError(null);
         if (fetchError) setFetchError(null);
@@ -553,7 +569,8 @@ const TaskLogs: React.FC = () => {
       tailLines !== 0 ||
       historyFetchInFlightRef.current ||
       !hasMoreHistoryRef.current ||
-      !historyEndTimeRef.current
+      !historyEndTimeRef.current ||
+      slsDisabledRef.current
     ) {
       return;
     }
@@ -603,14 +620,12 @@ const TaskLogs: React.FC = () => {
       setHasMoreHistory(nextOffset > 0);
 
       if (olderLines.length > 0) {
-        setLogs(prev => {
-          const next = sortRenderedLogLines([
+        setFilteredLogs(prev =>
+          sortRenderedLogLines([
             ...olderLines,
             ...prev.split('\n').filter(Boolean),
-          ]).join('\n');
-          setFilteredLogs(next);
-          return next;
-        });
+          ]).join('\n')
+        );
 
         requestAnimationFrame(() => {
           const currentContainer = logContainerRef.current;
@@ -656,7 +671,7 @@ const TaskLogs: React.FC = () => {
 
     try {
       if (isInitialLoad) {
-        const taskResponse = await jobApi.getJob(id);
+        const taskResponse = await unifiedTaskApi.get(id);
         if (taskResponse.data) {
           const currentTask = taskResponse.data;
           if (isTaskInFinalState(currentTask.status)) {
@@ -670,7 +685,7 @@ const TaskLogs: React.FC = () => {
           return currentTask;
         }
       } else {
-        const taskResponse = await jobApi.getJobStatus(id);
+        const taskResponse = await unifiedTaskApi.getStatus(id);
         if (taskResponse.data) {
           const currentTaskStatus = taskResponse.data;
           const updatedTask = {
@@ -695,7 +710,7 @@ const TaskLogs: React.FC = () => {
       }
     } catch (err) {
       try {
-        const taskResponse = await jobApi.getJob(id);
+        const taskResponse = await unifiedTaskApi.get(id);
         if (taskResponse.data) {
           const currentTask = taskResponse.data;
           if (isTaskInFinalState(currentTask.status)) {
@@ -1364,6 +1379,8 @@ const TaskLogs: React.FC = () => {
               title={t('pages.taskLog.title', '任务日志')}
               icon={<MonitorOutlined />}
               level={3}
+              onBack={() => navigate('/jobs')}
+              backText={t('pages.results.backToJobs')}
               extra={
                 isStatusRefreshing && (
                   <Tooltip title='refreshing...'>
@@ -1413,6 +1430,8 @@ const TaskLogs: React.FC = () => {
           title={t('pages.taskLog.title', '任务日志')}
           icon={<MonitorOutlined />}
           level={3}
+          onBack={() => navigate('/jobs')}
+          backText={t('pages.results.backToJobs')}
           extra={
             isStatusRefreshing && (
               <Tooltip title='refreshing...'>

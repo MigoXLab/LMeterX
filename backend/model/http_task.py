@@ -49,6 +49,9 @@ class HttpTaskCreateReq(BaseModel):
     """Request payload for creating an HTTP API load test."""
 
     temp_task_id: str = Field(..., max_length=100, description="Temporary task ID")
+    dataset_id: Optional[str] = Field(
+        default=None, max_length=40, description="Reusable business dataset ID"
+    )
     name: str = Field(..., min_length=1, max_length=100, description="Task name")
     method: str = Field(..., description="HTTP method, e.g. GET/POST/PUT/PATCH/DELETE")
     target_url: str = Field(..., max_length=2000, description="Full request URL")
@@ -477,8 +480,6 @@ class HttpTask(Base):
     step_duration = Column(Integer, nullable=True)
     step_max_users = Column(Integer, nullable=True)
     step_sustain_duration = Column(Integer, nullable=True)
-    log_file = Column(Text, nullable=True)
-    result_file = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     engine_id = Column(String(64), nullable=True)
     cluster_id = Column(String(64), nullable=True)

@@ -58,6 +58,7 @@ import TaskDatasetFields, {
 import { useI18n } from '@/hooks/useI18n';
 import { Cluster, LlmTask } from '@/types/job';
 import { copyToClipboard } from '@/utils/clipboard';
+import parseCurlCommand from '@/utils/curl';
 import { safeJsonParse } from '@/utils/data';
 import { parseJsonlObjects } from '@/utils/jsonl';
 import {
@@ -958,6 +959,73 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     }
   };
 
+  const handleCurlParse = () => {
+    const curl = form.getFieldValue('curl_command') as string;
+    if (!curl) {
+      message.warning(t('components.createJobForm.curlParseEmpty'));
+      return;
+    }
+    const maxCurlLength = 8000;
+    if (curl.length > maxCurlLength) {
+      message.warning(
+        t('components.createJobForm.curlTooLong', { max: maxCurlLength })
+      );
+    }
+    const parsed = parseCurlCommand(curl);
+    if (!parsed.url) {
+      message.error(t('components.createJobForm.curlParseNoUrl'));
+      return;
+    }
+
+    try {
+      const urlObj = new URL(parsed.url);
+      const host = `${urlObj.protocol}//${urlObj.host}`;
+      const path = urlObj.pathname + urlObj.search;
+      form.setFieldsValue({ target_host: host, api_path: path });
+
+      const pathLower = path.toLowerCase();
+      if (pathLower.includes('/chat/completions')) {
+        form.setFieldsValue({ api_type: 'openai-chat' });
+      } else if (pathLower.includes('/responses')) {
+        form.setFieldsValue({ api_type: 'openai-responses' });
+      } else if (pathLower.includes('/messages')) {
+        form.setFieldsValue({ api_type: 'claude-chat' });
+      } else if (pathLower.includes('/embeddings')) {
+        form.setFieldsValue({ api_type: 'embeddings' });
+      }
+    } catch {
+      form.setFieldsValue({ target_host: parsed.url });
+    }
+
+    if (parsed.headers?.length) {
+      const userHeaders = parsed.headers.filter(
+        h => h.key.toLowerCase() !== 'content-type'
+      );
+      if (userHeaders.length) {
+        form.setFieldsValue({
+          headers: prepareHeadersForEditor(userHeaders),
+        });
+      }
+    }
+
+    if (parsed.body) {
+      form.setFieldsValue({ request_payload: parsed.body });
+      try {
+        const bodyObj = JSON.parse(parsed.body);
+        if (bodyObj.model && typeof bodyObj.model === 'string') {
+          form.setFieldsValue({ model: bodyObj.model });
+        }
+        if (typeof bodyObj.stream === 'boolean') {
+          form.setFieldsValue({ stream_mode: bodyObj.stream });
+        }
+      } catch {
+        // body is not valid JSON – skip field extraction
+      }
+    }
+
+    message.success(t('components.createJobForm.curlParseSuccess'));
+  };
+
   // Test API endpoint
   const handleTestAPI = async () => {
     try {
@@ -1132,6 +1200,7 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
     try {
       setSubmitting(true);
       const values = await form.validateFields();
+      delete values.curl_command;
       const sanitizedModel = values.model?.trim();
       values.model = sanitizedModel || 'none';
       normalizeWarmupDuration(values);
@@ -1753,6 +1822,49 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
         </Col>
       </Row>
 
+      {/* Section 2: Request Configuration */}
+      <div
+        style={{
+          margin: '32px 0 16px',
+          fontWeight: 'bold',
+          fontSize: '18px',
+          paddingBottom: '8px',
+        }}
+      >
+        <Space>
+          <CloudOutlined />
+          <span>{t('components.createJobForm.requestConfiguration')}</span>
+        </Space>
+      </div>
+
+      <Row gutter={24}>
+        <Col span={24}>
+          <Form.Item
+            label={
+              <Space>
+                {t('components.createJobForm.curlLabel')}
+                <Tooltip title={t('components.createJobForm.curlParseHint')}>
+                  <InfoCircleOutlined />
+                </Tooltip>
+              </Space>
+            }
+            name='curl_command'
+          >
+            <TextArea
+              rows={3}
+              placeholder={t('components.createJobForm.curlPlaceholder')}
+            />
+          </Form.Item>
+          <Button
+            type='primary'
+            onClick={handleCurlParse}
+            style={{ marginBottom: 12 }}
+          >
+            {t('components.createJobForm.curlParseButton')}
+          </Button>
+        </Col>
+      </Row>
+
       <Row gutter={24}>
         <Col span={12}>
           <Form.Item
@@ -1942,21 +2054,6 @@ const CreateLlmTaskFormContent: React.FC<CreateLlmTaskFormProps> = ({
           </Form.Item>
         </Col>
       </Row>
-
-      {/* Section 2: Request Configuration */}
-      <div
-        style={{
-          margin: '32px 0 16px',
-          fontWeight: 'bold',
-          fontSize: '18px',
-          paddingBottom: '8px',
-        }}
-      >
-        <Space>
-          <CloudOutlined />
-          <span>{t('components.createJobForm.requestConfiguration')}</span>
-        </Space>
-      </div>
 
       {/* Request Method and Response Mode */}
       <Row gutter={24}>

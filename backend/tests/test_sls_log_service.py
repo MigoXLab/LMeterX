@@ -48,6 +48,18 @@ def fake_sls_settings():
     )
 
 
+def disabled_sls_settings():
+    return SimpleNamespace(
+        SLS_ENABLED=False,
+        SLS_ENDPOINT="",
+        SLS_PROJECT="",
+        SLS_LOGSTORE="",
+        SLS_ACCESS_KEY_ID="",
+        SLS_ACCESS_KEY_SECRET="",
+        is_configured=False,
+    )
+
+
 @pytest.fixture
 def fake_aliyun_log(monkeypatch):
     aliyun_module = types.ModuleType("aliyun")
@@ -507,3 +519,22 @@ async def test_engine_log_endpoint_falls_back_without_cluster(monkeypatch):
     assert calls[0]["exclude_task_logs"] is True
     assert "cluster_id" not in calls[1]
     assert calls[1]["exclude_task_logs"] is True
+
+
+@pytest.mark.asyncio
+async def test_query_sls_logs_raises_not_configured_when_disabled(
+    fake_aliyun_log, monkeypatch
+):
+    from service import sls_log_service
+
+    monkeypatch.setattr(
+        sls_log_service,
+        "get_sls_settings",
+        disabled_sls_settings,
+    )
+
+    with pytest.raises(ErrorResponse) as exc_info:
+        await sls_log_service.query_sls_logs_svc(service="engine")
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.code == "sls_not_configured"

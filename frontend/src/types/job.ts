@@ -189,6 +189,7 @@ export interface AgentTask {
   request_timeout?: number;
   dataset_file?: string;
   dataset_id?: string;
+  a2a_binding?: 'jsonrpc' | 'http_json' | 'grpc';
   a2a_mode?: 'sync' | 'stream' | 'async_poll';
   agent_card_url?: string;
   a2a_tenant?: string;
@@ -216,6 +217,7 @@ export interface AgentTaskPayload {
   copy_source_task_id?: string;
   inherit_source_headers?: boolean;
   inherit_source_dataset?: boolean;
+  a2a_binding?: 'jsonrpc' | 'http_json' | 'grpc';
   a2a_mode?: 'sync' | 'stream' | 'async_poll';
   agent_card_url?: string;
   a2a_tenant?: string;

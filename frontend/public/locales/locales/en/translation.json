@@ -387,6 +387,14 @@
   },
   "components": {
     "createJobForm": {
+      "curlLabel": "curl command",
+      "curlParseButton": "One-click parse",
+      "curlParseHint": "Paste a full curl command to auto-fill API URL, model, headers and request body",
+      "curlPlaceholder": "Paste curl command to auto-fill form fields...",
+      "curlParseEmpty": "Please paste a curl command first",
+      "curlParseNoUrl": "Unable to parse URL from the curl command",
+      "curlParseSuccess": "Form fields populated from curl",
+      "curlTooLong": "curl command is too long (over {{max}} chars) and may affect parsing accuracy",
       "basicInfo": "Basic Information",
       "apiConfig": "API Configuration",
       "loadConfig": "Load Configuration",

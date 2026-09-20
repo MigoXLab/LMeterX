@@ -1621,7 +1621,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <ApiOutlined />
                   </span>
-                  {t('pages.jobs.httpApiTab') || 'HTTP API Load Test'}
+                  {t('pages.jobs.httpApiTab') || 'Regular API'}
                 </span>
               ),
             },
@@ -1632,7 +1632,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <RobotOutlined />
                   </span>
-                  {t('pages.jobs.llmTab') || 'LLM Load Test'}
+                  {t('pages.jobs.llmTab') || 'Inference API'}
                 </span>
               ),
             },
@@ -1643,7 +1643,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <ClusterOutlined />
                   </span>
-                  {t('pages.jobs.a2aTab') || 'A2A Agent 协作'}
+                  {t('pages.jobs.a2aTab') || 'A2A Call'}
                 </span>
               ),
             },
@@ -1654,7 +1654,7 @@ const Tasks: React.FC = () => {
                   <span className='tab-icon'>
                     <ToolOutlined />
                   </span>
-                  {t('pages.jobs.mcpTab') || 'MCP 工具调用'}
+                  {t('pages.jobs.mcpTab') || 'MCP Call'}
                 </span>
               ),
             },

@@ -388,6 +388,14 @@
   },
   "components": {
     "createJobForm": {
+      "curlLabel": "curl 命令",
+      "curlParseButton": "一键解析",
+      "curlParseHint": "粘贴完整 curl 命令，可自动解析 API 地址、模型、请求头和请求体",
+      "curlPlaceholder": "粘贴 curl 命令，自动填充表单字段...",
+      "curlParseEmpty": "请先输入 curl 命令",
+      "curlParseNoUrl": "未能从 curl 中解析出 URL",
+      "curlParseSuccess": "已从 curl 解析并填充表单",
+      "curlTooLong": "curl 命令过长（超过 {{max}} 字符），可能影响解析精度",
       "basicInfo": "基本信息",
       "apiConfig": "API配置",
       "loadConfig": "负载配置",
@@ -414,7 +422,6 @@
       "rampUp": "加压时间(秒)",
       "requestTimeout": "请求超时(秒)",
       "dataset": "数据集",
-      "uploadDataset": "上传数据集",
       "selectDataset": "选择数据集",
       "headers": "请求头",
       "addHeader": "添加请求头",

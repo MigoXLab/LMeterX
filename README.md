@@ -35,7 +35,7 @@ LMeterX is a professional performance testing platform for LLM inference service
 - **One-stop Web Console**: Manage task scheduling, monitoring, and real-time logs through an intuitive interface, reducing operational complexity.
 - **Web parsing & Intelligent load testing**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Enter a web page URL to automatically crawl the page and discover core business APIs, complete connectivity pre-checks, and create load test tasks with zero configuration.
 - **AI Agent Integration**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Built-in MCP Server and [OpenClaw](https://github.com/openclaw) Skills with native support for AI agents such as Claude Code and Cursor — automatically generate load test configurations and launch tasks via natural language instructions.
-- **A2A & MCP Protocol Load Testing**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Load-test Agent-to-Agent (A2A 1.0) services and MCP Streamable HTTP tool servers. Mix weighted scenarios, choose sync / SSE / async-poll, and get latency, success-rate, and tool-call metrics.
+- **A2A & MCP Protocol Load Testing**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Load-test Agent-to-Agent (A2A 1.0) services over JSON-RPC, HTTP+JSON REST, or gRPC, plus MCP Streamable HTTP tool servers. Mix weighted scenarios, choose sync / SSE / async-poll, and get latency, success-rate, and tool-call metrics.
 - **Cross-Cluster Engine Scheduling**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />: Manage local and Kubernetes load-generation clusters from one control plane, route tasks by environment, and monitor or scale Engines centrally.
 - **Enterprise-Grade Security & Scaling**: Supports distributed deployment, LDAP/AD, and separate service tokens for Engines and AI agents.
 
@@ -45,7 +45,7 @@ LMeterX is a professional performance testing platform for LLM inference service
 | Usage                | Web UI for full-lifecycle task creation, monitoring & stop (load-test) | CLI for ModelScope ecosystem (eval & load-test)                          | CLI, Ray-based (load-test)                              |
 | Concurrency & Stress | Multi-process / multi-task, fix/stepped load, enterprise-scale load testing               | Command-line concurrency (`--parallel`, `--rate`)                        | Command-line concurrency                                 |
 | Test Report          | Multi-model / multi-version comparison, AI analysis, visual dashboard   | Basic report + visual charts (requires gradio, plotly, etc.)             | Simple report                                            |
-| Model & Data Support | OpenAI Chat/Responses, Claude, A2A, MCP, custom data & model interfaces   | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
+| Model & Data Support | OpenAI Chat/Responses, Claude, A2A (JSON-RPC / HTTP+JSON / gRPC), MCP, custom data & model interfaces   | OpenAI-compatible by default; extending APIs needs custom code           | OpenAI-compatible                                        |
 | Performance & Resource Monitoring | Real-time performance metrics and load-generator resource status | - | - |
 | Deployment & Scaling | Docker / K8s ready, easy horizontal scaling                             | `pip` install or source code                                             | Source code only                                         |
 
@@ -96,14 +96,28 @@ Dataset files are UTF-8 JSONL (one JSON object per line). Choose a type that mat
 
 ### Usage Guide
 
-The Tasks page has four tabs: **HTTP API**, **LLM Load Test**, **A2A Agent Collaboration**, and **MCP Tool Calls**. Switch to the tab that matches what you are testing.
+The Tasks page has four tabs: **HTTP API**, **LLM Load Test**, **A2A Agent Collaboration**, and **MCP Tool Calls**. Switch to the tab that matches what you are testing. Every task type can paste a full curl command and one-click parse it to auto-fill the request fields.
+
+#### General API Load Testing
+
+1. **Access Web Interface**: Open http://localhost:8080, switch to the **HTTP API** tab
+2. **Create Test Task**: Navigate to Test Tasks → Create Task
+   - Paste your complete curl command and click **One-click parse** to automatically parse request method, URL, headers, and request body
+   - Verify that the parsed request information is complete and accurate
+3. **API Testing**: Click the "Test" button to verify API connectivity and ensure request information is correct before load testing
+4. **Dataset** (Optional): Select a `business` dataset from the library or upload JSONL. Each line must be a complete request-body JSON object; rows are used round-robin. Without a dataset, the form body is sent on every request.
+5. **Start Load Testing**: Configure concurrent users, test duration, and other parameters, then click "Create" to start the load testing task
+6. **Real-time Monitoring**: During testing, click the "Logs" button to view load testing status and real-time logs
+7. **Result Analysis**: After testing completes, click the "Results" button to view load testing results, including RPS, response time, success rate, and other metrics
+8. **Copy Template**: To test the same API again, click "..." → "Copy Template" in the actions column. Note that the dataset needs to be re-uploaded after copying, and it's recommended to repeat steps 3-7
+9. **Performance Comparison**: To compare performance across different versions or concurrency levels, navigate to the "Performance Comparison" page
 
 #### LLM API Load Testing
 
 1. **Access Web Interface**: Open http://localhost:8080
 2. **Create Test Task**: Navigate to Test Tasks → Create Task, configure API request information, test data, and request/response field mappings.
    - 2.1 Environment: Select the Engine cluster that should run the task; use `Local` for a single-node deployment.
-   - 2.2 Basic Information: For OpenAI and Claude APIs, select the API type and enter the path, model, and response mode. You may also provide a complete payload.
+   - 2.2 Basic Information: Paste a full curl and click **One-click parse** to auto-fill the API host, path, model, headers, and request body. Paths containing `/chat/completions`, `/responses`, `/messages`, or `/embeddings` also set the API type. You can still select the API type and enter the path, model, and response mode manually, or provide a complete payload.
    - 2.3 OpenAI Responses: Select `OpenAI Responses`, set the path to `/v1/responses`, and use `input` instead of `messages` in the payload.
    - 2.4 Data & Load: Pick a library dataset, upload `.jsonl`, paste JSONL, or skip the dataset and use the request payload as-is. Then set concurrency and duration.
      - OpenAI / Claude Chat: each row needs `prompt` or `messages`; optional `system_prompt` replaces the system message / Claude `system` field. `messages` replaces the whole conversation; otherwise `prompt` replaces the user message.
@@ -117,38 +131,31 @@ The Tasks page has four tabs: **HTTP API**, **LLM Load Test**, **A2A Agent Colla
 6. **Result Comparison**: Navigate to Pref Insight to select multiple models or versions for multi-dimensional performance comparison
 7. **AI Analysis**: In Test Tasks → Results or Pref Insight, support intelligent performance evaluation for single or multiple tasks
 
-#### General API Load Testing
-
-1. **Access Web Interface**: Open http://localhost:8080, switch to the "General API" tab
-2. **Create Test Task**: Navigate to Test Tasks → Create Task
-   - Paste your complete curl command and click "One-Click Parse" to automatically parse request method, URL, headers, and request body
-   - Verify that the parsed request information is complete and accurate
-3. **API Testing**: Click the "Test" button to verify API connectivity and ensure request information is correct before load testing
-4. **Dataset** (Optional): Select a `business` dataset from the library or upload JSONL. Each line must be a complete request-body JSON object; rows are used round-robin. Without a dataset, the form body is sent on every request.
-5. **Start Load Testing**: Configure concurrent users, test duration, and other parameters, then click "Create" to start the load testing task
-6. **Real-time Monitoring**: During testing, click the "Logs" button to view load testing status and real-time logs
-7. **Result Analysis**: After testing completes, click the "Results" button to view load testing results, including RPS, response time, success rate, and other metrics
-8. **Copy Template**: To test the same API again, click "..." → "Copy Template" in the actions column. Note that the dataset needs to be re-uploaded after copying, and it's recommended to repeat steps 3-7
-9. **Performance Comparison**: To compare performance across different versions or concurrency levels, navigate to the "Performance Comparison" page
-
 #### A2A Agent Collaboration
 
-Use this tab to stress-test Agent-to-Agent (A2A 1.0) services that accept JSON-RPC messages and return task results.
+Use this tab to stress-test Agent-to-Agent (A2A 1.0) services that accept messages and return task results. Three protocol bindings are supported:
+
+| Binding | Target URL | Actual request |
+|---------|------------|----------------|
+| **JSON-RPC** | Single endpoint, e.g. `https://agent.example.com/a2a` | POST to that URL with the method in the JSON-RPC body (`SendMessage` / `SendStreamingMessage`) |
+| **HTTP+JSON (REST)** | Service base URL without route suffixes | Auto-appends `/message:send` or `/message:stream`; async-poll also calls `GET /tasks/{taskId}` |
+| **gRPC** | `host:port`, e.g. `agent.example.com:443` | Calls `a2a.A2AService/SendMessage` or `SendStreamingMessage` |
 
 1. Open http://localhost:8080 and switch to **A2A Agent Collaboration**
-2. Create a task and fill in the A2A JSON-RPC URL (Agent Card URL is optional; it can be auto-discovered)
-3. Click **Test Connection** to confirm the service is reachable
-4. Add one or more message scenarios and set weights — traffic is sampled by weight
-5. Choose how results are collected: **Sync**, **Streaming SSE**, or **Async submit + poll**
-6. Optionally pick an `a2a` library dataset or upload `.jsonl` so the same scenario can send different messages. Each row needs `id`, `scenario_id` (must match a configured scenario), and `message` (`role` = `ROLE_USER`, non-empty `parts`). Extra fields are rejected; weights stay on the scenario, not the row. The file must cover every configured scenario.
-7. Set concurrency and duration, then create the task; check logs and results for end-to-end latency and success rate
+2. Create a task. You can paste a full `curl` (or `grpcurl` for gRPC) and click **One-click parse** to detect the binding and execution mode, then fill in the URL, headers, and message scenario
+3. Select the protocol binding and enter the service URL (Agent Card URL is optional; it can be auto-discovered). Use an `https://...` base URL for JSON-RPC / HTTP+JSON; for gRPC use `host:port` without `http://`
+4. Click **Test Connection** to confirm the service is reachable
+5. Add one or more message scenarios and set weights — traffic is sampled by weight
+6. Choose how results are collected: **Sync**, **Streaming SSE**, or **Async submit + poll**
+7. Optionally pick an `a2a` library dataset or upload `.jsonl` so the same scenario can send different messages. Each row needs `id`, `scenario_id` (must match a configured scenario), and `message` (`role` = `ROLE_USER`, non-empty `parts`). Extra fields are rejected; weights stay on the scenario, not the row. The file must cover every configured scenario.
+8. Set concurrency and duration, then create the task; check logs and results for end-to-end latency and success rate
 
 #### MCP Tool Calls
 
 Use this tab to stress-test MCP Streamable HTTP servers by calling tools concurrently.
 
 1. Switch to **MCP Tool Calls**
-2. Fill in the MCP Streamable HTTP URL and click **Test Connection** to discover available tools
+2. Fill in the MCP Streamable HTTP URL, or paste a curl and one-click parse to auto-fill the URL, headers, and tool scenario; then click **Test Connection** to discover available tools
 3. Add tool-call scenarios: pick a tool name, fill in `arguments`, and set a weight
 4. Optionally pick an `mcp` library dataset or upload `.jsonl` to vary arguments for the same tool. Each row needs `id`, `scenario_id` (must match a configured scenario), and `arguments` (object, `{}` allowed). Extra fields are rejected; the file must cover every configured scenario.
 5. Set concurrency and duration, then create the task; review tool-call latency and success rate in results

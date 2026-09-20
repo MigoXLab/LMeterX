@@ -36,7 +36,7 @@ LMeterX 是一个专业的性能测试平台，覆盖大模型推理服务、通
 - **一站式 Web 控制台**：直观管理任务调度、监控与实时日志，显著降低上手门槛与运维成本。
 - **Web 解析和智能压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：输入网页 URL 自动爬取页面、识别核心业务 API，一键完成连通性预检与压测任务创建，零配置启动压测。
 - **AI Agent 集成**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：内置 MCP Server 与 [OpenClaw](https://github.com/openclaw) Skills，原生支持 Claude Code、Cursor 等 AI Agent 通过自然语言指令自动生成压测配置并快速启动任务。
-- **A2A / MCP 协议压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持对 Agent 协作服务（A2A 1.0）和 MCP 工具服务压测。可按权重混合多种业务场景，覆盖同步、流式 SSE、异步轮询，并统计耗时、成功率与工具调用指标。
+- **A2A / MCP 协议压测**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：支持对 Agent 协作服务（A2A 1.0，覆盖 JSON-RPC、HTTP+JSON REST、gRPC 三种协议绑定）和 MCP 工具服务压测。可按权重混合多种业务场景，覆盖同步、流式 SSE、异步轮询，并统计耗时、成功率与工具调用指标。
 - **跨集群 Engine 调度**&nbsp;<img src="docs/images/badge-new.svg" alt="NEW" height="16" />：一个控制面统一管理多个本地或 Kubernetes 压测集群，任务可按压测环境路由，并支持 Engine 心跳、资源监控与弹性扩缩容。
 - **企业级架构安全**：支持分布式部署、LDAP/AD 集成，以及 Engine 与 AI Agent 的独立服务令牌，满足企业级扩展与认证需求。
 
@@ -47,7 +47,7 @@ LMeterX 是一个专业的性能测试平台，覆盖大模型推理服务、通
 | 使用 | 提供 Web UI：任务创建、监控、停止全生命周期管理（压测） | CLI 命令行，面向 ModelScope 生态（效果评测和压测）| CLI 命令行，依赖 Ray 框架（压测） |
 | 并发与压测 | 支持多进程、多任务、固定和阶梯式并发模式，企业级规模化压测 | 支持命令参数并发 | 支持命令参数并发 |
 | 测试报告 | 支持多模型/多版本对比，AI 分析，提供可视化页面 | 基础报告 + 可视化图表（需额外安装 gradio, plotly等） | 简易报告 |
-| 模型与数据支持 | 支持 OpenAI Chat/Responses、Claude、A2A、MCP、自定义数据和模型接口 | 默认支持 OpenAI 格式，扩展新 API 需自行实现代码 | 支持 OpenAI 格式 |
+| 模型与数据支持 | 支持 OpenAI Chat/Responses、Claude、A2A（JSON-RPC / HTTP+JSON / gRPC）、MCP、自定义数据和模型接口 | 默认支持 OpenAI 格式，扩展新 API 需自行实现代码 | 支持 OpenAI 格式 |
 | 性能与资源监控| 支持实时监控性能指标和压测机资源情况 | - | - |
 | 部署与扩展 | 提供 Docker / K8s 部署方案，易于弹性伸缩 | `pip` 或源码 | 源码 |
 
@@ -96,14 +96,26 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 
 ### 使用指南
 
-任务页提供四个标签：**HTTP API**、**大模型压测**、**A2A Agent 协作**、**MCP 工具调用**。按被测对象切换即可。
+任务页提供四个标签：**HTTP API**、**大模型压测**、**A2A Agent 协作**、**MCP 工具调用**。按被测对象切换即可。各类型创建任务时均可粘贴完整 curl 并一键解析，自动填充请求信息。
+
+#### 通用 HTTP 接口压测
+
+1. **访问界面**: 打开 http://localhost:8080，切换到「HTTP API」
+2. **创建任务**: 导航至 测试任务 → 创建任务
+   - 粘贴完整 curl 命令，点击「一键解析」，自动填充请求方法、URL、请求头和请求体
+   - 核对解析结果是否完整、准确
+3. **API 测试**: 点击「测试」按钮验证接口连通性，确认请求信息正确后再压测
+4. **数据集**（可选）: 从数据集库选择 `business` 类型数据集或上传 JSONL。每行须为完整请求体 JSON 对象，按轮询使用。不使用数据集时，每次发送表单中的请求体。
+5. **开始压测**: 配置并发用户数、时长等参数后点击「创建」
+6. **实时监控**: 测试过程中点击「日志」查看压测状态与实时日志
+7. **结果分析**: 测试完成后点击「结果」，查看 RPS、响应时间、成功率等指标
 
 #### 大模型接口压测
 
 1. **访问界面**: 打开 http://localhost:8080，切换到「大模型压测」
 2. **创建任务**: 导航至 测试任务 → 创建任务，配置 API 请求信息、测试数据以及请求响应字段映射
    - 2.1 压测环境: 选择任务要运行的 Engine 集群；单机部署选择默认的 `Local`
-   - 2.2 基础信息: 对于 OpenAI 与 Claude 接口，只需填写 API 类型、路径、模型与响应模式，也可在请求参数中补充完整 payload
+   - 2.2 基础信息: 可粘贴完整 curl 并点击「一键解析」，自动填充 API 地址、路径、模型、请求头和请求体；路径含 `/chat/completions`、`/responses`、`/messages`、`/embeddings` 时会自动识别 API 类型。也可手动填写 API 类型、路径、模型与响应模式，或在请求参数中补充完整 payload
    - 2.3 OpenAI Responses: API 类型选择 `OpenAI Responses`，路径填写 `/v1/responses`；请求体使用 `input` 而不是 `messages`
    - 2.4 数据与负载: 从数据集库选择、上传 `.jsonl`、粘贴 JSONL，或不使用数据集而沿用请求体。再配置并发与时长。
      - OpenAI / Claude Chat：每行需有 `prompt` 或 `messages`；可选 `system_prompt` 替换 system 消息 / Claude 顶层 `system`。有 `messages` 时替换整段对话，否则用 `prompt` 替换用户消息。
@@ -119,22 +131,29 @@ curl -fsSL https://raw.githubusercontent.com/MigoXLab/LMeterX/main/quick-start.s
 
 #### A2A Agent 协作压测
 
-用于压测遵循 A2A 1.0 的 Agent 服务：向对方发送消息，等待任务完成并统计端到端性能。
+用于压测遵循 A2A 1.0 的 Agent 服务：向对方发送消息，等待任务完成并统计端到端性能。支持三种协议绑定：
+
+| 协议绑定 | 地址填写 | 实际请求 |
+|---------|---------|---------|
+| **JSON-RPC** | 单端点 URL，如 `https://agent.example.com/a2a` | POST 到该端点，方法写在 JSON-RPC 请求体中（`SendMessage` / `SendStreamingMessage`） |
+| **HTTP+JSON (REST)** | 服务基地址，不含路由后缀 | 按执行方式自动拼接 `/message:send`、`/message:stream`；异步轮询时再请求 `GET /tasks/{taskId}` |
+| **gRPC** | `host:port`，如 `agent.example.com:443` | 调用 `a2a.A2AService/SendMessage` 或 `SendStreamingMessage` |
 
 1. 打开 http://localhost:8080，切换到 **A2A Agent 协作**
-2. 创建任务，填写 A2A JSON-RPC 地址（Agent Card 地址可选，留空时自动发现）
-3. 点击「测试连接」，确认服务可达
-4. 添加消息场景并设置权重，压测时按权重随机发送
-5. 选择执行方式：**同步**、**流式 SSE**，或 **异步提交 + 轮询**
-6. （可选）选用 `a2a` 类型数据集或上传 `.jsonl`，为同一场景提供不同 `message`。每行必填 `id`、`scenario_id`（须对应已配置场景）、`message`（`role` 为 `ROLE_USER`，`parts` 非空）。禁止多余字段；权重写在场景上。文件须覆盖任务中全部场景。
-7. 配置并发与时长后创建任务，在日志和结果中查看耗时与成功率
+2. 创建任务。可粘贴完整 `curl`（或 gRPC 的 `grpcurl`）并点击「一键解析」，自动识别协议绑定、执行方式，并填充地址、请求头和消息场景
+3. 选择协议绑定并填写服务地址（Agent Card 地址可选，留空时自动发现）。JSON-RPC / HTTP+JSON 填 `https://...` 基地址；gRPC 填 `host:port`，不要带 `http://`
+4. 点击「测试连接」，确认服务可达
+5. 添加消息场景并设置权重，压测时按权重随机发送
+6. 选择执行方式：**同步**、**流式 SSE**，或 **异步提交 + 轮询**
+7. （可选）选用 `a2a` 类型数据集或上传 `.jsonl`，为同一场景提供不同 `message`。每行必填 `id`、`scenario_id`（须对应已配置场景）、`message`（`role` 为 `ROLE_USER`，`parts` 非空）。禁止多余字段；权重写在场景上。文件须覆盖任务中全部场景。
+8. 配置并发与时长后创建任务，在日志和结果中查看耗时与成功率
 
 #### MCP 工具调用压测
 
 用于压测 MCP Streamable HTTP 服务：并发调用工具，统计调用延迟与成功率。
 
 1. 切换到 **MCP 工具调用**
-2. 填写 MCP Streamable HTTP 地址，点击「测试连接」发现可用工具
+2. 填写 MCP Streamable HTTP 地址，或粘贴 curl 并一键解析以自动填充地址、请求头和工具场景；点击「测试连接」发现可用工具
 3. 添加工具调用场景：选择工具名、填写 `arguments`，并设置权重
 4. （可选）选用 `mcp` 类型数据集或上传 `.jsonl`，为同一工具提供不同参数。每行必填 `id`、`scenario_id`（须对应已配置场景），`arguments` 为对象（可为 `{}`）。禁止多余字段；文件须覆盖任务中全部场景。
 5. 配置并发与时长后创建任务，在结果中查看工具调用延迟与成功率

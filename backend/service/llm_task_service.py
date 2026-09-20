@@ -17,7 +17,6 @@ from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
-from model.http_task import HttpTask
 from model.llm_task import (
     ComparisonMetrics,
     ComparisonRequest,
@@ -205,36 +204,6 @@ def _build_task_detail(task: Task) -> Dict[str, Any]:
         ),
         "engine_id": task.engine_id,
         "cluster_id": task.cluster_id or "local",
-        "created_at": safe_isoformat(task.created_at),
-        "updated_at": safe_isoformat(task.updated_at),
-    }
-
-
-def _build_http_task_detail(task: HttpTask) -> Dict[str, Any]:
-    """Build a task-like payload for HTTP API tasks so shared pages work."""
-    mapped_status = _map_status(cast(Optional[str], task.status))
-    return {
-        "id": task.id,
-        "name": task.name,
-        "status": mapped_status,
-        "created_by": getattr(task, "created_by", None),
-        "target_host": task.target_host,
-        "model": task.method,  # reuse method label for display
-        "duration": task.duration,
-        "concurrent_users": task.concurrent_users,
-        "spawn_rate": task.spawn_rate,
-        "stream_mode": False,
-        "headers": [],
-        "cookies": [],
-        "cert_config": {"cert_file": "", "key_file": ""},
-        "api_path": getattr(task, "api_path", ""),
-        "request_payload": task.request_body or "",
-        "field_mapping": {},
-        "api_type": "common-api",
-        "test_data": task.request_body or "",
-        "error_message": task.error_message,
-        "engine_id": getattr(task, "engine_id", None),
-        "cluster_id": getattr(task, "cluster_id", None) or "local",
         "created_at": safe_isoformat(task.created_at),
         "updated_at": safe_isoformat(task.updated_at),
     }
@@ -784,11 +753,6 @@ async def get_task_svc(request: Request, task_id: str):
         if task and getattr(task, "is_deleted", 0) == 0:
             return _build_task_detail(task)
 
-        # Fallback to HTTP API task to support shared log/detail pages
-        http_task = await db.get(HttpTask, task_id)
-        if http_task and getattr(http_task, "is_deleted", 0) == 0:
-            return _build_http_task_detail(http_task)
-
         logger.warning("Get request for non-existent task ID: {}", task_id)
         raise ErrorResponse.not_found("Task not found")
     except ErrorResponse:
@@ -866,30 +830,6 @@ async def get_task_status_svc(request: Request, task_id: str):
         task_data = result.first()
 
         if not task_data:
-            # Fallback to HTTP task
-            common_query = (
-                select(
-                    HttpTask.id,
-                    HttpTask.name,
-                    HttpTask.status,
-                    HttpTask.error_message,
-                    HttpTask.updated_at,
-                )
-                .where(HttpTask.id == task_id)
-                .where(HttpTask.is_deleted == 0)
-            )
-            common_result = await db.execute(common_query)
-            common_data = common_result.first()
-            if common_data:
-                mapped_status = _map_status(common_data.status)
-                return {
-                    "id": common_data.id,
-                    "name": common_data.name,
-                    "status": mapped_status,
-                    "error_message": common_data.error_message,
-                    "updated_at": safe_isoformat(common_data.updated_at),
-                }
-
             logger.warning("Status request for non-existent task ID: {}", task_id)
             raise ErrorResponse.not_found("Task not found")
 

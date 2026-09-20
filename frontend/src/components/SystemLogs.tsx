@@ -40,6 +40,7 @@ import {
   normalizeLogTimestamp,
   stripNestedLogPrefix,
 } from '../utils/logFormat';
+import { getSlsEnabled } from '../utils/runtimeConfig';
 
 const { Search } = Input;
 const ALL_LOG_LOOKBACK_SECONDS = 60 * 60;
@@ -62,6 +63,11 @@ const isSlsUnavailableError = (err: any): boolean => {
     details.includes('failed to resolve') ||
     details.includes('temporary failure in name resolution')
   );
+};
+
+const isSlsNotConfiguredError = (err: any): boolean => {
+  const code = err?.data?.code || err?.response?.data?.code;
+  return code === 'sls_not_configured';
 };
 
 const getRenderedLogTimestampSortKey = (line: string): string => {
@@ -150,6 +156,7 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
   const logRequestGenerationRef = useRef(0);
   const slsCursorRef = useRef<number | null>(null);
   const slsPausedUntilRef = useRef(0);
+  const slsDisabledRef = useRef<boolean>(!getSlsEnabled());
   const searchTermRef = useRef('');
   const lineHeight = 24;
 
@@ -376,6 +383,18 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
         return;
       }
 
+      if (slsDisabledRef.current) {
+        const fallbackContent = await fetchLocalSystemLogs(requestGeneration);
+        if (requestGeneration !== logRequestGenerationRef.current) {
+          return;
+        }
+        if (fallbackContent) {
+          if (error) setError(null);
+          if (fetchError) setFetchError(null);
+        }
+        return;
+      }
+
       do {
         const requestParams = {
           start_time: queryStartTime,
@@ -478,6 +497,11 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
       if (slsUnavailable) {
         slsPausedUntilRef.current = Date.now() + SLS_UNAVAILABLE_BACKOFF_MS;
       }
+      if (isSlsNotConfiguredError(err)) {
+        // Backend reports SLS is permanently off; stop retrying SLS this session.
+        slsDisabledRef.current = true;
+        slsCursorRef.current = null;
+      }
 
       // If 404 (log file not found), treat as "no logs" instead of error
       const statusCode = err?.status || err?.response?.status;
@@ -553,7 +577,8 @@ const SystemLogs: React.FC<SystemLogsProps> = ({
       historyFetchInFlightRef.current ||
       !hasMoreHistoryRef.current ||
       historyStartTimeRef.current === null ||
-      historyEndTimeRef.current === null
+      historyEndTimeRef.current === null ||
+      slsDisabledRef.current
     ) {
       return;
     }

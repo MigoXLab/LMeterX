@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL: string;
   readonly VITE_LDAP_ENABLED?: string;
   readonly VITE_PERSIST_ACCESS_TOKEN?: string;
+  readonly VITE_SLS_ENABLED?: string;
 }
 
 interface ImportMeta {
@@ -15,5 +16,6 @@ interface Window {
     VITE_API_BASE_URL?: string;
     VITE_LDAP_ENABLED?: string;
     VITE_PERSIST_ACCESS_TOKEN?: string;
+    VITE_SLS_ENABLED?: string;
   };
 }

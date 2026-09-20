@@ -114,6 +114,16 @@ def _safe_headers(header_names) -> list[Dict[str, Any]]:
     return redact_header_names_for_copy(header_names)
 
 
+_SSE_PROTOCOL_KEYS = {
+    "result",
+    "error",
+    "task",
+    "message",
+    "statusUpdate",
+    "artifactUpdate",
+}
+
+
 def _parse_sse_or_json(response: httpx.Response) -> Dict[str, Any]:
     content_type = response.headers.get("content-type", "")
     if "text/event-stream" not in content_type:
@@ -124,11 +134,9 @@ def _parse_sse_or_json(response: httpx.Response) -> Dict[str, Any]:
     for line in response.text.splitlines():
         if line.startswith("data:") and line[5:].strip():
             payload = json.loads(line[5:].strip())
-            if isinstance(payload, dict) and (
-                "result" in payload or "error" in payload
-            ):
+            if isinstance(payload, dict) and _SSE_PROTOCOL_KEYS.intersection(payload):
                 return payload
-    raise ValueError("SSE stream did not contain a JSON-RPC response")
+    raise ValueError("SSE stream did not contain a JSON protocol response")
 
 
 def _rpc_error(payload: Dict[str, Any]) -> Optional[str]:
@@ -257,182 +265,511 @@ def _connection_error_result(
     return result
 
 
+_A2A_BINDING_PROTOCOL_BINDINGS: Dict[str, set[str]] = {
+    "jsonrpc": {"JSONRPC", "HTTP+JSONRPC"},
+    "http_json": {"HTTP+JSON"},
+    "grpc": {"GRPC"},
+}
+
+_A2A_REST_METHODS: Dict[str, str] = {
+    "SendMessage": "/message:send",
+    "SendStreamingMessage": "/message:stream",
+    "GetTask": "/tasks",
+}
+
+
+def _a2a_message_params(
+    message: Dict[str, Any],
+    *,
+    return_immediately: bool,
+    tenant: Optional[str],
+) -> Dict[str, Any]:
+    """Build a SendMessage/SendStreamingMessage params object.
+
+    Mirrors ``a2a_message_request`` in the Locust engine so the test probe
+    exercises the exact same payload shape as a real load-test request.
+    """
+    normalized = dict(message)
+    normalized.setdefault("messageId", str(uuid.uuid4()))
+    normalized.setdefault("role", "ROLE_USER")
+    configuration: Dict[str, Any] = {"returnImmediately": return_immediately}
+    request: Dict[str, Any] = {"message": normalized, "configuration": configuration}
+    if tenant is not None:
+        request["tenant"] = tenant
+    return request
+
+
+async def _grpc_a2a_probe(
+    target: str,
+    method: str,
+    params: Dict[str, Any],
+    diagnostics: Dict[str, Any],
+) -> httpx.Response:
+    """Probe a gRPC A2A endpoint via grpcio.
+
+    Returns a synthetic httpx.Response so the caller can treat it uniformly.
+    The actual gRPC status is stored in ``diagnostics["grpc_response"]``.
+    """
+    try:
+        import grpc  # type: ignore[import-untyped]
+    except ImportError as exc:
+        raise ValueError(
+            "grpcio is not installed; gRPC binding is unavailable"
+        ) from exc
+
+    channel = grpc.insecure_channel(target)
+    try:
+        grpc.channel_ready_future(channel).result(timeout=10)
+    except grpc.FutureTimeoutError as exc:
+        raise ValueError(f"gRPC channel to {target} not ready after 10s") from exc
+
+    request_json = json.dumps(params).encode("utf-8")
+    a2a_full_method = f"/a2a.A2AService/{method}"
+    try:
+        response_bytes = channel.unary_unary(
+            a2a_full_method,
+            request_serializer=lambda x: x,
+            response_deserializer=lambda x: x,
+        )(request_json, timeout=30)
+        response_data = json.loads(response_bytes)
+        diagnostics["grpc_response"] = {
+            "status": "success",
+            "data": response_data,
+        }
+    except grpc.RpcError as rpc_err:
+        code = rpc_err.code() if hasattr(rpc_err, "code") else "UNKNOWN"
+        details = rpc_err.details() if hasattr(rpc_err, "details") else str(rpc_err)
+        diagnostics["grpc_response"] = {
+            "status": "error",
+            "grpc_code": str(code),
+            "details": details,
+        }
+        raise ValueError(f"gRPC {method} failed: {code} – {details}") from rpc_err
+    finally:
+        channel.close()
+
+    return httpx.Response(200, json=diagnostics["grpc_response"])
+
+
+def _a2a_http_headers(
+    protocol_version: str, configured_headers: Dict[str, str]
+) -> Dict[str, str]:
+    return {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "A2A-Version": protocol_version,
+        **configured_headers,
+    }
+
+
+def _matching_a2a_interfaces(
+    interfaces: Any,
+    *,
+    protocol_version: str,
+    accepted_bindings: set[str],
+    target_normalized: str,
+) -> list[Dict[str, Any]]:
+    matched: list[Dict[str, Any]] = []
+    for item in interfaces or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("protocolVersion") != protocol_version:
+            continue
+        if str(item.get("protocolBinding") or "").upper() not in accepted_bindings:
+            continue
+        if str(item.get("url") or "").rstrip("/").lower() != target_normalized:
+            continue
+        matched.append(item)
+    return matched
+
+
+async def _fetch_and_validate_a2a_card(
+    client: httpx.AsyncClient,
+    body: AgentTaskCreateReq,
+    configured_headers: Dict[str, str],
+    diagnostics: Dict[str, Any],
+    accepted_bindings: set[str],
+    binding: str,
+) -> Dict[str, Any]:
+    if body.agent_card_url:
+        card_url = body.agent_card_url
+    else:
+        origin, _ = _split_url(body.target_url)
+        card_url = f"{origin}/.well-known/agent-card.json"
+    diagnostics["operation"] = "agent-card/get"
+    response = await client.get(
+        card_url,
+        headers={"Accept": "application/json", **configured_headers},
+    )
+    diagnostics["response"] = response
+    response.raise_for_status()
+    card = response.json()
+    required_card_fields = {
+        "name",
+        "supportedInterfaces",
+        "version",
+    }
+    if not isinstance(card, dict):
+        raise ValueError("Agent Card is not a JSON object")
+    missing_fields = sorted(required_card_fields - set(card))
+    if missing_fields:
+        raise ValueError(
+            "Agent Card is missing required fields: " + ", ".join(missing_fields)
+        )
+    interfaces = card.get("supportedInterfaces") or []
+    compatible = _matching_a2a_interfaces(
+        interfaces,
+        protocol_version=body.protocol_version,
+        accepted_bindings=accepted_bindings,
+        target_normalized=body.target_url.rstrip("/").lower(),
+    )
+    if not compatible:
+        advertised = [
+            {
+                "url": item.get("url"),
+                "binding": item.get("protocolBinding"),
+                "version": item.get("protocolVersion"),
+            }
+            for item in interfaces
+            if isinstance(item, dict)
+        ]
+        raise ValueError(
+            f"Agent Card does not advertise the target URL with "
+            f"{binding} binding at protocol version {body.protocol_version}. "
+            f"Advertised interfaces: {advertised}"
+        )
+    interface_tenant = compatible[0].get("tenant") or None
+    body_tenant = body.a2a_tenant or None
+    if interface_tenant != body_tenant:
+        raise ValueError(
+            f"a2a_tenant must exactly match the selected Agent Card "
+            f"interface (card has {interface_tenant!r}, "
+            f"request has {body_tenant!r})"
+        )
+    if body.a2a_mode == "stream" and not card["capabilities"].get("streaming"):
+        raise ValueError("Agent Card does not advertise streaming support")
+    return {
+        "agent_card": {
+            "name": card.get("name"),
+            "protocol_version": card.get("protocolVersion"),
+            "capabilities": card.get("capabilities", {}),
+            "skills": card.get("skills", []),
+            "supported_interfaces": interfaces,
+        },
+        "discovery_operation": "agent-card/get",
+        "discovery_http_status": response.status_code,
+    }
+
+
+async def _send_a2a_business_request(
+    client: httpx.AsyncClient,
+    body: AgentTaskCreateReq,
+    configured_headers: Dict[str, str],
+    diagnostics: Dict[str, Any],
+    binding: str,
+    a2a_method: str,
+    a2a_params: Dict[str, Any],
+) -> httpx.Response:
+    headers = _a2a_http_headers(body.protocol_version, configured_headers)
+    if binding == "http_json":
+        rest_path = _A2A_REST_METHODS.get(a2a_method, "/message:send")
+        diagnostics["operation"] = f"a2a/rest{rest_path}"
+        return await client.post(
+            body.target_url.rstrip("/") + rest_path,
+            headers=headers,
+            json=a2a_params,
+        )
+    if binding == "grpc":
+        diagnostics["operation"] = f"a2a/grpc/{a2a_method}"
+        return await _grpc_a2a_probe(
+            body.target_url, a2a_method, a2a_params, diagnostics
+        )
+    diagnostics["operation"] = f"a2a/{a2a_method.lower()}"
+    return await client.post(
+        body.target_url,
+        headers=headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": a2a_method,
+            "params": a2a_params,
+        },
+    )
+
+
+async def _perform_a2a_connection(
+    client: httpx.AsyncClient,
+    body: AgentTaskCreateReq,
+    configured_headers: Dict[str, str],
+    diagnostics: Dict[str, Any],
+) -> Dict[str, Any]:
+    binding = body.a2a_binding or "jsonrpc"
+    accepted_bindings = _A2A_BINDING_PROTOCOL_BINDINGS.get(binding, set())
+    discovery: Dict[str, Any] = {}
+    if binding != "grpc":
+        discovery = await _fetch_and_validate_a2a_card(
+            client,
+            body,
+            configured_headers,
+            diagnostics,
+            accepted_bindings,
+            binding,
+        )
+    scenario = body.a2a_scenarios[0]
+    a2a_method = "SendStreamingMessage" if body.a2a_mode == "stream" else "SendMessage"
+    business = await _send_a2a_business_request(
+        client,
+        body,
+        configured_headers,
+        diagnostics,
+        binding,
+        a2a_method,
+        _a2a_message_params(
+            scenario.message,
+            return_immediately=body.a2a_mode == "async_poll",
+            tenant=body.a2a_tenant,
+        ),
+    )
+    if binding == "grpc":
+        return {
+            "status": "success",
+            "protocol": "a2a",
+            "operation": diagnostics["operation"],
+            "response": diagnostics.get("grpc_response"),
+            **discovery,
+        }
+    diagnostics["response"] = business
+    business.raise_for_status()
+    business_payload = _parse_sse_or_json(business)
+    if binding == "jsonrpc" and _rpc_error(business_payload):
+        raise ValueError(_rpc_error(business_payload))
+    return {
+        "status": "success",
+        "protocol": "a2a",
+        "http_status": business.status_code,
+        "operation": diagnostics["operation"],
+        **{
+            k: v
+            for k, v in {
+                "discovery_operation": discovery.get("discovery_operation"),
+                "discovery_http_status": discovery.get("discovery_http_status"),
+                "agent_card": discovery.get("agent_card"),
+            }.items()
+            if v is not None
+        },
+        "response": {
+            "status_code": business.status_code,
+            "data": _connection_response_preview(business),
+        },
+    }
+
+
+async def _mcp_jsonrpc(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: Dict[str, str],
+    diagnostics: Dict[str, Any],
+    operation: str,
+    payload: Dict[str, Any],
+) -> tuple[httpx.Response, Dict[str, Any]]:
+    diagnostics["operation"] = operation
+    response = await client.post(url, headers=headers, json=payload)
+    diagnostics["response"] = response
+    response.raise_for_status()
+    parsed = _parse_sse_or_json(response)
+    error = _rpc_error(parsed)
+    if error:
+        raise ValueError(error)
+    return response, parsed
+
+
+async def _discover_mcp_tools(
+    client: httpx.AsyncClient,
+    body: AgentTaskCreateReq,
+    headers: Dict[str, str],
+    diagnostics: Dict[str, Any],
+    protocol_version: str,
+) -> Dict[str, Any]:
+    if protocol_version >= "2026-07-28":
+        headers.update(
+            {
+                "MCP-Protocol-Version": protocol_version,
+                "Mcp-Method": "tools/list",
+            }
+        )
+        listed, tools_payload = await _mcp_jsonrpc(
+            client,
+            body.target_url,
+            headers,
+            diagnostics,
+            "tools/list",
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {"_meta": _mcp_2026_meta(protocol_version)},
+            },
+        )
+        tools_result = tools_payload.get("result") or {}
+        if tools_result.get("resultType") != "complete":
+            raise ValueError("MCP tools/list did not return a complete result")
+        return {
+            "server": {},
+            "protocol_version": protocol_version,
+            "capabilities": {"tools": {}},
+            "tools": tools_result.get("tools", []),
+            "session_id": None,
+            "negotiated_version": protocol_version,
+            "discovery_operation": "tools/list",
+            "discovery_http_status": listed.status_code,
+        }
+
+    initialize, init_payload = await _mcp_jsonrpc(
+        client,
+        body.target_url,
+        headers,
+        diagnostics,
+        "initialize",
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": body.protocol_version,
+                "capabilities": {},
+                "clientInfo": {"name": "LMeterX", "version": "1.0"},
+            },
+        },
+    )
+    init_result = init_payload.get("result") or {}
+    negotiated = str(init_result.get("protocolVersion") or protocol_version)
+    headers["MCP-Protocol-Version"] = negotiated
+    session_id = initialize.headers.get("mcp-session-id")
+    if session_id:
+        headers["MCP-Session-Id"] = session_id
+    diagnostics["operation"] = "notifications/initialized"
+    ready = await client.post(
+        body.target_url,
+        headers=headers,
+        json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+    )
+    diagnostics["response"] = ready
+    ready.raise_for_status()
+    listed, tools_payload = await _mcp_jsonrpc(
+        client,
+        body.target_url,
+        headers,
+        diagnostics,
+        "tools/list",
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    )
+    tools_result = tools_payload.get("result") or {}
+    return {
+        "server": init_result.get("serverInfo", {}),
+        "protocol_version": init_result.get("protocolVersion"),
+        "capabilities": init_result.get("capabilities", {}),
+        "tools": tools_result.get("tools", []),
+        "session_id": session_id,
+        "negotiated_version": negotiated,
+        "discovery_operation": "tools/list",
+        "discovery_http_status": listed.status_code,
+    }
+
+
+async def _perform_mcp_connection(
+    client: httpx.AsyncClient,
+    body: AgentTaskCreateReq,
+    configured_headers: Dict[str, str],
+    diagnostics: Dict[str, Any],
+) -> Dict[str, Any]:
+    protocol_version = body.protocol_version or "2026-07-28"
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        **configured_headers,
+    }
+    discovery = await _discover_mcp_tools(
+        client, body, headers, diagnostics, protocol_version
+    )
+    mcp_call = body.mcp_calls[0]
+    mcp_version = discovery["negotiated_version"]
+    mcp_headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        **configured_headers,
+    }
+    mcp_params: Dict[str, Any] = {
+        "name": mcp_call.tool_name,
+        "arguments": mcp_call.arguments or {},
+    }
+    if mcp_version >= "2026-07-28":
+        mcp_headers.update(
+            {
+                "MCP-Protocol-Version": mcp_version,
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": mcp_call.tool_name,
+            }
+        )
+        mcp_params["_meta"] = _mcp_2026_meta(mcp_version)
+    else:
+        mcp_headers["MCP-Protocol-Version"] = mcp_version
+        if discovery.get("session_id"):
+            mcp_headers["MCP-Session-Id"] = discovery["session_id"]
+    await _mcp_jsonrpc(
+        client,
+        body.target_url,
+        mcp_headers,
+        diagnostics,
+        "mcp/tools-call",
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": mcp_params,
+        },
+    )
+    business = diagnostics["response"]
+    return {
+        "status": "success",
+        "protocol": "mcp",
+        "http_status": business.status_code,
+        "operation": diagnostics["operation"],
+        "discovery_operation": discovery["discovery_operation"],
+        "discovery_http_status": discovery["discovery_http_status"],
+        "server": discovery["server"],
+        "protocol_version": discovery["protocol_version"],
+        "capabilities": discovery["capabilities"],
+        "tools": discovery["tools"],
+        "response": {
+            "status_code": business.status_code,
+            "data": _connection_response_preview(business),
+        },
+    }
+
+
 async def _perform_agent_connection(
     body: AgentTaskCreateReq,
     configured_headers: Dict[str, str],
     diagnostics: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Perform protocol discovery while retaining safe diagnostic context."""
+    """Run protocol discovery followed by one real business request.
+
+    Discovery (Agent Card fetch / MCP tools/list) validates metadata, then a
+    single SendMessage (A2A) or tools/call (MCP) is sent using the first
+    configured scenario so authentication, routing and protocol errors surface
+    in the test panel instead of only during the load test.
+    """
     timeout = httpx.Timeout(body.request_timeout)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout, follow_redirects=True, verify=False
+    ) as client:
         if body.protocol == "a2a":
-            if body.agent_card_url:
-                card_url = body.agent_card_url
-            else:
-                origin, _ = _split_url(body.target_url)
-                card_url = f"{origin}/.well-known/agent-card.json"
-            diagnostics["operation"] = "agent-card/get"
-            response = await client.get(
-                card_url,
-                headers={"Accept": "application/json", **configured_headers},
+            return await _perform_a2a_connection(
+                client, body, configured_headers, diagnostics
             )
-            diagnostics["response"] = response
-            response.raise_for_status()
-            card = response.json()
-            required_card_fields = {
-                "name",
-                "description",
-                "supportedInterfaces",
-                "version",
-                "capabilities",
-                "defaultInputModes",
-                "defaultOutputModes",
-                "skills",
-            }
-            if not isinstance(card, dict):
-                raise ValueError("Agent Card is not a JSON object")
-            missing_fields = sorted(required_card_fields - set(card))
-            if missing_fields:
-                raise ValueError(
-                    "Agent Card is missing required fields: "
-                    + ", ".join(missing_fields)
-                )
-            interfaces = card.get("supportedInterfaces") or []
-            compatible = [
-                item
-                for item in interfaces
-                if isinstance(item, dict)
-                and item.get("protocolVersion") == body.protocol_version
-                and str(item.get("protocolBinding") or "").upper() == "JSONRPC"
-                and str(item.get("url") or "").rstrip("/")
-                == body.target_url.rstrip("/")
-            ]
-            if not compatible:
-                raise ValueError(
-                    "Agent Card does not advertise the target URL as the requested "
-                    "JSONRPC protocol version"
-                )
-            interface_tenant = compatible[0].get("tenant")
-            if interface_tenant != body.a2a_tenant:
-                raise ValueError(
-                    "a2a_tenant must exactly match the selected Agent Card interface"
-                )
-            if body.a2a_mode == "stream" and not card["capabilities"].get("streaming"):
-                raise ValueError("Agent Card does not advertise streaming support")
-            return {
-                "status": "success",
-                "protocol": "a2a",
-                "http_status": response.status_code,
-                "operation": diagnostics["operation"],
-                "agent_card": {
-                    "name": card.get("name"),
-                    "protocol_version": card.get("protocolVersion"),
-                    "capabilities": card.get("capabilities", {}),
-                    "skills": card.get("skills", []),
-                    "supported_interfaces": interfaces,
-                },
-            }
-
-        protocol_version = body.protocol_version or "2026-07-28"
-        headers = {
-            "Accept": "application/json, text/event-stream",
-            "Content-Type": "application/json",
-            **configured_headers,
-        }
-        if protocol_version >= "2026-07-28":
-            headers.update(
-                {
-                    "MCP-Protocol-Version": protocol_version,
-                    "Mcp-Method": "tools/list",
-                }
-            )
-            diagnostics["operation"] = "tools/list"
-            listed = await client.post(
-                body.target_url,
-                headers=headers,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "tools/list",
-                    "params": {"_meta": _mcp_2026_meta(protocol_version)},
-                },
-            )
-            diagnostics["response"] = listed
-            listed.raise_for_status()
-            tools_payload = _parse_sse_or_json(listed)
-            if _rpc_error(tools_payload):
-                raise ValueError(_rpc_error(tools_payload))
-            tools_result = tools_payload.get("result") or {}
-            if tools_result.get("resultType") != "complete":
-                raise ValueError("MCP tools/list did not return a complete result")
-            return {
-                "status": "success",
-                "protocol": "mcp",
-                "http_status": listed.status_code,
-                "operation": diagnostics["operation"],
-                "server": {},
-                "protocol_version": protocol_version,
-                "capabilities": {"tools": {}},
-                "tools": tools_result.get("tools", []),
-            }
-
-        diagnostics["operation"] = "initialize"
-        initialize = await client.post(
-            body.target_url,
-            headers=headers,
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": body.protocol_version,
-                    "capabilities": {},
-                    "clientInfo": {"name": "LMeterX", "version": "1.0"},
-                },
-            },
+        return await _perform_mcp_connection(
+            client, body, configured_headers, diagnostics
         )
-        diagnostics["response"] = initialize
-        initialize.raise_for_status()
-        init_payload = _parse_sse_or_json(initialize)
-        if _rpc_error(init_payload):
-            raise ValueError(_rpc_error(init_payload))
-        init_result = init_payload.get("result") or {}
-        headers["MCP-Protocol-Version"] = str(
-            init_result.get("protocolVersion") or protocol_version
-        )
-        session_id = initialize.headers.get("mcp-session-id")
-        if session_id:
-            headers["MCP-Session-Id"] = session_id
-        diagnostics["operation"] = "notifications/initialized"
-        ready = await client.post(
-            body.target_url,
-            headers=headers,
-            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
-        )
-        diagnostics["response"] = ready
-        ready.raise_for_status()
-        diagnostics["operation"] = "tools/list"
-        listed = await client.post(
-            body.target_url,
-            headers=headers,
-            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
-        )
-        diagnostics["response"] = listed
-        listed.raise_for_status()
-        tools_payload = _parse_sse_or_json(listed)
-        if _rpc_error(tools_payload):
-            raise ValueError(_rpc_error(tools_payload))
-        tools_result = tools_payload.get("result") or {}
-        return {
-            "status": "success",
-            "protocol": "mcp",
-            "http_status": listed.status_code,
-            "operation": diagnostics["operation"],
-            "server": init_result.get("serverInfo", {}),
-            "protocol_version": init_result.get("protocolVersion"),
-            "capabilities": init_result.get("capabilities", {}),
-            "tools": tools_result.get("tools", []),
-        }
 
 
 async def test_agent_connection(
@@ -673,7 +1010,11 @@ async def create_agent_task(
         cleanup_task_files(task_id, test_data_path=copied_dataset)
         raise ErrorResponse.bad_request(str(exc)) from exc
 
-    target_host, api_path = _split_url(body.target_url)
+    if body.protocol == "a2a" and body.a2a_binding == "grpc":
+        target_host = body.target_url
+        api_path = "/"
+    else:
+        target_host, api_path = _split_url(body.target_url)
     task = AgentTask(
         id=task_id,
         name=body.name,

@@ -108,7 +108,10 @@ class AgentTaskCreateReq(BaseModel):
     inherit_source_headers: bool = False
     inherit_source_dataset: bool = False
 
-    # A2A 1.0 JSON-RPC binding options.
+    # A2A protocol binding – determines transport and request format.
+    a2a_binding: Literal["jsonrpc", "http_json", "grpc"] = "jsonrpc"
+
+    # A2A execution mode.
     a2a_mode: Literal["sync", "stream", "async_poll"] = "async_poll"
     agent_card_url: Optional[str] = Field(default=None, max_length=2000)
     a2a_tenant: Optional[str] = Field(default=None, max_length=512)
@@ -148,7 +151,10 @@ class AgentTaskCreateReq(BaseModel):
                 raise ValueError(f"request header is managed by LMeterX: {header.key}")
             header.key = header.key.strip()
             seen_headers.add(normalized)
-        if not self.target_url.startswith(("http://", "https://")):
+        if self.a2a_binding == "grpc":
+            if self.target_url.startswith(("http://", "https://")):
+                raise ValueError("gRPC target_url must be host:port, not an HTTP URL")
+        elif not self.target_url.startswith(("http://", "https://")):
             raise ValueError("target_url must start with http:// or https://")
         if self.agent_card_url:
             self.agent_card_url = self.agent_card_url.strip()
@@ -193,6 +199,7 @@ class AgentTaskCreateReq(BaseModel):
             {
                 "request_timeout": self.request_timeout,
                 "dataset_file": self.dataset_file,
+                "a2a_binding": self.a2a_binding,
                 "a2a_mode": self.a2a_mode,
                 "agent_card_url": self.agent_card_url,
                 "a2a_tenant": self.a2a_tenant,

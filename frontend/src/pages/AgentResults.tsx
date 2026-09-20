@@ -690,6 +690,10 @@ const AgentResults: React.FC = () => {
     },
   ];
 
+  const transitionColumns = operationColumns.filter(
+    column => column.key !== 'failure_count' && column.key !== 'rps'
+  );
+
   const renderOverviewMetrics = () => {
     const ratioToPercent = (value: unknown) => {
       const numeric = toFiniteNumber(value);
@@ -1195,8 +1199,8 @@ const AgentResults: React.FC = () => {
                   pagination={false}
                   rowKey='metric_type'
                   dataSource={transitions}
-                  scroll={{ x: 1100 }}
-                  columns={operationColumns}
+                  scroll={{ x: 900 }}
+                  columns={transitionColumns}
                 />
               </div>
             </div>

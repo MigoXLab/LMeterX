@@ -217,6 +217,8 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - VITE_API_BASE_URL=/api
+      # Must match backend SLS_ENABLED. false/off = UI skips SLS log endpoints.
+      - VITE_SLS_ENABLED=false
       # Must match backend LDAP_ENABLED. false/off = no login UI.
       - VITE_LDAP_ENABLED=false
       - VITE_PERSIST_ACCESS_TOKEN=true

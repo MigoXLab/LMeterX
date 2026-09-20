@@ -35,7 +35,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { jobApi, logApi } from '../api/services';
+import { logApi, unifiedTaskApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingState';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Job } from '../types/job';
@@ -45,6 +45,7 @@ import {
   normalizeLogTimestamp,
   stripNestedLogPrefix,
 } from '../utils/logFormat';
+import { getSlsEnabled } from '../utils/runtimeConfig';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -99,6 +100,11 @@ const isSlsUnavailableError = (err: any): boolean => {
     details.includes('failed to resolve') ||
     details.includes('temporary failure in name resolution')
   );
+};
+
+const isSlsNotConfiguredError = (err: any): boolean => {
+  const code = err?.data?.code || err?.response?.data?.code;
+  return code === 'sls_not_configured';
 };
 
 const getRenderedLogTimestampSortKey = (line: string): string => {
@@ -171,6 +177,7 @@ const TaskLogs: React.FC = () => {
   >(null!);
   const slsCursorRef = useRef<number | null>(null);
   const slsPausedUntilRef = useRef(0);
+  const slsDisabledRef = useRef<boolean>(!getSlsEnabled());
   const finalLogRefreshDeadlineRef = useRef<number | null>(null);
   const searchTermRef = useRef('');
   const lineHeight = 24;
@@ -393,6 +400,16 @@ const TaskLogs: React.FC = () => {
         return;
       }
 
+      if (slsDisabledRef.current) {
+        await fetchLocalTaskLogs(requestGeneration);
+        if (requestGeneration !== logRequestGenerationRef.current) {
+          return;
+        }
+        if (error) setError(null);
+        if (fetchError) setFetchError(null);
+        return;
+      }
+
       do {
         // eslint-disable-next-line no-await-in-loop -- SLS pagination must follow the previous page cursor.
         const contentResponse = await logApi.queryRealtimeTaskLogs(id, {
@@ -475,6 +492,11 @@ const TaskLogs: React.FC = () => {
       if (slsUnavailable) {
         slsPausedUntilRef.current = Date.now() + SLS_UNAVAILABLE_BACKOFF_MS;
       }
+      if (isSlsNotConfiguredError(err)) {
+        // Backend reports SLS is permanently off; stop retrying SLS this session.
+        slsDisabledRef.current = true;
+        slsCursorRef.current = null;
+      }
 
       // If 404 (log file not found), treat as "no logs" instead of error
       const statusCode = err?.status || err?.response?.status;
@@ -547,7 +569,8 @@ const TaskLogs: React.FC = () => {
       tailLines !== 0 ||
       historyFetchInFlightRef.current ||
       !hasMoreHistoryRef.current ||
-      !historyEndTimeRef.current
+      !historyEndTimeRef.current ||
+      slsDisabledRef.current
     ) {
       return;
     }
@@ -648,7 +671,7 @@ const TaskLogs: React.FC = () => {
 
     try {
       if (isInitialLoad) {
-        const taskResponse = await jobApi.getJob(id);
+        const taskResponse = await unifiedTaskApi.get(id);
         if (taskResponse.data) {
           const currentTask = taskResponse.data;
           if (isTaskInFinalState(currentTask.status)) {
@@ -662,7 +685,7 @@ const TaskLogs: React.FC = () => {
           return currentTask;
         }
       } else {
-        const taskResponse = await jobApi.getJobStatus(id);
+        const taskResponse = await unifiedTaskApi.getStatus(id);
         if (taskResponse.data) {
           const currentTaskStatus = taskResponse.data;
           const updatedTask = {
@@ -687,7 +710,7 @@ const TaskLogs: React.FC = () => {
       }
     } catch (err) {
       try {
-        const taskResponse = await jobApi.getJob(id);
+        const taskResponse = await unifiedTaskApi.get(id);
         if (taskResponse.data) {
           const currentTask = taskResponse.data;
           if (isTaskInFinalState(currentTask.status)) {

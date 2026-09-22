@@ -27,18 +27,33 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/apiClient';
-import { agentTaskApi, httpTaskApi, llmTaskApi } from '../api/services';
+import {
+  agentTaskApi,
+  clusterApi,
+  httpTaskApi,
+  llmTaskApi,
+} from '../api/services';
+import CreateAgentTaskForm from '../components/CreateAgentTaskForm';
 import CreateHttpTaskForm from '../components/CreateHttpTaskForm';
 import CreateLlmTaskForm from '../components/CreateLlmTaskForm';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { PageHeader } from '../components/ui/PageHeader';
 import StatusTag from '../components/ui/StatusTag';
 import { Collection, CollectionTaskItem } from '../types/collection';
-import { HttpTask, LlmTask } from '../types/job';
+import {
+  AgentTask,
+  AgentTaskPayload,
+  Cluster,
+  HttpTask,
+  LlmTask,
+} from '../types/job';
 import { getStoredUser } from '../utils/auth';
 import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
 import { formatDate } from '../utils/date';
 import { formatValidationError } from '../utils/error';
+import { getLdapEnabled } from '../utils/runtimeConfig';
+
+const LDAP_ENABLED = getLdapEnabled();
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -127,13 +142,21 @@ const CollectionDetail: React.FC = () => {
   const [editContent, setEditContent] = useState('');
   const currentUser = getStoredUser();
   const canEdit =
-    currentUser?.is_admin || collection?.created_by === currentUser?.username;
+    !LDAP_ENABLED ||
+    currentUser?.is_admin === true ||
+    (!!collection?.created_by &&
+      collection.created_by === currentUser?.username);
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [taskToCopy, setTaskToCopy] = useState<Partial<LlmTask> | null>(null);
   const [httpTaskToCopy, setHttpTaskToCopy] =
     useState<Partial<HttpTask> | null>(null);
-  const [activeMode, setActiveMode] = useState<'llm' | 'http'>('llm');
+  const [agentTaskToCopy, setAgentTaskToCopy] =
+    useState<Partial<AgentTask> | null>(null);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [activeMode, setActiveMode] = useState<'llm' | 'http' | 'a2a' | 'mcp'>(
+    'llm'
+  );
   const [currentLoading, setCurrentLoading] = useState(false);
 
   const { modal } = App.useApp();
@@ -435,10 +458,55 @@ const CollectionDetail: React.FC = () => {
     [canEdit, t]
   );
 
+  const handleCopyAgentTask = useCallback(
+    async (job: CollectionTaskItem) => {
+      if (!canEdit) {
+        message.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      try {
+        const [copyResp, clusterResp] = await Promise.all([
+          agentTaskApi.getCopyTemplate(job.id),
+          clusters.length ? Promise.resolve(null) : clusterApi.getAllClusters(),
+        ]);
+        if (clusterResp) {
+          const body: any = clusterResp as any;
+          const values = Array.isArray(body)
+            ? body
+            : Array.isArray(body?.data)
+              ? body.data
+              : Array.isArray(body?.data?.clusters)
+                ? body.data.clusters
+                : Array.isArray(body?.data?.data)
+                  ? body.data.data
+                  : [];
+          setClusters(values);
+        }
+        const detail = resolveTaskDetail(copyResp, job as any);
+        setActiveMode(job.task_type === 'mcp' ? 'mcp' : 'a2a');
+        setAgentTaskToCopy({
+          ...detail,
+          id: undefined,
+          name: `${detail.name || job.name} (Copy)`.slice(0, 100),
+          status: undefined,
+          created_at: undefined,
+          updated_at: undefined,
+          dataset_file: undefined,
+        });
+        setIsModalVisible(true);
+      } catch (error) {
+        console.error('Failed to fetch agent task details:', error);
+        message.error(t('pages.jobs.copyError', 'Failed to load task details'));
+      }
+    },
+    [canEdit, clusters.length, t]
+  );
+
   const handleModalCancel = useCallback(() => {
     setIsModalVisible(false);
     setTaskToCopy(null);
     setHttpTaskToCopy(null);
+    setAgentTaskToCopy(null);
   }, []);
 
   const handleCreateTask = useCallback(
@@ -468,6 +536,38 @@ const CollectionDetail: React.FC = () => {
       } catch (error) {
         console.error('Failed to create task:', error);
         message.error(t('pages.jobs.createFailed'));
+      } finally {
+        setCurrentLoading(false);
+      }
+    },
+    [activeMode, id, t]
+  );
+
+  const handleCreateAgentTask = useCallback(
+    async (payload: AgentTaskPayload): Promise<boolean> => {
+      setCurrentLoading(true);
+      try {
+        const resp = await agentTaskApi.create(payload);
+        const newTaskId =
+          (resp as any)?.data?.task_id || (resp as any)?.data?.id;
+        if (newTaskId) {
+          await api.post(`/collections/${id}/tasks`, {
+            task_id: newTaskId,
+            task_type: activeMode === 'mcp' ? 'mcp' : 'a2a',
+          });
+          fetchTasks();
+          fetchCollection();
+          message.success(t('pages.jobs.createSuccess'));
+          setIsModalVisible(false);
+          setAgentTaskToCopy(null);
+          return true;
+        }
+        message.error(t('pages.jobs.createFailed'));
+        return false;
+      } catch (error: any) {
+        console.error('Failed to create agent task:', error);
+        message.error(error?.message || t('pages.jobs.createFailed'));
+        return false;
       } finally {
         setCurrentLoading(false);
       }
@@ -695,24 +795,24 @@ const CollectionDetail: React.FC = () => {
                 }}
               />
             </Tooltip>
-            {record.task_type !== 'a2a' && record.task_type !== 'mcp' && (
-              <Tooltip title={t('pages.jobs.copyTemplate')}>
-                <Button
-                  type='text'
-                  size='small'
-                  className='action-icon-btn'
-                  icon={<CopyOutlined />}
-                  onClick={e => {
-                    e.stopPropagation();
-                    if (record.task_type === 'llm') {
-                      handleCopyJob(record);
-                    } else {
-                      handleCopyHttpTask(record);
-                    }
-                  }}
-                />
-              </Tooltip>
-            )}
+            <Tooltip title={t('pages.jobs.copyTemplate')}>
+              <Button
+                type='text'
+                size='small'
+                className='action-icon-btn'
+                icon={<CopyOutlined />}
+                onClick={e => {
+                  e.stopPropagation();
+                  if (record.task_type === 'llm') {
+                    handleCopyJob(record);
+                  } else if (record.task_type === 'http') {
+                    handleCopyHttpTask(record);
+                  } else {
+                    handleCopyAgentTask(record);
+                  }
+                }}
+              />
+            </Tooltip>
             <Tooltip title={t('pages.collectionDetail.remove')}>
               <Button
                 danger
@@ -1144,8 +1244,12 @@ const CollectionDetail: React.FC = () => {
       </div>
       <Modal
         title={
-          taskToCopy || httpTaskToCopy
-            ? t('pages.jobs.edit')
+          taskToCopy || httpTaskToCopy || agentTaskToCopy
+            ? activeMode === 'a2a' || activeMode === 'mcp'
+              ? t('pages.jobs.copyAgentTitle', {
+                  protocol: activeMode.toUpperCase(),
+                })
+              : t('pages.jobs.edit')
             : t('pages.jobs.createNew')
         }
         open={isModalVisible}
@@ -1163,12 +1267,22 @@ const CollectionDetail: React.FC = () => {
             initialData={taskToCopy}
             suppressCopyWarning={!!taskToCopy}
           />
-        ) : (
+        ) : activeMode === 'http' ? (
           <CreateHttpTaskForm
             onSubmit={handleCreateTask}
             onCancel={handleModalCancel}
             loading={currentLoading}
             initialData={httpTaskToCopy}
+          />
+        ) : (
+          <CreateAgentTaskForm
+            key={`${activeMode}-${agentTaskToCopy ? 'copy' : 'create'}`}
+            protocol={activeMode}
+            clusters={clusters}
+            loading={currentLoading}
+            onSubmit={handleCreateAgentTask}
+            onCancel={handleModalCancel}
+            initialData={agentTaskToCopy}
           />
         )}
       </Modal>

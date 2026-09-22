@@ -2769,6 +2769,7 @@ body {
   padding: 24px;
   border: 1px solid var(--color-border-light);
   transition: all 0.25s ease;
+  min-width: 0;
 }
 
 .comparison-chart-wrapper:hover {
@@ -2783,13 +2784,23 @@ body {
   margin-bottom: 20px;
   padding-bottom: 0;
   border-bottom: 1px solid var(--color-border-light);
+  min-width: 0;
 }
 
-.comparison-chart-title span:first-child {
+.comparison-chart-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text);
   letter-spacing: -0.01em;
+}
+
+.comparison-chart-title-info {
+  flex-shrink: 0;
 }
 
 /* ECharts tooltip overrides (rendered via DOM) */

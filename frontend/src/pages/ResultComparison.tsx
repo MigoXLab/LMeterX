@@ -1211,6 +1211,14 @@ const ResultComparison: React.FC = () => {
     return unit ? `${fixed}${unit}` : fixed;
   };
 
+  // Plot the same number the label prints. Otherwise a value such as 0.0014s
+  // is drawn above the 0.001 tick while the label still says 0.001.
+  const roundToDisplayedPrecision = (value: number, decimals: number) => {
+    if (!Number.isFinite(value)) return 0;
+    const places = Math.abs(value) >= 1000 ? 0 : decimals;
+    return Number(value.toFixed(places));
+  };
+
   // Truncate long names for x-axis labels
   const truncateName = (name: string, maxLen: number = 14) => {
     if (name.length <= maxLen) return name;
@@ -1254,7 +1262,7 @@ const ResultComparison: React.FC = () => {
         : Number((result as any)[metricKey]) || 0;
       return {
         fullName: rawName,
-        value: Number(rawValue) || 0,
+        value: roundToDisplayedPrecision(Number(rawValue) || 0, decimals),
         color: getTaskColor(result.task_id),
         taskId: result.task_id,
         index,
@@ -1268,8 +1276,12 @@ const ResultComparison: React.FC = () => {
     // Pick the correct data source based on orientation
     const displayData = isHorizontal ? reversedData : data;
 
-    // Axis labels: no unit, and use integers for specific metrics
+    // Axis labels: no unit, and use integers for specific metrics.
+    // Tick spacing must be at least one displayed unit. Otherwise a small
+    // latency range (for example 0–0.001s shown with 3 decimals) is split
+    // into steps like 0.0002, and toFixed() prints the same label repeatedly.
     const axisDecimals = integerAxisMetrics.has(metricKey) ? 0 : decimals;
+    const axisMinInterval = 10 ** -axisDecimals;
 
     // Dynamic category gap based on number of bars
     const categoryGap =
@@ -1348,13 +1360,20 @@ const ResultComparison: React.FC = () => {
           'Metric';
         const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dataItem.color};margin-right:8px;flex:0 0 8px;"></span>`;
         const rowStyle =
-          'display:flex;align-items:flex-start;gap:0;line-height:1.5;margin-top:6px;';
+          'display:flex;align-items:flex-start;gap:0;line-height:1.5;margin-top:6px;min-width:0;';
         const labelGroupStyle =
           'display:flex;align-items:center;flex:0 0 auto;white-space:nowrap;margin-right:8px;';
         const labelStyle = 'color:#6b7394;flex:0 0 auto;';
         const valueStyle = 'color:#282e58;flex:1 1 auto;min-width:0;';
+        const metricLabelStyle =
+          'color:#6b7394;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;';
+        const escapedMetricLabel = resolvedMetricLabel
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
         return `
-          <div style="max-width:360px;">
+          <div style="max-width:100%;overflow:hidden;">
             <div style="${rowStyle}margin-top:0;">
               <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">Name:</span></span>
               <span style="${valueStyle}white-space:normal;word-break:break-word;">${dataItem.fullName}</span>
@@ -1364,8 +1383,10 @@ const ResultComparison: React.FC = () => {
               <span style="${valueStyle}white-space:normal;word-break:break-all;">${dataItem.taskId}</span>
             </div>
             <div style="${rowStyle}">
-              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${resolvedMetricLabel}:</span></span>
-              <span style="${valueStyle}">${formatMetricValue(item.value, decimals, unit)}</span>
+              <span style="display:flex;align-items:center;min-width:0;flex:1 1 auto;margin-right:8px;">
+                ${colorDot}<span style="${metricLabelStyle}" title="${escapedMetricLabel}">${escapedMetricLabel}:</span>
+              </span>
+              <span style="${valueStyle}flex:0 0 auto;">${formatMetricValue(item.value, decimals, unit)}</span>
             </div>
           </div>`;
       },
@@ -1384,6 +1405,7 @@ const ResultComparison: React.FC = () => {
         tooltip,
         xAxis: {
           type: 'value' as const,
+          minInterval: axisMinInterval,
           axisLabel: {
             formatter: (val: number) => formatMetricValue(val, axisDecimals),
             color: '#8c8ea6',
@@ -1492,6 +1514,7 @@ const ResultComparison: React.FC = () => {
       },
       yAxis: {
         type: 'value' as const,
+        minInterval: axisMinInterval,
         axisLabel: {
           formatter: (val: number) => formatMetricValue(val, axisDecimals),
           color: '#8c8ea6',
@@ -1780,12 +1803,17 @@ const ResultComparison: React.FC = () => {
 
   // Helper function to create card title with tooltip
   const createCardTitle = (title: string, description: string) => (
-    <Space>
-      <span>{title}</span>
-      <Tooltip title={description} placement='topRight'>
-        <InfoCircleOutlined style={{ color: '#666', cursor: 'pointer' }} />
+    <>
+      <Tooltip title={title}>
+        <span className='comparison-chart-title-text'>{title}</span>
       </Tooltip>
-    </Space>
+      <Tooltip title={description} placement='topRight'>
+        <InfoCircleOutlined
+          className='comparison-chart-title-info'
+          style={{ color: '#666', cursor: 'pointer' }}
+        />
+      </Tooltip>
+    </>
   );
 
   const hasSelectedTasks = activeSelectedTasks.length > 0;

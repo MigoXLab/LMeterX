@@ -92,6 +92,7 @@ def test_a2a_summary_reports_submission_terminal_and_combined_failure_metrics():
     assert summary["task_acceptance_rate"] == 0.8
     assert summary["task_submission_success_rate"] == 0.8
     assert summary["terminal_task_throughput"] > 0
+    assert summary["completed_task_throughput"] > 0
     assert summary["terminal_completion_rate"] == 5 / 8
     assert summary["terminal_failure_rate"] == 2 / 8
     assert summary["terminal_task_completion_rate"] == 5 / 8

@@ -14,7 +14,7 @@ export interface CollectionTaskItem {
   id: string;
   name: string;
   status: string;
-  task_type: 'http' | 'llm';
+  task_type: 'http' | 'llm' | 'a2a' | 'mcp';
   created_by?: string;
   created_at: string;
   concurrent_users: number;

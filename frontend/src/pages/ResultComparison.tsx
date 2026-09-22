@@ -100,7 +100,14 @@ interface SelectedTask {
   duration?: number;
 }
 
-type ComparisonMode = 'model' | 'http';
+type ComparisonMode = 'model' | 'http' | 'a2a' | 'mcp';
+type AgentProtocol = 'a2a' | 'mcp';
+
+const isAgentComparisonMode = (mode: ComparisonMode): mode is AgentProtocol =>
+  mode === 'a2a' || mode === 'mcp';
+
+const isValidComparisonMode = (mode: string | null): mode is ComparisonMode =>
+  mode === 'model' || mode === 'http' || mode === 'a2a' || mode === 'mcp';
 
 const MODE_STORAGE_KEY = 'resultComparisonMode';
 
@@ -142,6 +149,46 @@ interface SelectedHttpTask {
   duration?: number;
 }
 
+interface AgentTaskInfo {
+  task_id: string;
+  task_name: string;
+  protocol: AgentProtocol;
+  target_url: string;
+  concurrent_users: number;
+  created_at: string;
+  duration?: number;
+}
+
+interface AgentLatencyMetric {
+  metric_name: string;
+  avg_response_time: number;
+  min_response_time: number;
+  max_response_time: number;
+  p95_response_time: number;
+  median_response_time?: number | null;
+}
+
+interface AgentComparisonMetrics {
+  task_id: string;
+  task_name: string;
+  protocol: AgentProtocol;
+  target_url: string;
+  concurrent_users: number;
+  duration: string;
+  created_at: string;
+  throughput: number;
+  latency_metrics: AgentLatencyMetric[];
+}
+
+type SelectedAgentTask = AgentTaskInfo;
+
+type AgentLatencyStatKey =
+  | 'avg_response_time'
+  | 'min_response_time'
+  | 'max_response_time'
+  | 'p95_response_time'
+  | 'median_response_time';
+
 type NumericMetricKey =
   | 'first_token_latency'
   | 'total_time'
@@ -177,6 +224,17 @@ interface HttpMetricCardConfig {
   decimals?: number;
 }
 
+interface ChartMetricConfig {
+  metricKey: string;
+  title: string;
+  description: string;
+  chartTitle: string;
+  unit?: string;
+  decimals?: number;
+  metricLabel?: string;
+  getValue?: (result: Record<string, any>) => number;
+}
+
 const CHART_VISIBLE_COUNT = 6;
 
 const TOOLTIP_METRIC_LABELS: Record<
@@ -190,10 +248,10 @@ const TOOLTIP_METRIC_LABELS: Record<
   avg_total_tokens_per_req: 'Avg Total Tokens/Req',
   avg_completion_tokens_per_req: 'Avg Completion Tokens/Req',
   rps: 'RPS',
-  avg_response_time: 'Avg Response Time',
-  p95_response_time: 'P95 Response Time',
-  min_response_time: 'Min Response Time',
-  max_response_time: 'Max Response Time',
+  avg_response_time: 'Avg Latency',
+  p95_response_time: 'P95 Latency',
+  min_response_time: 'Min Latency',
+  max_response_time: 'Max Latency',
   success_rate: 'Success Rate',
 };
 
@@ -213,9 +271,9 @@ const ResultComparison: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>(() => {
     const urlMode = searchParams.get('mode');
-    if (urlMode === 'model' || urlMode === 'http') return urlMode;
+    if (isValidComparisonMode(urlMode)) return urlMode;
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
-    return stored === 'model' ? 'model' : 'http';
+    return isValidComparisonMode(stored) ? stored : 'http';
   });
   const [loading, setLoading] = useState(false);
   const [comparing, setComparing] = useState(false);
@@ -234,6 +292,17 @@ const ResultComparison: React.FC = () => {
   const [httpComparisonResults, setHttpComparisonResults] = useState<
     HttpComparisonMetrics[]
   >([]);
+  const [availableAgentTasksByProtocol, setAvailableAgentTasksByProtocol] =
+    useState<Record<AgentProtocol, AgentTaskInfo[]>>({
+      a2a: [],
+      mcp: [],
+    });
+  const [selectedAgentTasks, setSelectedAgentTasks] = useState<
+    SelectedAgentTask[]
+  >([]);
+  const [agentComparisonResults, setAgentComparisonResults] = useState<
+    AgentComparisonMetrics[]
+  >([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [selectedModel, setSelectedModel] = useState<string | undefined>(
@@ -241,6 +310,9 @@ const ResultComparison: React.FC = () => {
   );
   const [tempSelectedTasks, setTempSelectedTasks] = useState<string[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
+  const availableAgentTasks = isAgentComparisonMode(comparisonMode)
+    ? availableAgentTasksByProtocol[comparisonMode]
+    : [];
 
   // AI Analysis states
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -279,7 +351,7 @@ const ResultComparison: React.FC = () => {
                 t('pages.resultComparison.fetchAvailableTasksFailed')
             );
           }
-        } else {
+        } else if (mode === 'http') {
           const response = await api.get<{
             data: HttpTaskInfo[];
             status: string;
@@ -288,6 +360,26 @@ const ResultComparison: React.FC = () => {
 
           if (response.data.status === 'success') {
             setAvailableHttpTasks(response.data.data);
+          } else {
+            messageApi.error(
+              response.data.error ||
+                t('pages.resultComparison.fetchAvailableTasksFailed')
+            );
+          }
+        } else {
+          const response = await api.get<{
+            data: AgentTaskInfo[];
+            status: string;
+            error?: string;
+          }>('/agent-tasks/comparison/available', {
+            params: { protocol: mode },
+          });
+
+          if (response.data.status === 'success') {
+            setAvailableAgentTasksByProtocol(prev => ({
+              ...prev,
+              [mode]: response.data.data,
+            }));
           } else {
             messageApi.error(
               response.data.error ||
@@ -358,7 +450,7 @@ const ResultComparison: React.FC = () => {
               t('pages.resultComparison.compareResultFailed')
           );
         }
-      } else {
+      } else if (comparisonMode === 'http') {
         const response = await api.post<{
           data: HttpComparisonMetrics[];
           status: string;
@@ -399,6 +491,39 @@ const ResultComparison: React.FC = () => {
               t('pages.resultComparison.compareResultFailed')
           );
         }
+      } else {
+        const response = await api.post<{
+          data: AgentComparisonMetrics[];
+          status: string;
+          error?: string;
+        }>('/agent-tasks/comparison', {
+          selected_tasks: tempSelectedTasks,
+          protocol: comparisonMode,
+        });
+
+        if (response.data.status === 'success') {
+          const orderedResults = orderByTaskIds(
+            response.data.data,
+            tempSelectedTasks
+          );
+          setAgentComparisonResults(orderedResults);
+
+          const selectedTasksData = orderByTaskIds(
+            availableAgentTasksByProtocol[comparisonMode].filter(task =>
+              tempSelectedTasks.includes(task.task_id)
+            ),
+            tempSelectedTasks
+          );
+          setSelectedAgentTasks(selectedTasksData);
+          setIsModalVisible(false);
+          setTempSelectedTasks([]);
+          messageApi.success(t('pages.resultComparison.comparisonCompleted'));
+        } else {
+          messageApi.error(
+            response.data.error ||
+              t('pages.resultComparison.compareResultFailed')
+          );
+        }
       }
     } catch (error) {
       messageApi.error(t('pages.resultComparison.compareResultError'));
@@ -409,6 +534,7 @@ const ResultComparison: React.FC = () => {
     tempSelectedTasks,
     availableTasks,
     availableHttpTasks,
+    availableAgentTasksByProtocol,
     comparisonMode,
     messageApi,
     t,
@@ -456,7 +582,7 @@ const ResultComparison: React.FC = () => {
                 t('pages.resultComparison.compareResultFailed')
             );
           }
-        } else {
+        } else if (mode === 'http') {
           const response = await api.post<{
             data: HttpComparisonMetrics[];
             status: string;
@@ -490,6 +616,34 @@ const ResultComparison: React.FC = () => {
                 t('pages.resultComparison.compareResultFailed')
             );
           }
+        } else {
+          const response = await api.post<{
+            data: AgentComparisonMetrics[];
+            status: string;
+            error?: string;
+          }>('/agent-tasks/comparison', {
+            selected_tasks: taskIds,
+            protocol: mode,
+          });
+
+          if (response.data.status === 'success') {
+            const orderedResults = orderByTaskIds(response.data.data, taskIds);
+            setAgentComparisonResults(orderedResults);
+
+            const selectedTasksData = orderByTaskIds(
+              availableAgentTasksByProtocol[mode].filter(task =>
+                taskIds.includes(task.task_id)
+              ),
+              taskIds
+            );
+            setSelectedAgentTasks(selectedTasksData);
+            messageApi.success(t('pages.resultComparison.comparisonCompleted'));
+          } else {
+            messageApi.error(
+              response.data.error ||
+                t('pages.resultComparison.compareResultFailed')
+            );
+          }
         }
       } catch (error) {
         messageApi.error(t('pages.resultComparison.compareResultError'));
@@ -497,7 +651,13 @@ const ResultComparison: React.FC = () => {
         setComparing(false);
       }
     },
-    [availableTasks, availableHttpTasks, messageApi, t]
+    [
+      availableTasks,
+      availableHttpTasks,
+      availableAgentTasksByProtocol,
+      messageApi,
+      t,
+    ]
   );
 
   // Read URL params on mount and set pending compare
@@ -507,8 +667,9 @@ const ResultComparison: React.FC = () => {
     if (tasksParam) {
       const taskIds = tasksParam.split(',').filter(Boolean);
       if (taskIds.length >= 2 && taskIds.length <= 5) {
-        const mode: ComparisonMode =
-          modeParam === 'model' || modeParam === 'http' ? modeParam : 'model';
+        const mode: ComparisonMode = isValidComparisonMode(modeParam)
+          ? modeParam
+          : 'model';
         pendingCompareRef.current = { taskIds, mode };
         setComparisonMode(mode);
       }
@@ -528,8 +689,19 @@ const ResultComparison: React.FC = () => {
     } else if (pending.mode === 'http' && availableHttpTasks.length > 0) {
       pendingCompareRef.current = null;
       compareDirectly(pending.taskIds, pending.mode);
+    } else if (
+      isAgentComparisonMode(pending.mode) &&
+      availableAgentTasksByProtocol[pending.mode].length > 0
+    ) {
+      pendingCompareRef.current = null;
+      compareDirectly(pending.taskIds, pending.mode);
     }
-  }, [availableTasks, availableHttpTasks, compareDirectly]);
+  }, [
+    availableTasks,
+    availableHttpTasks,
+    availableAgentTasksByProtocol,
+    compareDirectly,
+  ]);
 
   // Handle task selection in modal
   const handleTaskSelection = (taskId: string, checked: boolean) => {
@@ -577,9 +749,12 @@ const ResultComparison: React.FC = () => {
         if (comparisonMode === 'model') {
           setSelectedTasks([]);
           setComparisonResults([]);
-        } else {
+        } else if (comparisonMode === 'http') {
           setSelectedHttpTasks([]);
           setHttpComparisonResults([]);
+        } else {
+          setSelectedAgentTasks([]);
+          setAgentComparisonResults([]);
         }
         messageApi.success(t('pages.resultComparison.allTasksCleared'));
       },
@@ -591,7 +766,9 @@ const ResultComparison: React.FC = () => {
     const activeIds =
       comparisonMode === 'model'
         ? selectedTasks.map(task => task.task_id)
-        : selectedHttpTasks.map(task => task.task_id);
+        : comparisonMode === 'http'
+          ? selectedHttpTasks.map(task => task.task_id)
+          : selectedAgentTasks.map(task => task.task_id);
     setTempSelectedTasks(activeIds);
     setIsModalVisible(true);
   };
@@ -612,17 +789,28 @@ const ResultComparison: React.FC = () => {
       });
     }
 
-    return availableHttpTasks.filter(task => {
+    if (comparisonMode === 'http') {
+      return availableHttpTasks.filter(task => {
+        const matchesSearch =
+          searchText === '' ||
+          task.task_name.toLowerCase().includes(searchText.toLowerCase()) ||
+          task.target_url.toLowerCase().includes(searchText.toLowerCase()) ||
+          task.method.toLowerCase().includes(searchText.toLowerCase());
+
+        return matchesSearch;
+      });
+    }
+
+    return availableAgentTasks.filter(task => {
       const matchesSearch =
         searchText === '' ||
         task.task_name.toLowerCase().includes(searchText.toLowerCase()) ||
-        task.target_url.toLowerCase().includes(searchText.toLowerCase()) ||
-        task.method.toLowerCase().includes(searchText.toLowerCase());
-
+        task.target_url.toLowerCase().includes(searchText.toLowerCase());
       return matchesSearch;
     });
   }, [
     availableHttpTasks,
+    availableAgentTasks,
     availableTasks,
     comparisonMode,
     searchText,
@@ -647,9 +835,17 @@ const ResultComparison: React.FC = () => {
   }, [availableTasks, comparisonMode]);
 
   const activeSelectedTasks =
-    comparisonMode === 'model' ? selectedTasks : selectedHttpTasks;
+    comparisonMode === 'model'
+      ? selectedTasks
+      : comparisonMode === 'http'
+        ? selectedHttpTasks
+        : selectedAgentTasks;
   const activeComparisonResults =
-    comparisonMode === 'model' ? comparisonResults : httpComparisonResults;
+    comparisonMode === 'model'
+      ? comparisonResults
+      : comparisonMode === 'http'
+        ? httpComparisonResults
+        : agentComparisonResults;
 
   const taskColorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -665,107 +861,17 @@ const ResultComparison: React.FC = () => {
   };
 
   // Table columns for available tasks in modal
-  const availableTasksColumns: ColumnsType<ModelTaskInfo | HttpTaskInfo> =
-    useMemo(() => {
-      if (comparisonMode === 'model') {
-        return [
-          {
-            title: t('pages.resultComparison.select'),
-            key: 'select',
-            width: 56,
-            align: 'center',
-            render: (_, record: ModelTaskInfo) => (
-              <Checkbox
-                checked={tempSelectedTasks.includes(record.task_id)}
-                onChange={e =>
-                  handleTaskSelection(record.task_id, e.target.checked)
-                }
-              />
-            ),
-          },
-          {
-            title: t('pages.resultComparison.taskId'),
-            dataIndex: 'task_id',
-            key: 'task_id',
-            ellipsis: true,
-          },
-          {
-            title: t('pages.resultComparison.taskName'),
-            dataIndex: 'task_name',
-            key: 'task_name',
-            ellipsis: true,
-            render: (taskName: string, record: SelectedTask) => (
-              <Tooltip title={taskName} placement='topLeft'>
-                <a
-                  href={`/llm-results/${record.task_id}`}
-                  target='_blank'
-                  rel='noreferrer'
-                  style={{
-                    color: '#667eea',
-                    textDecoration: 'none',
-                    display: 'inline-block',
-                    maxWidth: '100%',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {taskName}
-                </a>
-              </Tooltip>
-            ),
-          },
-          {
-            title: t('pages.resultComparison.modelName'),
-            dataIndex: 'model_name',
-            key: 'model_name',
-            width: 160,
-            ellipsis: true,
-            render: (model: string) => {
-              const displayModel =
-                !model || model.toLowerCase() === 'none' ? '-' : model;
-              return (
-                <Tooltip title={displayModel} placement='topLeft'>
-                  <span
-                    style={{
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      display: 'inline-block',
-                    }}
-                  >
-                    {displayModel}
-                  </span>
-                </Tooltip>
-              );
-            },
-          },
-          {
-            title: t('pages.resultComparison.concurrentUsers'),
-            dataIndex: 'concurrent_users',
-            key: 'concurrent_users',
-            width: 90,
-            align: 'center',
-          },
-          {
-            title: t('pages.resultComparison.testDuration'),
-            dataIndex: 'duration',
-            key: 'duration',
-            width: 100,
-            align: 'center',
-            render: (duration: number) => `${duration || 0}s`,
-          },
-        ];
-      }
-
+  const availableTasksColumns: ColumnsType<
+    ModelTaskInfo | HttpTaskInfo | AgentTaskInfo
+  > = useMemo(() => {
+    if (comparisonMode === 'model') {
       return [
         {
           title: t('pages.resultComparison.select'),
           key: 'select',
           width: 56,
           align: 'center',
-          render: (_, record: HttpTaskInfo) => (
+          render: (_, record: ModelTaskInfo) => (
             <Checkbox
               checked={tempSelectedTasks.includes(record.task_id)}
               onChange={e =>
@@ -785,10 +891,10 @@ const ResultComparison: React.FC = () => {
           dataIndex: 'task_name',
           key: 'task_name',
           ellipsis: true,
-          render: (taskName: string, record: SelectedHttpTask) => (
+          render: (taskName: string, record: SelectedTask) => (
             <Tooltip title={taskName} placement='topLeft'>
               <a
-                href={`/http-results/${record.task_id}`}
+                href={`/llm-results/${record.task_id}`}
                 target='_blank'
                 rel='noreferrer'
                 style={{
@@ -805,6 +911,32 @@ const ResultComparison: React.FC = () => {
               </a>
             </Tooltip>
           ),
+        },
+        {
+          title: t('pages.resultComparison.modelName'),
+          dataIndex: 'model_name',
+          key: 'model_name',
+          width: 160,
+          ellipsis: true,
+          render: (model: string) => {
+            const displayModel =
+              !model || model.toLowerCase() === 'none' ? '-' : model;
+            return (
+              <Tooltip title={displayModel} placement='topLeft'>
+                <span
+                  style={{
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'inline-block',
+                  }}
+                >
+                  {displayModel}
+                </span>
+              </Tooltip>
+            );
+          },
         },
         {
           title: t('pages.resultComparison.concurrentUsers'),
@@ -822,93 +954,85 @@ const ResultComparison: React.FC = () => {
           render: (duration: number) => `${duration || 0}s`,
         },
       ];
-    }, [comparisonMode, t, tempSelectedTasks]);
+    }
+
+    return [
+      {
+        title: t('pages.resultComparison.select'),
+        key: 'select',
+        width: 56,
+        align: 'center',
+        render: (_, record: HttpTaskInfo | AgentTaskInfo) => (
+          <Checkbox
+            checked={tempSelectedTasks.includes(record.task_id)}
+            onChange={e =>
+              handleTaskSelection(record.task_id, e.target.checked)
+            }
+          />
+        ),
+      },
+      {
+        title: t('pages.resultComparison.taskId'),
+        dataIndex: 'task_id',
+        key: 'task_id',
+        ellipsis: true,
+      },
+      {
+        title: t('pages.resultComparison.taskName'),
+        dataIndex: 'task_name',
+        key: 'task_name',
+        ellipsis: true,
+        render: (
+          taskName: string,
+          record: SelectedHttpTask | SelectedAgentTask
+        ) => (
+          <Tooltip title={taskName} placement='topLeft'>
+            <a
+              href={
+                comparisonMode === 'http'
+                  ? `/http-results/${record.task_id}`
+                  : `/agent-results/${record.task_id}`
+              }
+              target='_blank'
+              rel='noreferrer'
+              style={{
+                color: '#667eea',
+                textDecoration: 'none',
+                display: 'inline-block',
+                maxWidth: '100%',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {taskName}
+            </a>
+          </Tooltip>
+        ),
+      },
+      {
+        title: t('pages.resultComparison.concurrentUsers'),
+        dataIndex: 'concurrent_users',
+        key: 'concurrent_users',
+        width: 90,
+        align: 'center',
+      },
+      {
+        title: t('pages.resultComparison.testDuration'),
+        dataIndex: 'duration',
+        key: 'duration',
+        width: 100,
+        align: 'center',
+        render: (duration: number) => `${duration || 0}s`,
+      },
+    ];
+  }, [comparisonMode, t, tempSelectedTasks]);
 
   // Table columns for selected tasks
-  const selectedTasksColumns: ColumnsType<SelectedTask | SelectedHttpTask> =
-    useMemo(() => {
-      if (comparisonMode === 'model') {
-        return [
-          {
-            title: t('pages.resultComparison.taskId'),
-            dataIndex: 'task_id',
-            key: 'task_id',
-            ellipsis: true,
-          },
-          {
-            title: t('pages.resultComparison.taskName'),
-            dataIndex: 'task_name',
-            key: 'task_name',
-            ellipsis: true,
-            render: (taskName: string, record: SelectedTask) => (
-              <Tooltip title={taskName} placement='topLeft'>
-                <a
-                  href={`/llm-results/${record.task_id}`}
-                  target='_blank'
-                  rel='noreferrer'
-                  style={{
-                    color: '#667eea',
-                    textDecoration: 'none',
-                    display: 'inline-block',
-                    maxWidth: '100%',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {taskName}
-                </a>
-              </Tooltip>
-            ),
-          },
-          {
-            title: t('pages.resultComparison.modelName'),
-            dataIndex: 'model_name',
-            key: 'model_name',
-            width: 200,
-            ellipsis: true,
-            render: (model: string) => {
-              const displayModel =
-                !model || model.toLowerCase() === 'none' ? '-' : model;
-              return (
-                <Tooltip title={displayModel} placement='topLeft'>
-                  <span
-                    style={{
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      display: 'inline-block',
-                    }}
-                  >
-                    {displayModel}
-                  </span>
-                </Tooltip>
-              );
-            },
-          },
-          {
-            title: t('pages.resultComparison.concurrentUsers'),
-            dataIndex: 'concurrent_users',
-            key: 'concurrent_users',
-            align: 'center',
-          },
-          {
-            title: t('pages.resultComparison.testDuration'),
-            dataIndex: 'duration',
-            key: 'duration',
-            align: 'center',
-            render: (duration: number) => `${duration || 0}s`,
-          },
-          {
-            title: t('pages.resultComparison.createdTime'),
-            dataIndex: 'created_at',
-            key: 'created_at',
-            render: (date: string) => formatDate(date),
-          },
-        ];
-      }
-
+  const selectedTasksColumns: ColumnsType<
+    SelectedTask | SelectedHttpTask | SelectedAgentTask
+  > = useMemo(() => {
+    if (comparisonMode === 'model') {
       return [
         {
           title: t('pages.resultComparison.taskId'),
@@ -921,10 +1045,10 @@ const ResultComparison: React.FC = () => {
           dataIndex: 'task_name',
           key: 'task_name',
           ellipsis: true,
-          render: (taskName: string, record: SelectedHttpTask) => (
+          render: (taskName: string, record: SelectedTask) => (
             <Tooltip title={taskName} placement='topLeft'>
               <a
-                href={`/http-results/${record.task_id}`}
+                href={`/llm-results/${record.task_id}`}
                 target='_blank'
                 rel='noreferrer'
                 style={{
@@ -943,15 +1067,30 @@ const ResultComparison: React.FC = () => {
           ),
         },
         {
-          title: t('pages.resultComparison.targetUrl', 'Target URL'),
-          dataIndex: 'target_url',
-          key: 'target_url',
+          title: t('pages.resultComparison.modelName'),
+          dataIndex: 'model_name',
+          key: 'model_name',
+          width: 200,
           ellipsis: true,
-          render: (url: string) => (
-            <Tooltip title={url} placement='topLeft'>
-              <span>{url}</span>
-            </Tooltip>
-          ),
+          render: (model: string) => {
+            const displayModel =
+              !model || model.toLowerCase() === 'none' ? '-' : model;
+            return (
+              <Tooltip title={displayModel} placement='topLeft'>
+                <span
+                  style={{
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'inline-block',
+                  }}
+                >
+                  {displayModel}
+                </span>
+              </Tooltip>
+            );
+          },
         },
         {
           title: t('pages.resultComparison.concurrentUsers'),
@@ -973,7 +1112,80 @@ const ResultComparison: React.FC = () => {
           render: (date: string) => formatDate(date),
         },
       ];
-    }, [comparisonMode, t]);
+    }
+
+    return [
+      {
+        title: t('pages.resultComparison.taskId'),
+        dataIndex: 'task_id',
+        key: 'task_id',
+        ellipsis: true,
+      },
+      {
+        title: t('pages.resultComparison.taskName'),
+        dataIndex: 'task_name',
+        key: 'task_name',
+        ellipsis: true,
+        render: (
+          taskName: string,
+          record: SelectedHttpTask | SelectedAgentTask
+        ) => (
+          <Tooltip title={taskName} placement='topLeft'>
+            <a
+              href={
+                comparisonMode === 'http'
+                  ? `/http-results/${record.task_id}`
+                  : `/agent-results/${record.task_id}`
+              }
+              target='_blank'
+              rel='noreferrer'
+              style={{
+                color: '#667eea',
+                textDecoration: 'none',
+                display: 'inline-block',
+                maxWidth: '100%',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {taskName}
+            </a>
+          </Tooltip>
+        ),
+      },
+      {
+        title: t('pages.resultComparison.targetUrl', 'Target URL'),
+        dataIndex: 'target_url',
+        key: 'target_url',
+        ellipsis: true,
+        render: (url: string) => (
+          <Tooltip title={url} placement='topLeft'>
+            <span>{url}</span>
+          </Tooltip>
+        ),
+      },
+      {
+        title: t('pages.resultComparison.concurrentUsers'),
+        dataIndex: 'concurrent_users',
+        key: 'concurrent_users',
+        align: 'center',
+      },
+      {
+        title: t('pages.resultComparison.testDuration'),
+        dataIndex: 'duration',
+        key: 'duration',
+        align: 'center',
+        render: (duration: number) => `${duration || 0}s`,
+      },
+      {
+        title: t('pages.resultComparison.createdTime'),
+        dataIndex: 'created_at',
+        key: 'created_at',
+        render: (date: string) => formatDate(date),
+      },
+    ];
+  }, [comparisonMode, t]);
 
   const formatMetricValue = (
     value: number | string,
@@ -1029,15 +1241,20 @@ const ResultComparison: React.FC = () => {
     metricKey,
     decimals = 2,
     unit,
-  }: MetricCardConfig | HttpMetricCardConfig) => {
+    metricLabel,
+    getValue,
+  }: ChartMetricConfig) => {
     const data = activeComparisonResults.map((result, index) => {
       const rawName =
         result.task_name?.trim() ||
         ('model_name' in result ? (result as any).model_name : '') ||
         result.task_id;
+      const rawValue = getValue
+        ? getValue(result as any)
+        : Number((result as any)[metricKey]) || 0;
       return {
         fullName: rawName,
-        value: Number((result as any)[metricKey]) || 0,
+        value: Number(rawValue) || 0,
         color: getTaskColor(result.task_id),
         taskId: result.task_id,
         index,
@@ -1123,10 +1340,12 @@ const ResultComparison: React.FC = () => {
         if (!item) return '';
         const dataItem = displayData[item.dataIndex];
         if (!dataItem) return '';
-        const metricLabel =
+        const resolvedMetricLabel =
+          metricLabel ||
           TOOLTIP_METRIC_LABELS[
             metricKey as NumericMetricKey | HttpNumericMetricKey
-          ] || 'Metric';
+          ] ||
+          'Metric';
         const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dataItem.color};margin-right:8px;flex:0 0 8px;"></span>`;
         const rowStyle =
           'display:flex;align-items:flex-start;gap:0;line-height:1.5;margin-top:6px;';
@@ -1145,7 +1364,7 @@ const ResultComparison: React.FC = () => {
               <span style="${valueStyle}white-space:normal;word-break:break-all;">${dataItem.taskId}</span>
             </div>
             <div style="${rowStyle}">
-              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${metricLabel}:</span></span>
+              <span style="${labelGroupStyle}">${colorDot}<span style="${labelStyle}">${resolvedMetricLabel}:</span></span>
               <span style="${valueStyle}">${formatMetricValue(item.value, decimals, unit)}</span>
             </div>
           </div>`;
@@ -1404,45 +1623,23 @@ const ResultComparison: React.FC = () => {
     () => [
       {
         metricKey: 'avg_response_time',
-        title: t('pages.results.avgResponseTime', 'Avg Response Time'),
+        title: t('pages.results.meanLatency', 'Avg Latency (s)'),
         description: t(
           'pages.resultComparison.metricDescriptions.avgResponseTime',
-          'Average response time (seconds)'
+          'Average latency (seconds)'
         ),
-        chartTitle: t('pages.results.avgResponseTime', 'Avg Response Time'),
+        chartTitle: t('pages.results.meanLatency', 'Avg Latency (s)'),
         unit: 's',
         decimals: 3,
       },
       {
         metricKey: 'p95_response_time',
-        title: t('pages.results.p95ResponseTime', 'P95 Response Time'),
+        title: t('pages.results.p95Latency', 'P95 Latency (s)'),
         description: t(
           'pages.resultComparison.metricDescriptions.p95ResponseTime',
-          '95th percentile response time (seconds)'
+          '95th percentile latency (seconds)'
         ),
-        chartTitle: t('pages.results.p95ResponseTime', 'P95 Response Time'),
-        unit: 's',
-        decimals: 3,
-      },
-      {
-        metricKey: 'min_response_time',
-        title: t('pages.results.minResponseTime', 'Min Response Time'),
-        description: t(
-          'pages.resultComparison.metricDescriptions.minResponseTime',
-          'Minimum response time (seconds)'
-        ),
-        chartTitle: t('pages.results.minResponseTime', 'Min Response Time'),
-        unit: 's',
-        decimals: 3,
-      },
-      {
-        metricKey: 'max_response_time',
-        title: t('pages.results.maxResponseTime', 'Max Response Time'),
-        description: t(
-          'pages.resultComparison.metricDescriptions.maxResponseTime',
-          'Maximum response time (seconds)'
-        ),
-        chartTitle: t('pages.results.maxResponseTime', 'Max Response Time'),
+        chartTitle: t('pages.results.p95Latency', 'P95 Latency (s)'),
         unit: 's',
         decimals: 3,
       },
@@ -1472,10 +1669,88 @@ const ResultComparison: React.FC = () => {
     [t]
   );
 
+  const agentMetricCardConfigs = useMemo<ChartMetricConfig[]>(() => {
+    if (!isAgentComparisonMode(comparisonMode)) return [];
+
+    const commonNames = agentComparisonResults.reduce<string[] | null>(
+      (shared, result) => {
+        const names = (result.latency_metrics || []).map(
+          item => item.metric_name
+        );
+        if (shared === null) return names;
+        return shared.filter(name => names.includes(name));
+      },
+      null
+    );
+
+    const latencyStats: Array<{
+      key: AgentLatencyStatKey;
+      titleKey: string;
+      label: string;
+    }> = [
+      {
+        key: 'avg_response_time',
+        titleKey: 'pages.results.meanLatency',
+        label: 'Avg',
+      },
+      {
+        key: 'p95_response_time',
+        titleKey: 'pages.results.p95Latency',
+        label: 'P95',
+      },
+    ];
+
+    const throughputTitle =
+      comparisonMode === 'a2a'
+        ? t('pages.results.completedTaskThroughput')
+        : t('pages.results.successfulToolCallThroughput');
+
+    const cards: ChartMetricConfig[] = [
+      {
+        metricKey: 'throughput',
+        title: throughputTitle,
+        description: throughputTitle,
+        chartTitle: throughputTitle,
+        unit: comparisonMode === 'a2a' ? ' tasks/s' : ' calls/s',
+        decimals: 2,
+        metricLabel: throughputTitle,
+        getValue: result => Number(result.throughput) || 0,
+      },
+    ];
+
+    (commonNames || []).forEach(metricName => {
+      latencyStats.forEach(stat => {
+        cards.push({
+          metricKey: `${metricName}::${stat.key}`,
+          title: `${metricName} · ${t(stat.titleKey)}`,
+          description: t(
+            'pages.resultComparison.agentLatencyDescription',
+            '{{metric}} {{stat}}',
+            { metric: metricName, stat: t(stat.titleKey) }
+          ),
+          chartTitle: `${metricName} · ${t(stat.titleKey)}`,
+          unit: 's',
+          decimals: 3,
+          metricLabel: `${metricName} ${stat.label}`,
+          getValue: result => {
+            const metric = (result.latency_metrics || []).find(
+              (item: AgentLatencyMetric) => item.metric_name === metricName
+            );
+            return Number(metric?.[stat.key]) || 0;
+          },
+        });
+      });
+    });
+
+    return cards;
+  }, [agentComparisonResults, comparisonMode, t]);
+
   const metricHasData = useCallback(
-    (metricKey: NumericMetricKey | HttpNumericMetricKey) =>
+    (metricKey: string, getValue?: (result: Record<string, any>) => number) =>
       activeComparisonResults.some(result => {
-        const value = (result as any)[metricKey];
+        const value = getValue
+          ? getValue(result as any)
+          : (result as any)[metricKey];
         if (value === null || value === undefined) {
           return false;
         }
@@ -1487,9 +1762,21 @@ const ResultComparison: React.FC = () => {
 
   const visibleMetricCardConfigs = useMemo(() => {
     const configs =
-      comparisonMode === 'model' ? metricCardConfigs : httpMetricCardConfigs;
-    return configs.filter(config => metricHasData(config.metricKey));
-  }, [httpMetricCardConfigs, comparisonMode, metricCardConfigs, metricHasData]);
+      comparisonMode === 'model'
+        ? metricCardConfigs
+        : comparisonMode === 'http'
+          ? httpMetricCardConfigs
+          : agentMetricCardConfigs;
+    return configs.filter(config =>
+      metricHasData(config.metricKey, (config as ChartMetricConfig).getValue)
+    );
+  }, [
+    agentMetricCardConfigs,
+    httpMetricCardConfigs,
+    comparisonMode,
+    metricCardConfigs,
+    metricHasData,
+  ]);
 
   // Helper function to create card title with tooltip
   const createCardTitle = (title: string, description: string) => (
@@ -1722,7 +2009,7 @@ const ResultComparison: React.FC = () => {
       const image = mergedCanvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = image;
-      link.download = `model-comparison-${createFileTimestamp()}.png`;
+      link.download = `comparison-${createFileTimestamp()}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1748,6 +2035,8 @@ const ResultComparison: React.FC = () => {
   useEffect(() => {
     fetchAvailableTasks('model');
     fetchAvailableTasks('http');
+    fetchAvailableTasks('a2a');
+    fetchAvailableTasks('mcp');
   }, [fetchAvailableTasks]);
 
   return (
@@ -1766,9 +2055,19 @@ const ResultComparison: React.FC = () => {
       <Tabs
         activeKey={comparisonMode}
         onChange={key => {
-          setComparisonMode(key as ComparisonMode);
+          const nextMode = key as ComparisonMode;
+          setComparisonMode(nextMode);
           setTempSelectedTasks([]);
-          localStorage.setItem(MODE_STORAGE_KEY, key as ComparisonMode);
+          setSelectedTasks([]);
+          setSelectedHttpTasks([]);
+          setSelectedAgentTasks([]);
+          setComparisonResults([]);
+          setHttpComparisonResults([]);
+          setAgentComparisonResults([]);
+          setIsModalVisible(false);
+          setSearchText('');
+          setSelectedModel(undefined);
+          localStorage.setItem(MODE_STORAGE_KEY, nextMode);
         }}
         items={[
           {
@@ -1788,6 +2087,26 @@ const ResultComparison: React.FC = () => {
                 {t('pages.resultComparison.modelTasks') ||
                   t('pages.jobs.llmTab') ||
                   'LLM Tasks Comparison'}
+              </span>
+            ),
+          },
+          {
+            key: 'a2a',
+            label: (
+              <span className='tab-label'>
+                {t('pages.resultComparison.a2aTasks') ||
+                  t('pages.jobs.a2aTab') ||
+                  'A2A Comparison'}
+              </span>
+            ),
+          },
+          {
+            key: 'mcp',
+            label: (
+              <span className='tab-label'>
+                {t('pages.resultComparison.mcpTasks') ||
+                  t('pages.jobs.mcpTab') ||
+                  'MCP Comparison'}
               </span>
             ),
           },
@@ -1899,7 +2218,9 @@ const ResultComparison: React.FC = () => {
                         {createCardTitle(config.title, config.description)}
                       </div>
                       <ReactECharts
-                        option={createEChartsOption(config)}
+                        option={createEChartsOption(
+                          config as ChartMetricConfig
+                        )}
                         style={{ height: getChartHeight() }}
                         notMerge
                       />

@@ -74,7 +74,7 @@ class CollectionTaskAddRequest(BaseModel):
     """Payload for adding a task into a collection."""
 
     task_id: str = Field(..., description="Task ID")
-    task_type: str = Field(..., description="Task type: http or llm")
+    task_type: str = Field(..., description="Task type: http, llm, a2a, or mcp")
 
 
 class CollectionTaskRemoveRequest(BaseModel):

@@ -13,10 +13,8 @@ import {
 import {
   Alert,
   Button,
-  Col,
   message,
   Modal,
-  Row,
   Space,
   Statistic,
   Table,
@@ -40,6 +38,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { AgentTask, Cluster } from '@/types/job';
 import { getStoredUser } from '@/utils/auth';
+import { getFixedTableProps, UI_CONFIG } from '@/utils/constants';
 import { formatDate } from '@/utils/date';
 
 const ACTIVE_STATUSES = new Set(['created', 'queuing', 'running', 'stopping']);
@@ -544,12 +543,14 @@ const AgentResults: React.FC = () => {
     }
   }, [t, task?.a2a_mode]);
 
+  const { RESULTS_COL } = UI_CONFIG;
+
   const latencyColumns = [
     {
       title: t('pages.results.metricType'),
       dataIndex: 'metric_type',
       key: 'metric_type',
-      width: 200,
+      width: RESULTS_COL.METRIC_TYPE,
       ellipsis: true,
       render: renderMetricType,
     },
@@ -557,7 +558,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.sampleCount'),
       dataIndex: 'count',
       key: 'count',
-      width: 110,
+      width: RESULTS_COL.COUNT,
       align: 'left' as const,
       render: (_: unknown, record: { sample?: SampleSummary }) =>
         record.sample?.count != null
@@ -568,7 +569,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.meanLatency'),
       dataIndex: 'avg',
       key: 'avg',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (_: unknown, record: { sample?: SampleSummary }) =>
         formatSeconds(record.sample?.avg),
@@ -577,7 +578,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.maxLatency'),
       dataIndex: 'max',
       key: 'max',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (_: unknown, record: { sample?: SampleSummary }) =>
         formatSeconds(record.sample?.max),
@@ -586,7 +587,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.minLatency'),
       dataIndex: 'min',
       key: 'min',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (_: unknown, record: { sample?: SampleSummary }) =>
         formatSeconds(record.sample?.min),
@@ -595,7 +596,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.p95Latency'),
       dataIndex: 'p95',
       key: 'p95',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (_: unknown, record: { sample?: SampleSummary }) =>
         formatSeconds(record.sample?.p95),
@@ -604,7 +605,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.medianLatency'),
       dataIndex: 'p50',
       key: 'p50',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (_: unknown, record: { sample?: SampleSummary }) =>
         formatSeconds(record.sample?.p50),
@@ -616,7 +617,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.metricType'),
       dataIndex: 'metric_type',
       key: 'metric_type',
-      width: 200,
+      width: RESULTS_COL.METRIC_TYPE,
       ellipsis: true,
       render: renderMetricType,
     },
@@ -624,7 +625,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.sampleCount'),
       dataIndex: 'request_count',
       key: 'request_count',
-      width: 110,
+      width: RESULTS_COL.COUNT,
       align: 'left' as const,
       render: (value: number | undefined) =>
         value != null ? value.toLocaleString() : '-',
@@ -633,7 +634,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.failureCount'),
       dataIndex: 'failure_count',
       key: 'failure_count',
-      width: 110,
+      width: RESULTS_COL.FAILURE,
       align: 'left' as const,
       render: (value: number | undefined) => {
         if (value == null) return '-';
@@ -649,7 +650,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.meanLatency'),
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: formatSeconds,
     },
@@ -657,7 +658,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.minLatency'),
       dataIndex: 'min_response_time',
       key: 'min_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: formatSeconds,
     },
@@ -665,7 +666,7 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.maxLatency'),
       dataIndex: 'max_response_time',
       key: 'max_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: formatSeconds,
     },
@@ -673,26 +674,24 @@ const AgentResults: React.FC = () => {
       title: t('pages.results.p95Latency'),
       dataIndex: 'percentile_95_response_time',
       key: 'percentile_95_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: formatSeconds,
     },
-    {
-      title: t('pages.results.eventRate'),
-      dataIndex: 'rps',
-      key: 'rps',
-      width: 100,
-      align: 'left' as const,
-      render: (value: unknown) => {
-        if (value == null) return '-';
-        return formatMetricValue(toFiniteNumber(value), 2);
-      },
-    },
   ];
 
-  const transitionColumns = operationColumns.filter(
-    column => column.key !== 'failure_count' && column.key !== 'rps'
-  );
+  const transitionColumns = [
+    ...operationColumns.filter(column => column.key !== 'failure_count'),
+    {
+      title: '',
+      key: '_spacer',
+      width: RESULTS_COL.FAILURE,
+      render: () => null,
+      onHeaderCell: () => ({ className: 'results-table-spacer' }),
+      onCell: () => ({ className: 'results-table-spacer' }),
+    },
+  ];
+  const a2aTableProps = getFixedTableProps(operationColumns);
 
   const renderOverviewMetrics = () => {
     const ratioToPercent = (value: unknown) => {
@@ -706,16 +705,66 @@ const AgentResults: React.FC = () => {
       const elapsed = toFiniteNumber(metrics.elapsed_seconds);
       const submissions = toFiniteNumber(metrics.submissions);
       const terminalTasks = toFiniteNumber(metrics.terminal_tasks);
+      const completedTasks = toFiniteNumber(metrics.completed_tasks);
+
+      // Task submission rate mirrors the A2A SendMessage / SendStreamingMessage
+      // event rate from the response-latency table (Locust `rps`), so the value
+      // and unit stay consistent with that row. Fall back to the backend-derived
+      // submission rate only when the Locust rows are not yet available.
+      const sendMessageEventRate = a2aRequestRows
+        .filter(
+          row =>
+            String(row.metric_type || '').startsWith('A2A SendMessage') ||
+            String(row.metric_type || '').startsWith('A2A SendStreamingMessage')
+        )
+        .reduce((sum, row) => {
+          const rps = toFiniteNumber(row.rps);
+          return rps !== undefined ? sum + rps : sum;
+        }, 0);
       const submissionRate =
-        toFiniteNumber(metrics.task_submission_rate) ??
-        (elapsed && submissions !== undefined
-          ? submissions / elapsed
-          : undefined);
+        sendMessageEventRate > 0
+          ? sendMessageEventRate
+          : (toFiniteNumber(metrics.task_submission_rate) ??
+            (elapsed && submissions !== undefined
+              ? submissions / elapsed
+              : undefined));
+
+      // Terminal task throughput mirrors the A2A end-to-end event rate from the
+      // response-latency table (Locust `rps`), since that event fires once per
+      // task reaching a terminal state. Fall back to the backend-derived rate
+      // only when the Locust rows are not yet available.
+      const endToEndEventRate = a2aRequestRows
+        .filter(row =>
+          String(row.metric_type || '').startsWith('A2A end-to-end')
+        )
+        .reduce((sum, row) => {
+          const rps = toFiniteNumber(row.rps);
+          return rps !== undefined ? sum + rps : sum;
+        }, 0);
       const terminalThroughput =
-        toFiniteNumber(metrics.terminal_task_throughput) ??
-        (elapsed && terminalTasks !== undefined
-          ? terminalTasks / elapsed
-          : undefined);
+        endToEndEventRate > 0
+          ? endToEndEventRate
+          : (toFiniteNumber(metrics.terminal_task_throughput) ??
+            (elapsed && terminalTasks !== undefined
+              ? terminalTasks / elapsed
+              : undefined));
+
+      // Completed task throughput has no Locust row counterpart (the end-to-end
+      // event covers all terminal states, not just `completed`). Derive it from
+      // the Locust-based terminal throughput × completion rate so the two
+      // throughput cards stay internally consistent (e.g. equal when completion
+      // is 100%); fall back to the backend-derived value when unavailable.
+      const completionRate = toFiniteNumber(
+        metrics.terminal_task_completion_rate ??
+          metrics.terminal_completion_rate
+      );
+      const completedThroughput =
+        terminalThroughput !== undefined && completionRate !== undefined
+          ? terminalThroughput * completionRate
+          : (toFiniteNumber(metrics.completed_task_throughput) ??
+            (elapsed && completedTasks !== undefined
+              ? completedTasks / elapsed
+              : undefined));
 
       overviewMetrics.push(
         {
@@ -725,6 +774,22 @@ const AgentResults: React.FC = () => {
             'Task Submission Rate'
           ),
           value: formatMetricValue(submissionRate, 2),
+        },
+        {
+          key: 'completedThroughput',
+          title: createTitleWithTooltip(
+            t('pages.results.completedTaskThroughput'),
+            'Completed Task Throughput'
+          ),
+          value: formatMetricValue(completedThroughput, 2),
+        },
+        {
+          key: 'terminalThroughput',
+          title: createTitleWithTooltip(
+            t('pages.results.terminalTaskThroughput'),
+            'Terminal Task Throughput'
+          ),
+          value: formatMetricValue(terminalThroughput, 2),
         },
         {
           key: 'submissionSuccessRate',
@@ -741,14 +806,6 @@ const AgentResults: React.FC = () => {
           suffix: '%',
         },
         {
-          key: 'terminalThroughput',
-          title: createTitleWithTooltip(
-            t('pages.results.terminalTaskThroughput'),
-            'Terminal Task Throughput'
-          ),
-          value: formatMetricValue(terminalThroughput, 2),
-        },
-        {
           key: 'terminalTaskCompletionRate',
           title: createTitleWithTooltip(
             t('pages.results.terminalTaskCompletionRate'),
@@ -758,20 +815,6 @@ const AgentResults: React.FC = () => {
             ratioToPercent(
               metrics.terminal_task_completion_rate ??
                 metrics.terminal_completion_rate
-            )
-          ),
-          suffix: '%',
-        },
-        {
-          key: 'terminalTaskFailureRate',
-          title: createTitleWithTooltip(
-            t('pages.results.terminalTaskFailureRate'),
-            'Terminal Task Failure Rate'
-          ),
-          value: formatSuccessRate(
-            ratioToPercent(
-              metrics.terminal_task_failure_rate ??
-                metrics.terminal_failure_rate
             )
           ),
           suffix: '%',
@@ -863,23 +906,19 @@ const AgentResults: React.FC = () => {
       );
     }
 
-    const columnCount = Math.min(Math.max(overviewMetrics.length, 1), 4);
-    const colSpan = Math.max(Math.floor(24 / columnCount), 6);
-
     return (
-      <Row gutter={[16, 16]} style={{ justifyContent: 'flex-start' }}>
+      <div className='results-overview-grid'>
         {overviewMetrics.map(metric => (
-          <Col span={colSpan} key={metric.key}>
-            <Statistic
-              title={metric.title}
-              value={metric.value}
-              suffix={metric.value === '-' ? undefined : metric.suffix}
-              style={statisticWrapperStyle}
-              valueStyle={statisticValueStyle}
-            />
-          </Col>
+          <Statistic
+            key={metric.key}
+            title={metric.title}
+            value={metric.value}
+            suffix={metric.value === '-' ? undefined : metric.suffix}
+            style={statisticWrapperStyle}
+            valueStyle={statisticValueStyle}
+          />
         ))}
-      </Row>
+      </div>
     );
   };
 
@@ -1123,7 +1162,10 @@ const AgentResults: React.FC = () => {
       <div>
         {renderTaskInfoSection()}
 
-        <div className='results-section unified-section' ref={overviewCardRef}>
+        <div
+          className='results-section unified-section results-overview'
+          ref={overviewCardRef}
+        >
           <div className='section-header'>
             <span className='section-title'>
               {t('pages.results.resultsOverview')}
@@ -1157,8 +1199,8 @@ const AgentResults: React.FC = () => {
                   columns={latencyColumns}
                   rowKey='metric_type'
                   pagination={false}
-                  scroll={{ x: 1000 }}
                   className='modern-table'
+                  {...getFixedTableProps(latencyColumns)}
                 />
               </div>
             </div>
@@ -1179,8 +1221,8 @@ const AgentResults: React.FC = () => {
                   }
                   dataSource={a2aRequestRows}
                   pagination={false}
-                  scroll={{ x: 1100 }}
                   columns={operationColumns}
+                  {...a2aTableProps}
                 />
               </div>
             </div>
@@ -1199,8 +1241,8 @@ const AgentResults: React.FC = () => {
                   pagination={false}
                   rowKey='metric_type'
                   dataSource={transitions}
-                  scroll={{ x: 900 }}
                   columns={transitionColumns}
+                  {...a2aTableProps}
                 />
               </div>
             </div>

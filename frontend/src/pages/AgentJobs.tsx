@@ -1,8 +1,11 @@
 import {
+  BarChartOutlined,
+  CloseOutlined,
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   FileTextOutlined,
+  FolderAddOutlined,
   LineChartOutlined,
   MoreOutlined,
   PlayCircleOutlined,
@@ -13,6 +16,7 @@ import {
 import {
   App,
   Button,
+  Divider,
   Dropdown,
   Input,
   Modal,
@@ -23,8 +27,10 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { agentTaskApi, clusterApi } from '@/api/services';
+import AddToCollectionModal from '@/components/AddToCollectionModal';
 import CreateAgentTaskForm from '@/components/CreateAgentTaskForm';
 import CopyButton from '@/components/ui/CopyButton';
 import StatusTag from '@/components/ui/StatusTag';
@@ -52,6 +58,7 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
 }) => {
   const { message, modal } = App.useApp();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(false);
@@ -62,7 +69,19 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
   const [renameTarget, setRenameTarget] = useState<AgentTask | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchRerunning, setBatchRerunning] = useState(false);
+  const [collectionModalOpen, setCollectionModalOpen] = useState(false);
+  const [singleAddTaskId, setSingleAddTaskId] = useState<string | null>(null);
   const currentUser = useMemo(() => getStoredUser(), []);
+  const COMPARABLE_STATUSES = useMemo(
+    () => ['completed', 'failed_requests'],
+    []
+  );
+  const SELECTABLE_STATUSES = useMemo(
+    () => ['completed', 'failed_requests', 'stopped'],
+    []
+  );
 
   const canManageTask = useCallback(
     (creator?: string) =>
@@ -252,6 +271,128 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
     });
   };
 
+  const handleSelectionChange = useCallback(
+    (newSelectedRowKeys: React.Key[]) => {
+      if (newSelectedRowKeys.length > 5) {
+        message.warning(t('pages.jobs.selectMaxForCompare'));
+        return;
+      }
+      setSelectedRowKeys(newSelectedRowKeys);
+    },
+    [message, t]
+  );
+
+  const handleBatchRerun = useCallback(() => {
+    if (selectedRowKeys.length === 0) return;
+
+    const selectedTasks = tasks.filter(task =>
+      selectedRowKeys.includes(task.id)
+    );
+    const manageableTasks = selectedTasks.filter(task =>
+      canManageTask(task.created_by)
+    );
+
+    if (manageableTasks.length === 0) {
+      message.warning(t('pages.jobs.ownerOnly'));
+      return;
+    }
+
+    modal.confirm({
+      title: t('pages.jobs.batchRerunConfirmTitle'),
+      icon: <PlayCircleOutlined style={{ color: '#52c41a' }} />,
+      content: (
+        <div>
+          <p>
+            {t('pages.jobs.batchRerunConfirmContent', {
+              count: manageableTasks.length,
+            })}
+          </p>
+        </div>
+      ),
+      okText: t('pages.jobs.confirmRerun'),
+      okButtonProps: {
+        style: {
+          backgroundColor: '#52c41a',
+          borderColor: '#52c41a',
+        },
+      },
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setBatchRerunning(true);
+        const results = await Promise.allSettled(
+          manageableTasks.map(async task => {
+            const resp = await agentTaskApi.rerun(task.id);
+            return !!(resp as any)?.data?.task_id;
+          })
+        );
+        const successCount = results.filter(
+          result => result.status === 'fulfilled' && result.value
+        ).length;
+        const failCount = results.length - successCount;
+        await loadTasks();
+        setBatchRerunning(false);
+        setSelectedRowKeys([]);
+        if (failCount === 0) {
+          message.success(
+            t('pages.jobs.batchRerunAllSuccess', { count: successCount })
+          );
+        } else {
+          message.warning(
+            t('pages.jobs.batchRerunProgress', {
+              success: successCount,
+              fail: failCount,
+            })
+          );
+        }
+      },
+    });
+  }, [canManageTask, loadTasks, message, modal, selectedRowKeys, t, tasks]);
+
+  const handleGoToCompare = useCallback(() => {
+    if (selectedRowKeys.length < 2 || selectedRowKeys.length > 5) {
+      message.warning(t('pages.jobs.selectMinForCompare'));
+      return;
+    }
+    const taskIds = selectedRowKeys.join(',');
+    navigate(`/result-comparison?tasks=${taskIds}&mode=${protocol}`);
+  }, [message, navigate, protocol, selectedRowKeys, t]);
+
+  const allSelectedManageable = useMemo(() => {
+    if (selectedRowKeys.length === 0) return true;
+    const selectedTasks = tasks.filter(task =>
+      selectedRowKeys.includes(task.id)
+    );
+    return selectedTasks.every(task => canManageTask(task.created_by));
+  }, [canManageTask, selectedRowKeys, tasks]);
+
+  const allSelectedComparable = useMemo(() => {
+    if (selectedRowKeys.length === 0) return false;
+    const selectedTasks = tasks.filter(task =>
+      selectedRowKeys.includes(task.id)
+    );
+    return (
+      selectedTasks.length > 0 &&
+      selectedTasks.every(task =>
+        COMPARABLE_STATUSES.includes(task.status?.toLowerCase() ?? '')
+      )
+    );
+  }, [COMPARABLE_STATUSES, selectedRowKeys, tasks]);
+
+  const rowSelection = useMemo(
+    () => ({
+      selectedRowKeys,
+      onChange: handleSelectionChange,
+      preserveSelectedRowKeys: true,
+      columnTitle: ' ',
+      getCheckboxProps: (record: AgentTask) => ({
+        disabled: !SELECTABLE_STATUSES.includes(
+          record.status?.toLowerCase() ?? ''
+        ),
+      }),
+    }),
+    [SELECTABLE_STATUSES, handleSelectionChange, selectedRowKeys]
+  );
+
   const handleDelete = (row: AgentTask) => {
     modal.confirm({
       title: t('pages.jobs.deleteConfirmTitle'),
@@ -382,6 +523,15 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
         render: (_: unknown, row: AgentTask) => {
           const menuItems = [
             {
+              key: 'collection',
+              icon: <FolderAddOutlined />,
+              label: t('pages.jobs.addToCollection'),
+              onClick: () => {
+                setSingleAddTaskId(row.id);
+                setCollectionModalOpen(true);
+              },
+            },
+            {
               key: 'copy',
               icon: <CopyOutlined />,
               label: t('pages.jobs.copyTemplate'),
@@ -485,6 +635,71 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
               {t('pages.jobs.createNew')}
             </Button>
           )}
+          {selectedRowKeys.length > 0 && (
+            <>
+              <Divider
+                type='vertical'
+                style={{ height: 24, margin: '0 4px' }}
+              />
+              <span
+                style={{
+                  margin: '0 8px',
+                  fontSize: 14,
+                  color: '#000',
+                }}
+              >
+                {t('pages.jobs.selectedCount', {
+                  count: selectedRowKeys.length,
+                })}
+              </span>
+              <Tooltip
+                title={
+                  !allSelectedManageable
+                    ? t('pages.jobs.batchRerunOwnerOnly')
+                    : undefined
+                }
+              >
+                <Button
+                  icon={<PlayCircleOutlined />}
+                  onClick={handleBatchRerun}
+                  loading={batchRerunning}
+                  disabled={!allSelectedManageable}
+                  className='btn-purple-dark'
+                >
+                  {t('pages.jobs.batchRerun')}
+                </Button>
+              </Tooltip>
+              {selectedRowKeys.length >= 2 &&
+                selectedRowKeys.length <= 5 &&
+                allSelectedComparable && (
+                  <Button
+                    icon={<BarChartOutlined />}
+                    onClick={handleGoToCompare}
+                    className='btn-purple-medium'
+                  >
+                    {t('pages.jobs.goToCompare')}
+                  </Button>
+                )}
+              <Button
+                icon={<FolderAddOutlined />}
+                onClick={() => {
+                  setSingleAddTaskId(null);
+                  setCollectionModalOpen(true);
+                }}
+                className='btn-purple-light'
+              >
+                {t('pages.jobs.addToCollection')}
+              </Button>
+              <Button
+                icon={<CloseOutlined />}
+                onClick={() => setSelectedRowKeys([])}
+                className='modern-button'
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                {t('pages.jobs.clearSelection')}
+              </Button>
+            </>
+          )}
         </div>
         <div className='jobs-toolbar-right'>
           <Search
@@ -517,6 +732,7 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
         columns={columns}
         dataSource={filteredTasks}
         loading={loading}
+        rowSelection={rowSelection}
         scroll={{ x: UI_CONFIG.TABLE_SCROLL_X }}
         className='modern-table unified-table'
         rowClassName={record =>
@@ -557,6 +773,22 @@ const AgentJobs: React.FC<AgentJobsProps> = ({
           initialData={taskToCopy}
         />
       </Modal>
+      <AddToCollectionModal
+        open={collectionModalOpen}
+        onCancel={() => {
+          setCollectionModalOpen(false);
+          setSingleAddTaskId(null);
+        }}
+        taskIds={
+          singleAddTaskId
+            ? [singleAddTaskId]
+            : selectedRowKeys.map(key => String(key))
+        }
+        taskType={protocol}
+        onSuccess={() => {
+          if (!singleAddTaskId) setSelectedRowKeys([]);
+        }}
+      />
       <Modal
         title={t('pages.jobs.renameTitle')}
         open={!!renameTarget}

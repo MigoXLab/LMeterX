@@ -93,6 +93,14 @@ export const UI_CONFIG = {
     ERROR: 5,
   },
   TABLE_SCROLL_X: 1100,
+  RESULTS_COL: {
+    METRIC_TYPE: 200,
+    COUNT: 110,
+    FAILURE: 110,
+    LATENCY: 120,
+    RATE: 100,
+    CONTENT_LENGTH: 140,
+  },
   SEARCH_WIDTH: 300,
   MODAL_WIDTH: {
     SMALL: 520,
@@ -118,6 +126,17 @@ export const UI_CONFIG = {
     XXL: 1600,
   },
 } as const;
+
+export const getFixedTableProps = (
+  columns: Array<{ width?: number | string }>
+) => {
+  const width = columns.reduce((sum, col) => sum + (Number(col.width) || 0), 0);
+  return {
+    tableLayout: 'fixed' as const,
+    scroll: { x: Math.max(width, 1) },
+    style: { width: '100%', maxWidth: '100%' },
+  };
+};
 
 // API configuration
 export const API_CONFIG = {

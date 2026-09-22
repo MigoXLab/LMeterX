@@ -41,6 +41,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Cluster, RealtimeMetricPoint } from '@/types/job';
 import { getStoredUser } from '@/utils/auth';
+import { getFixedTableProps, UI_CONFIG } from '@/utils/constants';
 import { formatDate } from '@/utils/date';
 
 const HttpResults: React.FC = () => {
@@ -607,7 +608,7 @@ const HttpResults: React.FC = () => {
       tooltip: chartTooltip,
       legend: {
         data: [
-          t('pages.results.chartAvgRT', 'Avg Response Time'),
+          t('pages.results.chartAvgRT', 'Avg Latency'),
           t('pages.results.chartP95RT', 'P95'),
         ],
         bottom: 0,
@@ -628,7 +629,7 @@ const HttpResults: React.FC = () => {
       },
       series: [
         {
-          name: t('pages.results.chartAvgRT', 'Avg Response Time'),
+          name: t('pages.results.chartAvgRT', 'Avg Latency'),
           type: 'line',
           data: metricsData.map(p => p.avg_response_time?.toFixed(1)),
           smooth: true,
@@ -738,6 +739,8 @@ const HttpResults: React.FC = () => {
     };
   }, [metricsData, formatChartTime, chartTooltip, t]);
 
+  const { RESULTS_COL } = UI_CONFIG;
+
   // Metrics detail table columns definition
   const metricsColumns = useMemo(
     () => [
@@ -745,7 +748,7 @@ const HttpResults: React.FC = () => {
         title: t('pages.results.metricType', 'Metric Type'),
         dataIndex: 'metric_type',
         key: 'metric_type',
-        width: 140,
+        width: RESULTS_COL.METRIC_TYPE,
         ellipsis: true,
         render: (text: string) => {
           if (text.endsWith('::success')) {
@@ -764,10 +767,10 @@ const HttpResults: React.FC = () => {
         },
       },
       {
-        title: t('pages.results.totalRequests', 'Requests'),
+        title: t('pages.results.sampleCount', 'Requests'),
         dataIndex: 'request_count',
         key: 'request_count',
-        width: 110,
+        width: RESULTS_COL.COUNT,
         align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? value.toLocaleString() : '0',
@@ -776,7 +779,7 @@ const HttpResults: React.FC = () => {
         title: t('pages.results.failureCount', 'Failures'),
         dataIndex: 'failure_count',
         key: 'failure_count',
-        width: 100,
+        width: RESULTS_COL.FAILURE,
         align: 'left' as const,
         render: (value: number | undefined) => {
           const num = value ?? 0;
@@ -788,37 +791,37 @@ const HttpResults: React.FC = () => {
         },
       },
       {
-        title: t('pages.results.avgResponseTime', 'Avg Time'),
+        title: t('pages.results.meanLatency', 'Avg Latency (s)'),
         dataIndex: 'avg_response_time',
         key: 'avg_response_time',
-        width: 120,
+        width: RESULTS_COL.LATENCY,
         align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
       },
       {
-        title: t('pages.results.minResponseTime', 'Min Time'),
+        title: t('pages.results.minLatency', 'Min Latency (s)'),
         dataIndex: 'min_response_time',
         key: 'min_response_time',
-        width: 120,
+        width: RESULTS_COL.LATENCY,
         align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
       },
       {
-        title: t('pages.results.maxResponseTime', 'Max Time'),
+        title: t('pages.results.maxLatency', 'Max Latency (s)'),
         dataIndex: 'max_response_time',
         key: 'max_response_time',
-        width: 120,
+        width: RESULTS_COL.LATENCY,
         align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
       },
       {
-        title: t('pages.results.p95ResponseTime', 'P95'),
+        title: t('pages.results.p95Latency', 'P95 Latency (s)'),
         dataIndex: 'percentile_95_response_time',
         key: 'percentile_95_response_time',
-        width: 120,
+        width: RESULTS_COL.LATENCY,
         align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? (value / 1000).toFixed(3) : '0.000',
@@ -827,7 +830,7 @@ const HttpResults: React.FC = () => {
         title: t('pages.results.rps', 'RPS'),
         dataIndex: 'rps',
         key: 'rps',
-        width: 100,
+        width: RESULTS_COL.RATE,
         align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? Number(value).toFixed(2) : '0.00',
@@ -836,7 +839,7 @@ const HttpResults: React.FC = () => {
         title: t('pages.results.avgContentLength', 'Avg Content Length'),
         dataIndex: 'avg_content_length',
         key: 'avg_content_length',
-        width: 140,
+        width: RESULTS_COL.CONTENT_LENGTH,
         align: 'left' as const,
         render: (value: number | undefined) =>
           value != null ? Number(value).toLocaleString() : '-',
@@ -921,7 +924,7 @@ const HttpResults: React.FC = () => {
           <div className='results-section unified-section'>
             <div className='section-header'>
               <span className='section-title'>
-                {t('pages.results.chartResponseTime', 'Response Time')}
+                {t('pages.results.chartResponseTime', 'Latency')}
               </span>
             </div>
             <div className='section-content'>
@@ -1172,7 +1175,10 @@ const HttpResults: React.FC = () => {
         </div>
 
         {/* Results Overview */}
-        <div className='results-section unified-section' ref={overviewRef}>
+        <div
+          className='results-section unified-section results-overview'
+          ref={overviewRef}
+        >
           <div className='section-header'>
             <span className='section-title'>
               {t('pages.results.resultsOverview')}
@@ -1222,7 +1228,7 @@ const HttpResults: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Statistic
-                  title={t('pages.results.avgResponseTime')}
+                  title={t('pages.results.meanLatency')}
                   value={successAvgTimeSec}
                   suffix='s'
                   precision={3}
@@ -1232,7 +1238,7 @@ const HttpResults: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Statistic
-                  title={t('pages.results.p95ResponseTime')}
+                  title={t('pages.results.p95Latency')}
                   value={successP95TimeSec}
                   suffix='s'
                   precision={3}
@@ -1256,8 +1262,8 @@ const HttpResults: React.FC = () => {
               rowKey='metric_type'
               dataSource={metricsDetailRows}
               pagination={false}
-              scroll={{ x: 1100 }}
               className='modern-table'
+              {...getFixedTableProps(metricsColumns)}
               locale={{
                 emptyText: (
                   <Empty description={t('common.noData', 'No Data')} />

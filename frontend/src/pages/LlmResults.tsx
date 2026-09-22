@@ -55,6 +55,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Cluster, RealtimeMetricPoint } from '../types/job';
 import { getStoredUser } from '../utils/auth';
+import { getFixedTableProps, UI_CONFIG } from '../utils/constants';
 import { formatDate } from '../utils/date';
 
 const SUMMARY_METRIC_TYPES = new Set([
@@ -636,7 +637,7 @@ const LlmResults: React.FC = () => {
     // Fallback if no per-metric detail: show aggregate avg (backward compat)
     if (series.length === 0) {
       series.push({
-        name: t('pages.results.chartAvgRT', 'Avg Response Time'),
+        name: t('pages.results.chartAvgRT', 'Avg Latency'),
         type: 'line' as const,
         data: metricsData.map(p =>
           p.avg_response_time != null
@@ -878,7 +879,7 @@ const LlmResults: React.FC = () => {
           <div className='results-section unified-section'>
             <div className='section-header'>
               <span className='section-title'>
-                {t('pages.results.chartResponseTime', 'Response Time')}
+                {t('pages.results.chartResponseTime', 'Latency')}
               </span>
             </div>
             <div className='section-content'>
@@ -1013,12 +1014,14 @@ const LlmResults: React.FC = () => {
     { returnObjects: true }
   ) as Record<string, string>;
 
+  const { RESULTS_COL } = UI_CONFIG;
+
   const columns = [
     {
       title: t('pages.results.metricType'),
       dataIndex: 'metric_type',
       key: 'metric_type',
-      width: 200,
+      width: RESULTS_COL.METRIC_TYPE,
       ellipsis: true,
       render: (text: string) => {
         const explanation = metricExplanations[text];
@@ -1036,10 +1039,10 @@ const LlmResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.totalRequests'),
+      title: t('pages.results.sampleCount'),
       dataIndex: 'request_count',
       key: 'request_count',
-      width: 110,
+      width: RESULTS_COL.COUNT,
       align: 'left' as const,
       render: (_: number, record: any) => {
         const requestCount = getRequestCountValue(record);
@@ -1047,10 +1050,10 @@ const LlmResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.avgResponseTime'),
+      title: t('pages.results.meanLatency'),
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
@@ -1061,10 +1064,10 @@ const LlmResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.maxResponseTime'),
+      title: t('pages.results.maxLatency'),
       dataIndex: 'max_response_time',
       key: 'max_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
@@ -1075,10 +1078,10 @@ const LlmResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.minResponseTime'),
+      title: t('pages.results.minLatency'),
       dataIndex: 'min_response_time',
       key: 'min_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
@@ -1089,10 +1092,10 @@ const LlmResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.p95ResponseTime'),
+      title: t('pages.results.p95Latency'),
       dataIndex: 'percentile_95_response_time',
       key: 'percentile_95_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
@@ -1103,10 +1106,10 @@ const LlmResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.medianResponseTime'),
+      title: t('pages.results.medianLatency'),
       dataIndex: 'median_response_time',
       key: 'median_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number, record: any) => {
         if (!text) return '0.000';
@@ -1123,7 +1126,7 @@ const LlmResults: React.FC = () => {
       title: t('pages.results.metricType'),
       dataIndex: 'metric_type',
       key: 'metric_type',
-      width: 200,
+      width: RESULTS_COL.METRIC_TYPE,
       ellipsis: true,
       render: (text: string) => {
         const explanation = metricExplanations[text];
@@ -1141,10 +1144,10 @@ const LlmResults: React.FC = () => {
       },
     },
     {
-      title: t('pages.results.totalRequests'),
+      title: t('pages.results.sampleCount'),
       dataIndex: 'request_count',
       key: 'request_count',
-      width: 110,
+      width: RESULTS_COL.COUNT,
       align: 'left' as const,
       render: (_: number, record: any) => {
         const requestCount = getRequestCountValue(record);
@@ -1155,7 +1158,7 @@ const LlmResults: React.FC = () => {
       title: t('pages.results.tokenLengthAvg', 'Avg (tokens)'),
       dataIndex: 'avg_response_time',
       key: 'avg_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number) => (text != null ? Math.round(text) : '-'),
     },
@@ -1163,7 +1166,7 @@ const LlmResults: React.FC = () => {
       title: t('pages.results.tokenLengthMax', 'Max (tokens)'),
       dataIndex: 'max_response_time',
       key: 'max_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number) => (text != null ? Math.round(text) : '-'),
     },
@@ -1171,7 +1174,7 @@ const LlmResults: React.FC = () => {
       title: t('pages.results.tokenLengthMin', 'Min (tokens)'),
       dataIndex: 'min_response_time',
       key: 'min_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number) => (text != null ? Math.round(text) : '-'),
     },
@@ -1179,7 +1182,7 @@ const LlmResults: React.FC = () => {
       title: t('pages.results.tokenLengthP95', 'P95 (tokens)'),
       dataIndex: 'percentile_95_response_time',
       key: 'percentile_95_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number) => (text != null ? Math.round(text) : '-'),
     },
@@ -1187,7 +1190,7 @@ const LlmResults: React.FC = () => {
       title: t('pages.results.tokenLengthMedian', 'Median (tokens)'),
       dataIndex: 'median_response_time',
       key: 'median_response_time',
-      width: 120,
+      width: RESULTS_COL.LATENCY,
       align: 'left' as const,
       render: (text: number) => (text != null ? Math.round(text) : '-'),
     },
@@ -2034,7 +2037,7 @@ const LlmResults: React.FC = () => {
 
                       {/* Results Overview */}
                       <div
-                        className='results-section unified-section'
+                        className='results-section unified-section results-overview'
                         ref={overviewCardRef}
                       >
                         <div className='section-header'>
@@ -2090,8 +2093,8 @@ const LlmResults: React.FC = () => {
                               columns={columns}
                               rowKey='metric_type'
                               pagination={false}
-                              scroll={{ x: 1000 }}
                               className='modern-table'
+                              {...getFixedTableProps(columns)}
                             />
                           </div>
 
@@ -2113,8 +2116,8 @@ const LlmResults: React.FC = () => {
                                 columns={tokenLengthColumns}
                                 rowKey='metric_type'
                                 pagination={false}
-                                scroll={{ x: 800 }}
                                 className='modern-table'
+                                {...getFixedTableProps(tokenLengthColumns)}
                               />
                             </div>
                           )}

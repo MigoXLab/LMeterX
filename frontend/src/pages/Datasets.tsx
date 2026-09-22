@@ -3,6 +3,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  InfoCircleOutlined,
   PlusOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
@@ -45,6 +46,37 @@ const wrapDisabledAction = (
       <span>{button}</span>
     </Tooltip>
   );
+
+const getDatasetDescription = (description?: string) =>
+  description?.trim() || '';
+
+const DatasetTableRow = ({
+  'data-description': dataDescription,
+  ...rest
+}: React.HTMLAttributes<HTMLTableRowElement> & {
+  'data-description'?: string;
+}) => {
+  const description = getDatasetDescription(dataDescription);
+  const row = <tr {...rest} />;
+
+  if (!description) {
+    return row;
+  }
+
+  return (
+    <Tooltip
+      title={
+        <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {description}
+        </span>
+      }
+      placement='topLeft'
+      overlayStyle={{ maxWidth: 400 }}
+    >
+      {row}
+    </Tooltip>
+  );
+};
 
 const Datasets: React.FC = () => {
   const { t } = useTranslation();
@@ -277,6 +309,19 @@ const Datasets: React.FC = () => {
           pagination={pagination}
           onChange={handleTableChange}
           className='modern-table unified-table'
+          onRow={record => {
+            const description = getDatasetDescription(record.description);
+            return description
+              ? ({
+                  'data-description': description,
+                } as React.HTMLAttributes<HTMLElement>)
+              : {};
+          }}
+          components={{
+            body: {
+              row: DatasetTableRow,
+            },
+          }}
           columns={[
             { title: t('pages.datasets.columnName'), dataIndex: 'name' },
             {
@@ -437,7 +482,14 @@ const Datasets: React.FC = () => {
           </Form.Item>
           <Form.Item
             name='is_public'
-            label={t('pages.datasets.visibilityLabel')}
+            label={
+              <span>
+                {t('pages.datasets.visibilityLabel')}
+                <Tooltip title={t('pages.datasets.visibilityTooltip')}>
+                  <InfoCircleOutlined style={{ marginLeft: 5 }} />
+                </Tooltip>
+              </span>
+            }
             valuePropName='checked'
           >
             <Switch

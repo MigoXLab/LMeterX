@@ -27,18 +27,33 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/apiClient';
-import { httpTaskApi, llmTaskApi } from '../api/services';
+import {
+  agentTaskApi,
+  clusterApi,
+  httpTaskApi,
+  llmTaskApi,
+} from '../api/services';
+import CreateAgentTaskForm from '../components/CreateAgentTaskForm';
 import CreateHttpTaskForm from '../components/CreateHttpTaskForm';
 import CreateLlmTaskForm from '../components/CreateLlmTaskForm';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { PageHeader } from '../components/ui/PageHeader';
 import StatusTag from '../components/ui/StatusTag';
 import { Collection, CollectionTaskItem } from '../types/collection';
-import { HttpTask, LlmTask } from '../types/job';
+import {
+  AgentTask,
+  AgentTaskPayload,
+  Cluster,
+  HttpTask,
+  LlmTask,
+} from '../types/job';
 import { getStoredUser } from '../utils/auth';
 import { deepClone, safeJsonParse, safeJsonStringify } from '../utils/data';
 import { formatDate } from '../utils/date';
 import { formatValidationError } from '../utils/error';
+import { getLdapEnabled } from '../utils/runtimeConfig';
+
+const LDAP_ENABLED = getLdapEnabled();
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -119,19 +134,29 @@ const CollectionDetail: React.FC = () => {
   const [selectedHttpTaskIds, setSelectedHttpTaskIds] = useState<React.Key[]>(
     []
   );
+  const [selectedA2aTaskIds, setSelectedA2aTaskIds] = useState<React.Key[]>([]);
+  const [selectedMcpTaskIds, setSelectedMcpTaskIds] = useState<React.Key[]>([]);
 
   // Edit mode states
   const [isEditingContent, setIsEditingContent] = useState(false);
   const [editContent, setEditContent] = useState('');
   const currentUser = getStoredUser();
   const canEdit =
-    currentUser?.is_admin || collection?.created_by === currentUser?.username;
+    !LDAP_ENABLED ||
+    currentUser?.is_admin === true ||
+    (!!collection?.created_by &&
+      collection.created_by === currentUser?.username);
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [taskToCopy, setTaskToCopy] = useState<Partial<LlmTask> | null>(null);
   const [httpTaskToCopy, setHttpTaskToCopy] =
     useState<Partial<HttpTask> | null>(null);
-  const [activeMode, setActiveMode] = useState<'llm' | 'http'>('llm');
+  const [agentTaskToCopy, setAgentTaskToCopy] =
+    useState<Partial<AgentTask> | null>(null);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [activeMode, setActiveMode] = useState<'llm' | 'http' | 'a2a' | 'mcp'>(
+    'llm'
+  );
   const [currentLoading, setCurrentLoading] = useState(false);
 
   const { modal } = App.useApp();
@@ -241,8 +266,46 @@ const CollectionDetail: React.FC = () => {
     [canEdit, id, t]
   );
 
+  const handleRerunAgentTask = useCallback(
+    async (job: CollectionTaskItem) => {
+      if (!canEdit) {
+        message.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      try {
+        const resp = await agentTaskApi.rerun(job.id);
+        const newTaskId =
+          (resp as any)?.data?.task_id || (resp as any)?.data?.id;
+        if (newTaskId) {
+          await api.post(`/collections/${id}/tasks`, {
+            task_id: newTaskId,
+            task_type: job.task_type,
+          });
+          fetchTasks();
+          fetchCollection();
+          message.success(t('pages.jobs.rerunSuccess'));
+        } else {
+          message.error(t('pages.jobs.rerunFailed'));
+        }
+      } catch (error: any) {
+        console.error('Failed to rerun agent task:', error);
+        let errorMsg = t('pages.jobs.rerunFailed');
+        if (error?.status === 422 && error?.data) {
+          const validationMsg = formatValidationError(error.data);
+          if (validationMsg) {
+            errorMsg = `${t('pages.jobs.rerunFailed')}: ${validationMsg}`;
+          }
+        } else if (error?.message) {
+          errorMsg = `${t('pages.jobs.rerunFailed')}: ${error.message}`;
+        }
+        message.error(errorMsg);
+      }
+    },
+    [canEdit, id, t]
+  );
+
   const showRerunConfirm = useCallback(
-    (record: CollectionTaskItem, type: 'llm' | 'http') => {
+    (record: CollectionTaskItem, type: CollectionTaskItem['task_type']) => {
       modal.confirm({
         title: t('pages.jobs.rerunConfirmTitle'),
         icon: <PlayCircleOutlined style={{ color: '#1677ff' }} />,
@@ -254,11 +317,14 @@ const CollectionDetail: React.FC = () => {
         ),
         okText: t('pages.jobs.confirmRerun'),
         cancelText: t('common.cancel'),
-        onOk: () =>
-          type === 'llm' ? handleRerunJob(record) : handleRerunHttpTask(record),
+        onOk: () => {
+          if (type === 'llm') return handleRerunJob(record);
+          if (type === 'http') return handleRerunHttpTask(record);
+          return handleRerunAgentTask(record);
+        },
       });
     },
-    [handleRerunHttpTask, handleRerunJob, modal, t]
+    [handleRerunAgentTask, handleRerunHttpTask, handleRerunJob, modal, t]
   );
 
   const handleCopyJob = useCallback(
@@ -392,10 +458,55 @@ const CollectionDetail: React.FC = () => {
     [canEdit, t]
   );
 
+  const handleCopyAgentTask = useCallback(
+    async (job: CollectionTaskItem) => {
+      if (!canEdit) {
+        message.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      try {
+        const [copyResp, clusterResp] = await Promise.all([
+          agentTaskApi.getCopyTemplate(job.id),
+          clusters.length ? Promise.resolve(null) : clusterApi.getAllClusters(),
+        ]);
+        if (clusterResp) {
+          const body: any = clusterResp as any;
+          const values = Array.isArray(body)
+            ? body
+            : Array.isArray(body?.data)
+              ? body.data
+              : Array.isArray(body?.data?.clusters)
+                ? body.data.clusters
+                : Array.isArray(body?.data?.data)
+                  ? body.data.data
+                  : [];
+          setClusters(values);
+        }
+        const detail = resolveTaskDetail(copyResp, job as any);
+        setActiveMode(job.task_type === 'mcp' ? 'mcp' : 'a2a');
+        setAgentTaskToCopy({
+          ...detail,
+          id: undefined,
+          name: `${detail.name || job.name} (Copy)`.slice(0, 100),
+          status: undefined,
+          created_at: undefined,
+          updated_at: undefined,
+          dataset_file: undefined,
+        });
+        setIsModalVisible(true);
+      } catch (error) {
+        console.error('Failed to fetch agent task details:', error);
+        message.error(t('pages.jobs.copyError', 'Failed to load task details'));
+      }
+    },
+    [canEdit, clusters.length, t]
+  );
+
   const handleModalCancel = useCallback(() => {
     setIsModalVisible(false);
     setTaskToCopy(null);
     setHttpTaskToCopy(null);
+    setAgentTaskToCopy(null);
   }, []);
 
   const handleCreateTask = useCallback(
@@ -425,6 +536,38 @@ const CollectionDetail: React.FC = () => {
       } catch (error) {
         console.error('Failed to create task:', error);
         message.error(t('pages.jobs.createFailed'));
+      } finally {
+        setCurrentLoading(false);
+      }
+    },
+    [activeMode, id, t]
+  );
+
+  const handleCreateAgentTask = useCallback(
+    async (payload: AgentTaskPayload): Promise<boolean> => {
+      setCurrentLoading(true);
+      try {
+        const resp = await agentTaskApi.create(payload);
+        const newTaskId =
+          (resp as any)?.data?.task_id || (resp as any)?.data?.id;
+        if (newTaskId) {
+          await api.post(`/collections/${id}/tasks`, {
+            task_id: newTaskId,
+            task_type: activeMode === 'mcp' ? 'mcp' : 'a2a',
+          });
+          fetchTasks();
+          fetchCollection();
+          message.success(t('pages.jobs.createSuccess'));
+          setIsModalVisible(false);
+          setAgentTaskToCopy(null);
+          return true;
+        }
+        message.error(t('pages.jobs.createFailed'));
+        return false;
+      } catch (error: any) {
+        console.error('Failed to create agent task:', error);
+        message.error(error?.message || t('pages.jobs.createFailed'));
+        return false;
       } finally {
         setCurrentLoading(false);
       }
@@ -546,9 +689,15 @@ const CollectionDetail: React.FC = () => {
     }
   };
 
-  const goToComparison = (mode: 'http' | 'llm') => {
+  const goToComparison = (mode: 'http' | 'llm' | 'a2a' | 'mcp') => {
     const selectedIds =
-      mode === 'llm' ? selectedLlmTaskIds : selectedHttpTaskIds;
+      mode === 'llm'
+        ? selectedLlmTaskIds
+        : mode === 'http'
+          ? selectedHttpTaskIds
+          : mode === 'a2a'
+            ? selectedA2aTaskIds
+            : selectedMcpTaskIds;
     if (selectedIds.length < 2) {
       message.warning(
         t('pages.collectionDetail.needAtLeast2', { mode: mode.toUpperCase() })
@@ -556,13 +705,15 @@ const CollectionDetail: React.FC = () => {
       return;
     }
     const taskIds = selectedIds.join(',');
-    navigate(
-      `/result-comparison?mode=${mode === 'llm' ? 'model' : 'http'}&tasks=${taskIds}`
-    );
+    const comparisonMode =
+      mode === 'llm' ? 'model' : mode === 'http' ? 'http' : mode;
+    navigate(`/result-comparison?mode=${comparisonMode}&tasks=${taskIds}`);
   };
 
-  const llmTasks = tasks.filter(t => t.task_type === 'llm');
-  const httpTasks = tasks.filter(t => t.task_type === 'http');
+  const llmTasks = tasks.filter(item => item.task_type === 'llm');
+  const httpTasks = tasks.filter(item => item.task_type === 'http');
+  const a2aTasks = tasks.filter(item => item.task_type === 'a2a');
+  const mcpTasks = tasks.filter(item => item.task_type === 'mcp');
 
   const taskColumns = [
     {
@@ -577,7 +728,11 @@ const CollectionDetail: React.FC = () => {
           style={{ padding: 0 }}
           onClick={() => {
             const basePath =
-              record.task_type === 'llm' ? '/llm-results' : '/http-results';
+              record.task_type === 'llm'
+                ? '/llm-results'
+                : record.task_type === 'http'
+                  ? '/http-results'
+                  : '/agent-results';
             navigate(`${basePath}/${record.id}`);
           }}
         >
@@ -650,8 +805,10 @@ const CollectionDetail: React.FC = () => {
                   e.stopPropagation();
                   if (record.task_type === 'llm') {
                     handleCopyJob(record);
-                  } else {
+                  } else if (record.task_type === 'http') {
                     handleCopyHttpTask(record);
+                  } else {
+                    handleCopyAgentTask(record);
                   }
                 }}
               />
@@ -936,6 +1093,150 @@ const CollectionDetail: React.FC = () => {
                       },
                     ]
                   : []),
+                ...(a2aTasks.length > 0
+                  ? [
+                      {
+                        key: 'a2a',
+                        label: t('pages.collectionDetail.a2aTasks', {
+                          count: a2aTasks.length,
+                        }),
+                        children: (
+                          <>
+                            <div style={{ marginBottom: 16 }}>
+                              <Button
+                                type='primary'
+                                icon={<BarChartOutlined />}
+                                onClick={() => goToComparison('a2a')}
+                                disabled={
+                                  selectedA2aTaskIds.length < 2 ||
+                                  selectedA2aTaskIds.length > 5
+                                }
+                              >
+                                {t('pages.collectionDetail.compareA2a')}
+                              </Button>
+                              {selectedA2aTaskIds.length < 2 ? (
+                                <Text
+                                  type='secondary'
+                                  style={{ marginLeft: 8 }}
+                                >
+                                  {t('pages.collectionDetail.selectAtLeast2')}
+                                </Text>
+                              ) : selectedA2aTaskIds.length > 5 ? (
+                                <Text
+                                  type='danger'
+                                  style={{ marginLeft: 8, color: '#ff4d4f' }}
+                                >
+                                  {t(
+                                    'pages.collectionDetail.selectMax5',
+                                    '最多只能选择5个任务进行对比'
+                                  )}
+                                </Text>
+                              ) : null}
+                            </div>
+                            <Table
+                              rowSelection={{
+                                selectedRowKeys: selectedA2aTaskIds,
+                                onChange: newSelectedRowKeys => {
+                                  if (
+                                    newSelectedRowKeys.length > 5 &&
+                                    newSelectedRowKeys.length >
+                                      selectedA2aTaskIds.length
+                                  ) {
+                                    message.warning(
+                                      t(
+                                        'pages.collectionDetail.maxCompareLimit',
+                                        '最多只能选择5个任务进行对比'
+                                      )
+                                    );
+                                  }
+                                  setSelectedA2aTaskIds(newSelectedRowKeys);
+                                },
+                              }}
+                              columns={taskColumns}
+                              dataSource={a2aTasks}
+                              rowKey='id'
+                              size='small'
+                              pagination={false}
+                              loading={tasksLoading}
+                              className='modern-table'
+                            />
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+                ...(mcpTasks.length > 0
+                  ? [
+                      {
+                        key: 'mcp',
+                        label: t('pages.collectionDetail.mcpTasks', {
+                          count: mcpTasks.length,
+                        }),
+                        children: (
+                          <>
+                            <div style={{ marginBottom: 16 }}>
+                              <Button
+                                type='primary'
+                                icon={<BarChartOutlined />}
+                                onClick={() => goToComparison('mcp')}
+                                disabled={
+                                  selectedMcpTaskIds.length < 2 ||
+                                  selectedMcpTaskIds.length > 5
+                                }
+                              >
+                                {t('pages.collectionDetail.compareMcp')}
+                              </Button>
+                              {selectedMcpTaskIds.length < 2 ? (
+                                <Text
+                                  type='secondary'
+                                  style={{ marginLeft: 8 }}
+                                >
+                                  {t('pages.collectionDetail.selectAtLeast2')}
+                                </Text>
+                              ) : selectedMcpTaskIds.length > 5 ? (
+                                <Text
+                                  type='danger'
+                                  style={{ marginLeft: 8, color: '#ff4d4f' }}
+                                >
+                                  {t(
+                                    'pages.collectionDetail.selectMax5',
+                                    '最多只能选择5个任务进行对比'
+                                  )}
+                                </Text>
+                              ) : null}
+                            </div>
+                            <Table
+                              rowSelection={{
+                                selectedRowKeys: selectedMcpTaskIds,
+                                onChange: newSelectedRowKeys => {
+                                  if (
+                                    newSelectedRowKeys.length > 5 &&
+                                    newSelectedRowKeys.length >
+                                      selectedMcpTaskIds.length
+                                  ) {
+                                    message.warning(
+                                      t(
+                                        'pages.collectionDetail.maxCompareLimit',
+                                        '最多只能选择5个任务进行对比'
+                                      )
+                                    );
+                                  }
+                                  setSelectedMcpTaskIds(newSelectedRowKeys);
+                                },
+                              }}
+                              columns={taskColumns}
+                              dataSource={mcpTasks}
+                              rowKey='id'
+                              size='small'
+                              pagination={false}
+                              loading={tasksLoading}
+                              className='modern-table'
+                            />
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
             />
           </div>
@@ -943,8 +1244,12 @@ const CollectionDetail: React.FC = () => {
       </div>
       <Modal
         title={
-          taskToCopy || httpTaskToCopy
-            ? t('pages.jobs.edit')
+          taskToCopy || httpTaskToCopy || agentTaskToCopy
+            ? activeMode === 'a2a' || activeMode === 'mcp'
+              ? t('pages.jobs.copyAgentTitle', {
+                  protocol: activeMode.toUpperCase(),
+                })
+              : t('pages.jobs.edit')
             : t('pages.jobs.createNew')
         }
         open={isModalVisible}
@@ -962,12 +1267,22 @@ const CollectionDetail: React.FC = () => {
             initialData={taskToCopy}
             suppressCopyWarning={!!taskToCopy}
           />
-        ) : (
+        ) : activeMode === 'http' ? (
           <CreateHttpTaskForm
             onSubmit={handleCreateTask}
             onCancel={handleModalCancel}
             loading={currentLoading}
             initialData={httpTaskToCopy}
+          />
+        ) : (
+          <CreateAgentTaskForm
+            key={`${activeMode}-${agentTaskToCopy ? 'copy' : 'create'}`}
+            protocol={activeMode}
+            clusters={clusters}
+            loading={currentLoading}
+            onSubmit={handleCreateAgentTask}
+            onCancel={handleModalCancel}
+            initialData={agentTaskToCopy}
           />
         )}
       </Modal>

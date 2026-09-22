@@ -4,13 +4,15 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Query, Request
 
-from model.agent_task import AgentTaskCreateReq
+from model.agent_task import AgentComparisonRequest, AgentTaskCreateReq
 from service.agent_task_service import (
+    compare_agent_performance,
     create_agent_task,
     delete_agent_task,
     get_agent_task,
     get_agent_task_copy_template,
     get_agent_task_results,
+    get_agent_tasks_for_comparison,
     list_agent_tasks,
     rerun_agent_task,
     stop_agent_task,
@@ -39,6 +41,19 @@ async def create_task(request: Request, body: AgentTaskCreateReq):
 @router.post("/test-connection")
 async def test_connection(request: Request, body: AgentTaskCreateReq):
     return await test_agent_connection_for_request(request, body)
+
+
+@router.get("/comparison/available")
+async def comparison_available(
+    request: Request,
+    protocol: str = Query(..., description="Protocol to compare: a2a or mcp"),
+):
+    return await get_agent_tasks_for_comparison(request, protocol)
+
+
+@router.post("/comparison")
+async def comparison(request: Request, body: AgentComparisonRequest):
+    return await compare_agent_performance(request, body)
 
 
 @router.post("/{task_id}/stop")

@@ -10,6 +10,7 @@ from fastapi import Request
 from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from model.agent_task import AgentTask
 from model.collection import (
     Collection,
     CollectionCreateRequest,
@@ -207,8 +208,10 @@ async def add_task_to_collection_svc(
     _check_collection_permission(username, db_collection)
 
     task_type = (task_req.task_type or "").strip().lower()
-    if task_type not in {"http", "llm"}:
-        raise ErrorResponse.bad_request("task_type must be either 'http' or 'llm'")
+    if task_type not in {"http", "llm", "a2a", "mcp"}:
+        raise ErrorResponse.bad_request(
+            "task_type must be one of 'http', 'llm', 'a2a', or 'mcp'"
+        )
 
     existing = await db.execute(
         select(CollectionTask).where(
@@ -223,9 +226,17 @@ async def add_task_to_collection_svc(
         task_exists = await db.scalar(
             select(HttpTask.id).where(HttpTask.id == task_req.task_id)
         )
-    else:
+    elif task_type == "llm":
         task_exists = await db.scalar(
             select(LlmTask.id).where(LlmTask.id == task_req.task_id)
+        )
+    else:
+        task_exists = await db.scalar(
+            select(AgentTask.id).where(
+                AgentTask.id == task_req.task_id,
+                AgentTask.protocol == task_type,
+                AgentTask.is_deleted == 0,
+            )
         )
     if not task_exists:
         raise ErrorResponse.not_found("Task not found")
@@ -279,6 +290,9 @@ async def list_collection_tasks_svc(
     llm_task_ids = [
         item.task_id for item in collection_tasks if item.task_type == "llm"
     ]
+    agent_task_ids = [
+        item.task_id for item in collection_tasks if item.task_type in {"a2a", "mcp"}
+    ]
 
     result_tasks: list[Dict[str, Any]] = []
     if http_task_ids:
@@ -322,6 +336,31 @@ async def list_collection_tasks_svc(
                     "duration": task.duration,
                     "model": task.model,
                     "api_type": task.api_type,
+                }
+            )
+
+    if agent_task_ids:
+        agent_result = await db.execute(
+            select(AgentTask).where(
+                AgentTask.id.in_(agent_task_ids),
+                AgentTask.is_deleted == 0,
+            )
+        )
+        for task in agent_result.scalars().all():
+            protocol = str(task.protocol or "").lower()
+            if protocol not in {"a2a", "mcp"}:
+                continue
+            result_tasks.append(
+                {
+                    "id": task.id,
+                    "name": task.name,
+                    "status": task.status,
+                    "task_type": protocol,
+                    "created_by": task.created_by,
+                    "created_at": str(task.created_at),
+                    "concurrent_users": task.concurrent_users,
+                    "duration": task.duration,
+                    "target_url": task.target_url,
                 }
             )
 

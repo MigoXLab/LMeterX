@@ -144,6 +144,7 @@ class ProtocolMetrics:
                     # Deprecated compatibility alias.
                     "terminal_completion_rate": terminal_task_completion_rate,
                     "terminal_task_throughput": terminal / elapsed,
+                    "completed_task_throughput": completed / elapsed,
                     "failed_tasks": failed_tasks,
                     "terminal_task_failure_rate": terminal_task_failure_rate,
                     # Deprecated compatibility alias.

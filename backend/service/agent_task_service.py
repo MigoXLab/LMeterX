@@ -8,7 +8,7 @@ import re
 import shutil
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
 import httpx
@@ -17,6 +17,12 @@ from sqlalchemy import delete, func, select
 
 from model.agent_task import (
     A2ADatasetRow,
+    AgentComparisonMetrics,
+    AgentComparisonRequest,
+    AgentComparisonResponse,
+    AgentComparisonTaskInfo,
+    AgentComparisonTasksResponse,
+    AgentLatencyMetric,
     AgentTask,
     AgentTaskCreateReq,
     AgentTaskResult,
@@ -1291,6 +1297,337 @@ async def get_agent_task_results(request: Request, task_id: str) -> Dict[str, An
         (row["details"] for row in rows if row["metric_type"] == "protocol_summary"), {}
     )
     return {"status": "success", "results": rows, "protocol_metrics": summary}
+
+
+def _to_finite_number(value: Any) -> Optional[float]:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric != numeric:  # NaN
+        return None
+    return numeric
+
+
+def _ms_to_seconds(value: Any) -> float:
+    numeric = _to_finite_number(value)
+    return (numeric / 1000.0) if numeric is not None else 0.0
+
+
+def _sample_to_latency_metric(
+    metric_name: str, sample: Optional[Dict[str, Any]]
+) -> Optional[AgentLatencyMetric]:
+    if not isinstance(sample, dict):
+        return None
+    count = _to_finite_number(sample.get("count"))
+    if count is not None and count <= 0:
+        return None
+    has_latency = any(
+        _to_finite_number(sample.get(key)) is not None
+        for key in ("avg", "min", "max", "p95", "p50")
+    )
+    if not has_latency:
+        return None
+    return AgentLatencyMetric(
+        metric_name=metric_name,
+        avg_response_time=_ms_to_seconds(sample.get("avg")),
+        min_response_time=_ms_to_seconds(sample.get("min")),
+        max_response_time=_ms_to_seconds(sample.get("max")),
+        p95_response_time=_ms_to_seconds(sample.get("p95")),
+        median_response_time=_ms_to_seconds(sample.get("p50")),
+    )
+
+
+def _a2a_completed_task_throughput(
+    summary: Dict[str, Any], rows: List[Dict[str, Any]]
+) -> float:
+    elapsed = _to_finite_number(summary.get("elapsed_seconds"))
+    completed_tasks = _to_finite_number(summary.get("completed_tasks"))
+    completion_rate = _to_finite_number(
+        summary.get("terminal_task_completion_rate")
+        or summary.get("terminal_completion_rate")
+    )
+    end_to_end_rps = 0.0
+    for row in rows:
+        metric_type = str(row.get("metric_type") or "")
+        if metric_type.startswith("A2A end-to-end"):
+            rps = _to_finite_number(row.get("rps"))
+            if rps is not None:
+                end_to_end_rps += rps
+    terminal_throughput = end_to_end_rps or _to_finite_number(
+        summary.get("terminal_task_throughput")
+    )
+    if terminal_throughput is not None and completion_rate is not None:
+        return terminal_throughput * completion_rate
+    explicit = _to_finite_number(summary.get("completed_task_throughput"))
+    if explicit is not None:
+        return explicit
+    if elapsed and completed_tasks is not None:
+        return completed_tasks / elapsed
+    return 0.0
+
+
+def _mcp_successful_tool_call_throughput(summary: Dict[str, Any]) -> float:
+    explicit = _to_finite_number(
+        summary.get("successful_tool_call_throughput")
+        or summary.get("successful_throughput")
+    )
+    if explicit is not None:
+        return explicit
+    elapsed = _to_finite_number(summary.get("elapsed_seconds"))
+    successful_calls = _to_finite_number(summary.get("successful_tool_calls"))
+    if elapsed and successful_calls is not None:
+        return successful_calls / elapsed
+    return 0.0
+
+
+def _extract_a2a_latency_metrics(
+    rows: List[Dict[str, Any]]
+) -> List[AgentLatencyMetric]:
+    metrics: List[AgentLatencyMetric] = []
+    for row in rows:
+        metric_name = str(row.get("metric_type") or "").strip()
+        if not metric_name.startswith("A2A "):
+            continue
+        count = _to_finite_number(row.get("request_count"))
+        if count is not None and count <= 0:
+            continue
+        metrics.append(
+            AgentLatencyMetric(
+                metric_name=metric_name,
+                avg_response_time=_ms_to_seconds(row.get("avg_response_time")),
+                min_response_time=_ms_to_seconds(row.get("min_response_time")),
+                max_response_time=_ms_to_seconds(row.get("max_response_time")),
+                p95_response_time=_ms_to_seconds(
+                    row.get("percentile_95_response_time")
+                ),
+                median_response_time=_ms_to_seconds(row.get("median_response_time")),
+            )
+        )
+    return metrics
+
+
+def _extract_mcp_latency_metrics(summary: Dict[str, Any]) -> List[AgentLatencyMetric]:
+    metrics: List[AgentLatencyMetric] = []
+    ttfe = _sample_to_latency_metric(
+        "TTFE", summary.get("time_to_first_event_ms") or summary.get("ttft_ms")
+    )
+    end_to_end = _sample_to_latency_metric(
+        "End_to_end",
+        summary.get("end_to_end_latency_ms") or summary.get("response_time_ms"),
+    )
+    if ttfe:
+        metrics.append(ttfe)
+    if end_to_end:
+        metrics.append(end_to_end)
+    return metrics
+
+
+def extract_agent_comparison_metrics(
+    task: AgentTask, rows: List[Dict[str, Any]]
+) -> Optional[AgentComparisonMetrics]:
+    """Build comparison metrics for one A2A/MCP task from stored result rows."""
+    protocol = str(task.protocol or "").lower()
+    if protocol not in {"a2a", "mcp"}:
+        return None
+    summary = next(
+        (
+            row.get("details") or {}
+            for row in rows
+            if row.get("metric_type") == "protocol_summary"
+        ),
+        {},
+    )
+    if not isinstance(summary, dict):
+        summary = {}
+    result_rows = [row for row in rows if row.get("metric_type") != "protocol_summary"]
+    if protocol == "a2a":
+        throughput = _a2a_completed_task_throughput(summary, result_rows)
+        latency_metrics = _extract_a2a_latency_metrics(result_rows)
+    else:
+        throughput = _mcp_successful_tool_call_throughput(summary)
+        latency_metrics = _extract_mcp_latency_metrics(summary)
+    return AgentComparisonMetrics(
+        task_id=str(task.id),
+        task_name=task.name or f"Task {str(task.id)[:8]}",
+        protocol=protocol,  # type: ignore[arg-type]
+        target_url=task.target_url or "",
+        concurrent_users=int(task.concurrent_users or 0),
+        duration=f"{int(task.duration or 0)}s",
+        created_at=safe_isoformat(task.created_at) or "",
+        throughput=float(throughput or 0.0),
+        latency_metrics=latency_metrics,
+    )
+
+
+async def get_agent_tasks_for_comparison(
+    request: Request, protocol: str
+) -> AgentComparisonTasksResponse:
+    """Fetch completed A2A/MCP tasks that have results for comparison."""
+    protocol = (protocol or "").strip().lower()
+    if protocol not in {"a2a", "mcp"}:
+        return AgentComparisonTasksResponse(
+            data=[],
+            status="error",
+            error="protocol must be either 'a2a' or 'mcp'",
+        )
+    try:
+        db = request.state.db
+        query = (
+            select(
+                AgentTask.id,
+                AgentTask.name,
+                AgentTask.protocol,
+                AgentTask.target_url,
+                AgentTask.concurrent_users,
+                AgentTask.created_at,
+                AgentTask.duration,
+            )
+            .where(AgentTask.protocol == protocol)
+            .where(AgentTask.status.in_(["completed", "failed_requests"]))
+            .where(AgentTask.is_deleted == 0)
+            .join(AgentTaskResult, AgentTask.id == AgentTaskResult.task_id)
+            .distinct()
+            .order_by(AgentTask.created_at.desc(), AgentTask.concurrent_users)
+        )
+        result = await db.execute(query)
+        tasks = result.all()
+        task_infos = [
+            AgentComparisonTaskInfo(
+                task_id=task.id,
+                task_name=task.name or f"Task {task.id[:8]}",
+                protocol=protocol,  # type: ignore[arg-type]
+                target_url=task.target_url or "",
+                concurrent_users=task.concurrent_users or 0,
+                created_at=task.created_at.isoformat() if task.created_at else "",
+                duration=task.duration or 0,
+            )
+            for task in tasks
+        ]
+        return AgentComparisonTasksResponse(
+            data=task_infos, status="success", error=None
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to get {} tasks for comparison: {}", protocol, exc, exc_info=True
+        )
+        return AgentComparisonTasksResponse(
+            data=[],
+            status="error",
+            error="Failed to fetch agent tasks for comparison",
+        )
+
+
+async def compare_agent_performance(
+    request: Request, comparison_request: AgentComparisonRequest
+) -> AgentComparisonResponse:
+    """Compare A2A or MCP performance metrics for selected tasks."""
+    try:
+        db = request.state.db
+        task_ids = comparison_request.selected_tasks
+        protocol = comparison_request.protocol
+
+        if len(task_ids) < 2:
+            return AgentComparisonResponse(
+                data=[],
+                status="error",
+                error="At least 2 tasks are required for comparison",
+            )
+        if len(task_ids) > 10:
+            return AgentComparisonResponse(
+                data=[],
+                status="error",
+                error="Maximum 10 tasks can be compared at once",
+            )
+
+        task_query = (
+            select(AgentTask)
+            .where(AgentTask.id.in_(task_ids))
+            .where(AgentTask.is_deleted == 0)
+        )
+        task_result = await db.execute(task_query)
+        tasks = {task.id: task for task in task_result.scalars().all()}
+
+        missing_tasks = set(task_ids) - set(tasks.keys())
+        if missing_tasks:
+            return AgentComparisonResponse(
+                data=[],
+                status="error",
+                error=f"Tasks not found: {', '.join(missing_tasks)}",
+            )
+
+        mismatched = [
+            task_id
+            for task_id, task in tasks.items()
+            if str(task.protocol).lower() != protocol
+        ]
+        if mismatched:
+            return AgentComparisonResponse(
+                data=[],
+                status="error",
+                error="Selected tasks must use the same protocol. "
+                f"Mismatched tasks: {', '.join(mismatched)}",
+            )
+
+        incomplete_tasks = [
+            task_id
+            for task_id, task in tasks.items()
+            if task.status not in ["completed", "failed_requests"]
+        ]
+        if incomplete_tasks:
+            return AgentComparisonResponse(
+                data=[],
+                status="error",
+                error="Only completed tasks can be compared. "
+                f"Incomplete tasks: {', '.join(incomplete_tasks)}",
+            )
+
+        comparison_metrics: List[AgentComparisonMetrics] = []
+        for task_id in task_ids:
+            task = tasks.get(task_id)
+            if not task:
+                continue
+            result = await db.execute(
+                select(AgentTaskResult)
+                .where(AgentTaskResult.task_id == task_id)
+                .order_by(AgentTaskResult.id.asc())
+            )
+            rows = [item.to_dict() for item in result.scalars().all()]
+            metrics = extract_agent_comparison_metrics(task, rows)
+            if metrics:
+                comparison_metrics.append(metrics)
+
+        if not comparison_metrics:
+            return AgentComparisonResponse(
+                data=[],
+                status="error",
+                error="No valid metrics data found for the selected tasks.",
+            )
+
+        comparable_names = None
+        for metrics in comparison_metrics:
+            names = {item.metric_name for item in metrics.latency_metrics}
+            comparable_names = (
+                names if comparable_names is None else comparable_names & names
+            )
+        comparable_names = comparable_names or set()
+        for metrics in comparison_metrics:
+            metrics.latency_metrics = [
+                item
+                for item in metrics.latency_metrics
+                if item.metric_name in comparable_names
+            ]
+
+        return AgentComparisonResponse(
+            data=comparison_metrics, status="success", error=None
+        )
+    except Exception as exc:
+        logger.error("Failed to compare agent task performance: {}", exc, exc_info=True)
+        return AgentComparisonResponse(
+            data=[],
+            status="error",
+            error="Failed to perform agent performance comparison",
+        )
 
 
 async def stop_agent_task(request: Request, task_id: str) -> Dict[str, Any]:

@@ -27,7 +27,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/apiClient';
-import { httpTaskApi, llmTaskApi } from '../api/services';
+import { agentTaskApi, httpTaskApi, llmTaskApi } from '../api/services';
 import CreateHttpTaskForm from '../components/CreateHttpTaskForm';
 import CreateLlmTaskForm from '../components/CreateLlmTaskForm';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
@@ -119,6 +119,8 @@ const CollectionDetail: React.FC = () => {
   const [selectedHttpTaskIds, setSelectedHttpTaskIds] = useState<React.Key[]>(
     []
   );
+  const [selectedA2aTaskIds, setSelectedA2aTaskIds] = useState<React.Key[]>([]);
+  const [selectedMcpTaskIds, setSelectedMcpTaskIds] = useState<React.Key[]>([]);
 
   // Edit mode states
   const [isEditingContent, setIsEditingContent] = useState(false);
@@ -241,8 +243,46 @@ const CollectionDetail: React.FC = () => {
     [canEdit, id, t]
   );
 
+  const handleRerunAgentTask = useCallback(
+    async (job: CollectionTaskItem) => {
+      if (!canEdit) {
+        message.warning(t('pages.jobs.ownerOnly'));
+        return;
+      }
+      try {
+        const resp = await agentTaskApi.rerun(job.id);
+        const newTaskId =
+          (resp as any)?.data?.task_id || (resp as any)?.data?.id;
+        if (newTaskId) {
+          await api.post(`/collections/${id}/tasks`, {
+            task_id: newTaskId,
+            task_type: job.task_type,
+          });
+          fetchTasks();
+          fetchCollection();
+          message.success(t('pages.jobs.rerunSuccess'));
+        } else {
+          message.error(t('pages.jobs.rerunFailed'));
+        }
+      } catch (error: any) {
+        console.error('Failed to rerun agent task:', error);
+        let errorMsg = t('pages.jobs.rerunFailed');
+        if (error?.status === 422 && error?.data) {
+          const validationMsg = formatValidationError(error.data);
+          if (validationMsg) {
+            errorMsg = `${t('pages.jobs.rerunFailed')}: ${validationMsg}`;
+          }
+        } else if (error?.message) {
+          errorMsg = `${t('pages.jobs.rerunFailed')}: ${error.message}`;
+        }
+        message.error(errorMsg);
+      }
+    },
+    [canEdit, id, t]
+  );
+
   const showRerunConfirm = useCallback(
-    (record: CollectionTaskItem, type: 'llm' | 'http') => {
+    (record: CollectionTaskItem, type: CollectionTaskItem['task_type']) => {
       modal.confirm({
         title: t('pages.jobs.rerunConfirmTitle'),
         icon: <PlayCircleOutlined style={{ color: '#1677ff' }} />,
@@ -254,11 +294,14 @@ const CollectionDetail: React.FC = () => {
         ),
         okText: t('pages.jobs.confirmRerun'),
         cancelText: t('common.cancel'),
-        onOk: () =>
-          type === 'llm' ? handleRerunJob(record) : handleRerunHttpTask(record),
+        onOk: () => {
+          if (type === 'llm') return handleRerunJob(record);
+          if (type === 'http') return handleRerunHttpTask(record);
+          return handleRerunAgentTask(record);
+        },
       });
     },
-    [handleRerunHttpTask, handleRerunJob, modal, t]
+    [handleRerunAgentTask, handleRerunHttpTask, handleRerunJob, modal, t]
   );
 
   const handleCopyJob = useCallback(
@@ -546,9 +589,15 @@ const CollectionDetail: React.FC = () => {
     }
   };
 
-  const goToComparison = (mode: 'http' | 'llm') => {
+  const goToComparison = (mode: 'http' | 'llm' | 'a2a' | 'mcp') => {
     const selectedIds =
-      mode === 'llm' ? selectedLlmTaskIds : selectedHttpTaskIds;
+      mode === 'llm'
+        ? selectedLlmTaskIds
+        : mode === 'http'
+          ? selectedHttpTaskIds
+          : mode === 'a2a'
+            ? selectedA2aTaskIds
+            : selectedMcpTaskIds;
     if (selectedIds.length < 2) {
       message.warning(
         t('pages.collectionDetail.needAtLeast2', { mode: mode.toUpperCase() })
@@ -556,13 +605,15 @@ const CollectionDetail: React.FC = () => {
       return;
     }
     const taskIds = selectedIds.join(',');
-    navigate(
-      `/result-comparison?mode=${mode === 'llm' ? 'model' : 'http'}&tasks=${taskIds}`
-    );
+    const comparisonMode =
+      mode === 'llm' ? 'model' : mode === 'http' ? 'http' : mode;
+    navigate(`/result-comparison?mode=${comparisonMode}&tasks=${taskIds}`);
   };
 
-  const llmTasks = tasks.filter(t => t.task_type === 'llm');
-  const httpTasks = tasks.filter(t => t.task_type === 'http');
+  const llmTasks = tasks.filter(item => item.task_type === 'llm');
+  const httpTasks = tasks.filter(item => item.task_type === 'http');
+  const a2aTasks = tasks.filter(item => item.task_type === 'a2a');
+  const mcpTasks = tasks.filter(item => item.task_type === 'mcp');
 
   const taskColumns = [
     {
@@ -577,7 +628,11 @@ const CollectionDetail: React.FC = () => {
           style={{ padding: 0 }}
           onClick={() => {
             const basePath =
-              record.task_type === 'llm' ? '/llm-results' : '/http-results';
+              record.task_type === 'llm'
+                ? '/llm-results'
+                : record.task_type === 'http'
+                  ? '/http-results'
+                  : '/agent-results';
             navigate(`${basePath}/${record.id}`);
           }}
         >
@@ -640,22 +695,24 @@ const CollectionDetail: React.FC = () => {
                 }}
               />
             </Tooltip>
-            <Tooltip title={t('pages.jobs.copyTemplate')}>
-              <Button
-                type='text'
-                size='small'
-                className='action-icon-btn'
-                icon={<CopyOutlined />}
-                onClick={e => {
-                  e.stopPropagation();
-                  if (record.task_type === 'llm') {
-                    handleCopyJob(record);
-                  } else {
-                    handleCopyHttpTask(record);
-                  }
-                }}
-              />
-            </Tooltip>
+            {record.task_type !== 'a2a' && record.task_type !== 'mcp' && (
+              <Tooltip title={t('pages.jobs.copyTemplate')}>
+                <Button
+                  type='text'
+                  size='small'
+                  className='action-icon-btn'
+                  icon={<CopyOutlined />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (record.task_type === 'llm') {
+                      handleCopyJob(record);
+                    } else {
+                      handleCopyHttpTask(record);
+                    }
+                  }}
+                />
+              </Tooltip>
+            )}
             <Tooltip title={t('pages.collectionDetail.remove')}>
               <Button
                 danger
@@ -925,6 +982,150 @@ const CollectionDetail: React.FC = () => {
                               }}
                               columns={taskColumns}
                               dataSource={httpTasks}
+                              rowKey='id'
+                              size='small'
+                              pagination={false}
+                              loading={tasksLoading}
+                              className='modern-table'
+                            />
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+                ...(a2aTasks.length > 0
+                  ? [
+                      {
+                        key: 'a2a',
+                        label: t('pages.collectionDetail.a2aTasks', {
+                          count: a2aTasks.length,
+                        }),
+                        children: (
+                          <>
+                            <div style={{ marginBottom: 16 }}>
+                              <Button
+                                type='primary'
+                                icon={<BarChartOutlined />}
+                                onClick={() => goToComparison('a2a')}
+                                disabled={
+                                  selectedA2aTaskIds.length < 2 ||
+                                  selectedA2aTaskIds.length > 5
+                                }
+                              >
+                                {t('pages.collectionDetail.compareA2a')}
+                              </Button>
+                              {selectedA2aTaskIds.length < 2 ? (
+                                <Text
+                                  type='secondary'
+                                  style={{ marginLeft: 8 }}
+                                >
+                                  {t('pages.collectionDetail.selectAtLeast2')}
+                                </Text>
+                              ) : selectedA2aTaskIds.length > 5 ? (
+                                <Text
+                                  type='danger'
+                                  style={{ marginLeft: 8, color: '#ff4d4f' }}
+                                >
+                                  {t(
+                                    'pages.collectionDetail.selectMax5',
+                                    '最多只能选择5个任务进行对比'
+                                  )}
+                                </Text>
+                              ) : null}
+                            </div>
+                            <Table
+                              rowSelection={{
+                                selectedRowKeys: selectedA2aTaskIds,
+                                onChange: newSelectedRowKeys => {
+                                  if (
+                                    newSelectedRowKeys.length > 5 &&
+                                    newSelectedRowKeys.length >
+                                      selectedA2aTaskIds.length
+                                  ) {
+                                    message.warning(
+                                      t(
+                                        'pages.collectionDetail.maxCompareLimit',
+                                        '最多只能选择5个任务进行对比'
+                                      )
+                                    );
+                                  }
+                                  setSelectedA2aTaskIds(newSelectedRowKeys);
+                                },
+                              }}
+                              columns={taskColumns}
+                              dataSource={a2aTasks}
+                              rowKey='id'
+                              size='small'
+                              pagination={false}
+                              loading={tasksLoading}
+                              className='modern-table'
+                            />
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+                ...(mcpTasks.length > 0
+                  ? [
+                      {
+                        key: 'mcp',
+                        label: t('pages.collectionDetail.mcpTasks', {
+                          count: mcpTasks.length,
+                        }),
+                        children: (
+                          <>
+                            <div style={{ marginBottom: 16 }}>
+                              <Button
+                                type='primary'
+                                icon={<BarChartOutlined />}
+                                onClick={() => goToComparison('mcp')}
+                                disabled={
+                                  selectedMcpTaskIds.length < 2 ||
+                                  selectedMcpTaskIds.length > 5
+                                }
+                              >
+                                {t('pages.collectionDetail.compareMcp')}
+                              </Button>
+                              {selectedMcpTaskIds.length < 2 ? (
+                                <Text
+                                  type='secondary'
+                                  style={{ marginLeft: 8 }}
+                                >
+                                  {t('pages.collectionDetail.selectAtLeast2')}
+                                </Text>
+                              ) : selectedMcpTaskIds.length > 5 ? (
+                                <Text
+                                  type='danger'
+                                  style={{ marginLeft: 8, color: '#ff4d4f' }}
+                                >
+                                  {t(
+                                    'pages.collectionDetail.selectMax5',
+                                    '最多只能选择5个任务进行对比'
+                                  )}
+                                </Text>
+                              ) : null}
+                            </div>
+                            <Table
+                              rowSelection={{
+                                selectedRowKeys: selectedMcpTaskIds,
+                                onChange: newSelectedRowKeys => {
+                                  if (
+                                    newSelectedRowKeys.length > 5 &&
+                                    newSelectedRowKeys.length >
+                                      selectedMcpTaskIds.length
+                                  ) {
+                                    message.warning(
+                                      t(
+                                        'pages.collectionDetail.maxCompareLimit',
+                                        '最多只能选择5个任务进行对比'
+                                      )
+                                    );
+                                  }
+                                  setSelectedMcpTaskIds(newSelectedRowKeys);
+                                },
+                              }}
+                              columns={taskColumns}
+                              dataSource={mcpTasks}
                               rowKey='id'
                               size='small'
                               pagination={false}

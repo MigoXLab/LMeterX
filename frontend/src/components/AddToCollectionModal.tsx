@@ -10,7 +10,7 @@ interface AddToCollectionModalProps {
   open: boolean;
   onCancel: () => void;
   taskIds: string[];
-  taskType: 'http' | 'llm';
+  taskType: 'http' | 'llm' | 'a2a' | 'mcp';
   onSuccess?: () => void;
 }
 
@@ -87,16 +87,29 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
   const currentUser = getStoredUser();
   const hasCollections = collections.length > 0;
 
+  const findCollectionByName = (name: string) =>
+    collections.find(
+      item => item.name.trim().toLowerCase() === name.trim().toLowerCase()
+    );
+
   const fetchCollections = async () => {
     setLoading(true);
     try {
       const response = await api.get<{ data: Collection[] }>('/collections', {
         params: { page: 1, page_size: 100 },
       });
-      const { data } = response.data;
-      const filteredData = (data || []).filter(
-        c => currentUser?.is_admin || c.created_by === currentUser?.username
-      );
+      const payload: any = response.data;
+      const list: Collection[] = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : [];
+      const filteredData = currentUser
+        ? list.filter(
+            item =>
+              currentUser.is_admin || item.created_by === currentUser.username
+          )
+        : list;
       setCollections(filteredData);
     } catch (error) {
       message.error(t('components.addToCollectionModal.loadFailed'));
@@ -120,11 +133,17 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
       let collectionId = values.collection_id as string | undefined;
 
       if (!hasCollections) {
-        const response = await api.post<Collection>('/collections', {
-          name: values.new_collection_name,
-          description: values.new_collection_description || undefined,
-        });
-        collectionId = response.data.id;
+        const newName = String(values.new_collection_name || '').trim();
+        const existing = findCollectionByName(newName);
+        if (existing) {
+          collectionId = existing.id;
+        } else {
+          const response = await api.post<Collection>('/collections', {
+            name: newName,
+            description: values.new_collection_description || undefined,
+          });
+          collectionId = response.data.id;
+        }
       }
 
       if (!collectionId) {
@@ -217,6 +236,14 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
   };
 
   const handleCreateCollection = async (name: string) => {
+    const existing = findCollectionByName(name);
+    if (existing) {
+      form.setFieldsValue({ collection_id: existing.id });
+      setSearchValue('');
+      message.warning(t('components.addToCollectionModal.nameAlreadyExists'));
+      return;
+    }
+
     setSubmitting(true);
     try {
       const response = await api.post<Collection>('/collections', {
@@ -324,15 +351,13 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
               placeholder={t(
                 'components.addToCollectionModal.selectPlaceholder'
               )}
-              optionFilterProp='children'
+              optionFilterProp='label'
               popupRender={renderDropdown}
-            >
-              {collections.map(c => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.name}
-                </Select.Option>
-              ))}
-            </Select>
+              options={collections.map(item => ({
+                label: item.name,
+                value: item.id,
+              }))}
+            />
           </Form.Item>
         )}
       </Form>

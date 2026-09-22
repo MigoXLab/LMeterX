@@ -1043,3 +1043,149 @@ async def test_mcp_stateless_connection_runs_discovery_then_real_tools_call(
     # The business probe carries the stateless MCP routing headers.
     assert client.posts[1][1]["Mcp-Method"] == "tools/call"
     assert client.posts[1][1]["Mcp-Name"] == "get_weather"
+
+
+def _comparison_task(protocol: str, task_id: str = "task-1"):
+    return SimpleNamespace(
+        id=task_id,
+        name=f"{protocol}-job",
+        protocol=protocol,
+        target_url="https://example.com",
+        concurrent_users=10,
+        duration=60,
+        created_at=None,
+    )
+
+
+def test_extract_a2a_comparison_metrics_uses_completed_throughput_and_named_latency():
+    from service.agent_task_service import extract_agent_comparison_metrics
+
+    rows = [
+        {
+            "metric_type": "A2A SendMessage",
+            "request_count": 20,
+            "avg_response_time": 1000,
+            "min_response_time": 500,
+            "max_response_time": 2000,
+            "percentile_95_response_time": 1800,
+            "median_response_time": 900,
+            "rps": 2.0,
+        },
+        {
+            "metric_type": "A2A end-to-end",
+            "request_count": 18,
+            "avg_response_time": 3000,
+            "min_response_time": 1000,
+            "max_response_time": 5000,
+            "percentile_95_response_time": 4500,
+            "median_response_time": 2800,
+            "rps": 1.5,
+        },
+        {
+            "metric_type": "protocol_summary",
+            "details": {
+                "terminal_task_completion_rate": 0.8,
+                "completed_task_throughput": 0.9,
+            },
+        },
+    ]
+
+    metrics = extract_agent_comparison_metrics(_comparison_task("a2a"), rows)
+    assert metrics is not None
+    assert metrics.throughput == pytest.approx(1.2)
+    names = [item.metric_name for item in metrics.latency_metrics]
+    assert names == ["A2A SendMessage", "A2A end-to-end"]
+    send = metrics.latency_metrics[0]
+    assert send.avg_response_time == pytest.approx(1.0)
+    assert send.p95_response_time == pytest.approx(1.8)
+
+
+def test_extract_mcp_comparison_metrics_uses_successful_throughput_and_named_latency():
+    from service.agent_task_service import extract_agent_comparison_metrics
+
+    rows = [
+        {
+            "metric_type": "protocol_summary",
+            "details": {
+                "successful_tool_call_throughput": 3.5,
+                "time_to_first_event_ms": {
+                    "count": 10,
+                    "avg": 200,
+                    "min": 100,
+                    "max": 400,
+                    "p95": 350,
+                    "p50": 180,
+                },
+                "end_to_end_latency_ms": {
+                    "count": 10,
+                    "avg": 800,
+                    "min": 400,
+                    "max": 1600,
+                    "p95": 1400,
+                    "p50": 750,
+                },
+            },
+        }
+    ]
+
+    metrics = extract_agent_comparison_metrics(_comparison_task("mcp"), rows)
+    assert metrics is not None
+    assert metrics.throughput == pytest.approx(3.5)
+    names = [item.metric_name for item in metrics.latency_metrics]
+    assert names == ["TTFE", "End_to_end"]
+    assert metrics.latency_metrics[0].avg_response_time == pytest.approx(0.2)
+    assert metrics.latency_metrics[1].p95_response_time == pytest.approx(1.4)
+
+
+def test_agent_comparison_keeps_only_shared_latency_metric_names():
+    from service.agent_task_service import extract_agent_comparison_metrics
+
+    first = extract_agent_comparison_metrics(
+        _comparison_task("a2a", "a"),
+        [
+            {
+                "metric_type": "A2A SendMessage",
+                "request_count": 5,
+                "avg_response_time": 1000,
+                "min_response_time": 500,
+                "max_response_time": 1500,
+                "percentile_95_response_time": 1400,
+                "median_response_time": 900,
+            },
+            {
+                "metric_type": "A2A GetTask",
+                "request_count": 5,
+                "avg_response_time": 200,
+                "min_response_time": 100,
+                "max_response_time": 300,
+                "percentile_95_response_time": 280,
+                "median_response_time": 180,
+            },
+            {
+                "metric_type": "protocol_summary",
+                "details": {"completed_task_throughput": 1.0},
+            },
+        ],
+    )
+    second = extract_agent_comparison_metrics(
+        _comparison_task("a2a", "b"),
+        [
+            {
+                "metric_type": "A2A SendMessage",
+                "request_count": 8,
+                "avg_response_time": 1100,
+                "min_response_time": 600,
+                "max_response_time": 1600,
+                "percentile_95_response_time": 1500,
+                "median_response_time": 1000,
+            },
+            {
+                "metric_type": "protocol_summary",
+                "details": {"completed_task_throughput": 1.2},
+            },
+        ],
+    )
+    comparable = {item.metric_name for item in first.latency_metrics} & {
+        item.metric_name for item in second.latency_metrics
+    }
+    assert comparable == {"A2A SendMessage"}

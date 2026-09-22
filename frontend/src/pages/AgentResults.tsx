@@ -678,27 +678,14 @@ const AgentResults: React.FC = () => {
       align: 'left' as const,
       render: formatSeconds,
     },
-    {
-      title: t('pages.results.eventRate'),
-      dataIndex: 'rps',
-      key: 'rps',
-      width: RESULTS_COL.RATE,
-      align: 'left' as const,
-      render: (value: unknown) => {
-        if (value == null) return '-';
-        return formatMetricValue(toFiniteNumber(value), 2);
-      },
-    },
   ];
 
   const transitionColumns = [
-    ...operationColumns.filter(
-      column => column.key !== 'failure_count' && column.key !== 'rps'
-    ),
+    ...operationColumns.filter(column => column.key !== 'failure_count'),
     {
       title: '',
       key: '_spacer',
-      width: RESULTS_COL.FAILURE + RESULTS_COL.RATE,
+      width: RESULTS_COL.FAILURE,
       render: () => null,
       onHeaderCell: () => ({ className: 'results-table-spacer' }),
       onCell: () => ({ className: 'results-table-spacer' }),
@@ -718,16 +705,66 @@ const AgentResults: React.FC = () => {
       const elapsed = toFiniteNumber(metrics.elapsed_seconds);
       const submissions = toFiniteNumber(metrics.submissions);
       const terminalTasks = toFiniteNumber(metrics.terminal_tasks);
+      const completedTasks = toFiniteNumber(metrics.completed_tasks);
+
+      // Task submission rate mirrors the A2A SendMessage / SendStreamingMessage
+      // event rate from the response-latency table (Locust `rps`), so the value
+      // and unit stay consistent with that row. Fall back to the backend-derived
+      // submission rate only when the Locust rows are not yet available.
+      const sendMessageEventRate = a2aRequestRows
+        .filter(
+          row =>
+            String(row.metric_type || '').startsWith('A2A SendMessage') ||
+            String(row.metric_type || '').startsWith('A2A SendStreamingMessage')
+        )
+        .reduce((sum, row) => {
+          const rps = toFiniteNumber(row.rps);
+          return rps !== undefined ? sum + rps : sum;
+        }, 0);
       const submissionRate =
-        toFiniteNumber(metrics.task_submission_rate) ??
-        (elapsed && submissions !== undefined
-          ? submissions / elapsed
-          : undefined);
+        sendMessageEventRate > 0
+          ? sendMessageEventRate
+          : (toFiniteNumber(metrics.task_submission_rate) ??
+            (elapsed && submissions !== undefined
+              ? submissions / elapsed
+              : undefined));
+
+      // Terminal task throughput mirrors the A2A end-to-end event rate from the
+      // response-latency table (Locust `rps`), since that event fires once per
+      // task reaching a terminal state. Fall back to the backend-derived rate
+      // only when the Locust rows are not yet available.
+      const endToEndEventRate = a2aRequestRows
+        .filter(row =>
+          String(row.metric_type || '').startsWith('A2A end-to-end')
+        )
+        .reduce((sum, row) => {
+          const rps = toFiniteNumber(row.rps);
+          return rps !== undefined ? sum + rps : sum;
+        }, 0);
       const terminalThroughput =
-        toFiniteNumber(metrics.terminal_task_throughput) ??
-        (elapsed && terminalTasks !== undefined
-          ? terminalTasks / elapsed
-          : undefined);
+        endToEndEventRate > 0
+          ? endToEndEventRate
+          : (toFiniteNumber(metrics.terminal_task_throughput) ??
+            (elapsed && terminalTasks !== undefined
+              ? terminalTasks / elapsed
+              : undefined));
+
+      // Completed task throughput has no Locust row counterpart (the end-to-end
+      // event covers all terminal states, not just `completed`). Derive it from
+      // the Locust-based terminal throughput × completion rate so the two
+      // throughput cards stay internally consistent (e.g. equal when completion
+      // is 100%); fall back to the backend-derived value when unavailable.
+      const completionRate = toFiniteNumber(
+        metrics.terminal_task_completion_rate ??
+          metrics.terminal_completion_rate
+      );
+      const completedThroughput =
+        terminalThroughput !== undefined && completionRate !== undefined
+          ? terminalThroughput * completionRate
+          : (toFiniteNumber(metrics.completed_task_throughput) ??
+            (elapsed && completedTasks !== undefined
+              ? completedTasks / elapsed
+              : undefined));
 
       overviewMetrics.push(
         {
@@ -737,6 +774,22 @@ const AgentResults: React.FC = () => {
             'Task Submission Rate'
           ),
           value: formatMetricValue(submissionRate, 2),
+        },
+        {
+          key: 'completedThroughput',
+          title: createTitleWithTooltip(
+            t('pages.results.completedTaskThroughput'),
+            'Completed Task Throughput'
+          ),
+          value: formatMetricValue(completedThroughput, 2),
+        },
+        {
+          key: 'terminalThroughput',
+          title: createTitleWithTooltip(
+            t('pages.results.terminalTaskThroughput'),
+            'Terminal Task Throughput'
+          ),
+          value: formatMetricValue(terminalThroughput, 2),
         },
         {
           key: 'submissionSuccessRate',
@@ -753,14 +806,6 @@ const AgentResults: React.FC = () => {
           suffix: '%',
         },
         {
-          key: 'terminalThroughput',
-          title: createTitleWithTooltip(
-            t('pages.results.terminalTaskThroughput'),
-            'Terminal Task Throughput'
-          ),
-          value: formatMetricValue(terminalThroughput, 2),
-        },
-        {
           key: 'terminalTaskCompletionRate',
           title: createTitleWithTooltip(
             t('pages.results.terminalTaskCompletionRate'),
@@ -770,20 +815,6 @@ const AgentResults: React.FC = () => {
             ratioToPercent(
               metrics.terminal_task_completion_rate ??
                 metrics.terminal_completion_rate
-            )
-          ),
-          suffix: '%',
-        },
-        {
-          key: 'terminalTaskFailureRate',
-          title: createTitleWithTooltip(
-            t('pages.results.terminalTaskFailureRate'),
-            'Terminal Task Failure Rate'
-          ),
-          value: formatSuccessRate(
-            ratioToPercent(
-              metrics.terminal_task_failure_rate ??
-                metrics.terminal_failure_rate
             )
           ),
           suffix: '%',

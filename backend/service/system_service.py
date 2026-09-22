@@ -471,10 +471,11 @@ def _get_username(request: Request, auth_settings) -> str:
 async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
     from urllib.parse import urlsplit
 
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task
 
-    # Total projects (distinct hosts/domains from target_host in both Task and HttpTask)
+    # Total projects (distinct hosts/domains from LLM, HTTP and agent tasks)
     llm_hosts_query = (
         select(Task.target_host)
         .where(
@@ -493,13 +494,24 @@ async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
         )
         .distinct()
     )
+    agent_hosts_query = (
+        select(AgentTask.target_host)
+        .where(
+            AgentTask.is_deleted == 0,
+            AgentTask.target_host.isnot(None),
+            AgentTask.target_host != "",
+        )
+        .distinct()
+    )
     llm_hosts_res = await db.execute(llm_hosts_query)
     http_hosts_res = await db.execute(http_hosts_query)
+    agent_hosts_res = await db.execute(agent_hosts_query)
 
     all_hosts = set()
     llm_hosts = list(llm_hosts_res.scalars().all())
     http_hosts = list(http_hosts_res.scalars().all())
-    for h in llm_hosts + http_hosts:
+    agent_hosts = list(agent_hosts_res.scalars().all())
+    for h in llm_hosts + http_hosts + agent_hosts:
         if h:
             h_clean = h.strip()
             if h_clean:
@@ -512,7 +524,7 @@ async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
 
     total_projects = len(all_hosts)
 
-    # Total users (distinct created_by from both Task and HttpTask)
+    # Total users (distinct created_by from LLM, HTTP and agent tasks)
     llm_users_query = (
         select(Task.created_by)
         .where(
@@ -533,13 +545,25 @@ async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
         )
         .distinct()
     )
+    agent_users_query = (
+        select(AgentTask.created_by)
+        .where(
+            AgentTask.is_deleted == 0,
+            AgentTask.created_by.isnot(None),
+            AgentTask.created_by != "",
+            AgentTask.created_by != "-",
+        )
+        .distinct()
+    )
     llm_users_res = await db.execute(llm_users_query)
     http_users_res = await db.execute(http_users_query)
+    agent_users_res = await db.execute(agent_users_query)
 
     all_users = set()
     llm_users = list(llm_users_res.scalars().all())
     http_users = list(http_users_res.scalars().all())
-    for u in llm_users + http_users:
+    agent_users = list(agent_users_res.scalars().all())
+    for u in llm_users + http_users + agent_users:
         if u:
             cleaned = u.strip()
             if cleaned and cleaned != "-":
@@ -552,6 +576,7 @@ async def _get_total_projects_and_users(db: AsyncSession) -> Tuple[int, int]:
 async def _get_task_stats(db: AsyncSession, username: str) -> Dict[str, Any]:
     from sqlalchemy import and_, case, func
 
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task
 
@@ -614,6 +639,62 @@ async def _get_task_stats(db: AsyncSession, username: str) -> Dict[str, Any]:
     http_exception = http_row.exception or 0
     http_my = (http_row.my_count or 0) if (username and username != "-") else 0
 
+    # A2A / MCP task counts — one grouped query, same status buckets as LLM/HTTP
+    agent_stats_query = (
+        select(
+            AgentTask.protocol.label("protocol"),
+            func.count(AgentTask.id).label("total"),
+            func.sum(
+                case((AgentTask.status.in_(["queuing", "created"]), 1), else_=0)
+            ).label("pending"),
+            func.sum(case((AgentTask.status == "running", 1), else_=0)).label(
+                "running"
+            ),
+            func.sum(case((AgentTask.status == "completed", 1), else_=0)).label(
+                "successed"
+            ),
+            func.sum(case((AgentTask.status == "failed_requests", 1), else_=0)).label(
+                "partial_failed"
+            ),
+            func.sum(case((AgentTask.status == "failed", 1), else_=0)).label(
+                "exception"
+            ),
+            func.sum(case((AgentTask.created_by == username, 1), else_=0)).label(
+                "my_count"
+            ),
+        )
+        .where(AgentTask.is_deleted == 0, AgentTask.protocol.in_(["a2a", "mcp"]))
+        .group_by(AgentTask.protocol)
+    )
+    agent_rows = (await db.execute(agent_stats_query)).all()
+    agent_counts = {
+        protocol: {
+            "total": 0,
+            "pending": 0,
+            "running": 0,
+            "successed": 0,
+            "partial_failed": 0,
+            "exception": 0,
+            "my": 0,
+        }
+        for protocol in ("a2a", "mcp")
+    }
+    count_my_tasks = bool(username and username != "-")
+    for row in agent_rows:
+        if row.protocol not in agent_counts:
+            continue
+        agent_counts[row.protocol] = {
+            "total": int(row.total or 0),
+            "pending": int(row.pending or 0),
+            "running": int(row.running or 0),
+            "successed": int(row.successed or 0),
+            "partial_failed": int(row.partial_failed or 0),
+            "exception": int(row.exception or 0),
+            "my": int(row.my_count or 0) if count_my_tasks else 0,
+        }
+    a2a = agent_counts["a2a"]
+    mcp = agent_counts["mcp"]
+
     return {
         "llm_total": llm_total,
         "llm_pending": llm_pending,
@@ -628,7 +709,19 @@ async def _get_task_stats(db: AsyncSession, username: str) -> Dict[str, Any]:
         "http_successed": http_successed,
         "http_partial_failed": http_partial_failed,
         "http_exception": http_exception,
-        "my_tasks_count": llm_my + http_my,
+        "a2a_total": a2a["total"],
+        "a2a_pending": a2a["pending"],
+        "a2a_running": a2a["running"],
+        "a2a_successed": a2a["successed"],
+        "a2a_partial_failed": a2a["partial_failed"],
+        "a2a_exception": a2a["exception"],
+        "mcp_total": mcp["total"],
+        "mcp_pending": mcp["pending"],
+        "mcp_running": mcp["running"],
+        "mcp_successed": mcp["successed"],
+        "mcp_partial_failed": mcp["partial_failed"],
+        "mcp_exception": mcp["exception"],
+        "my_tasks_count": llm_my + http_my + a2a["my"] + mcp["my"],
     }
 
 
@@ -638,6 +731,7 @@ async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
 
     from sqlalchemy import func
 
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task
 
@@ -671,8 +765,25 @@ async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
         .group_by(http_monday_expr)
     )
 
+    agent_monday_expr = func.subdate(
+        func.date(AgentTask.created_at), func.weekday(AgentTask.created_at)
+    )
+    agent_weekly_query = (
+        select(
+            agent_monday_expr.label("week_monday"),
+            func.count(AgentTask.id).label("cnt"),
+        )
+        .where(
+            AgentTask.is_deleted == 0,
+            AgentTask.protocol.in_(["a2a", "mcp"]),
+            AgentTask.created_at >= eight_weeks_ago,
+        )
+        .group_by(agent_monday_expr)
+    )
+
     llm_weekly_rows = (await db.execute(llm_weekly_query)).all()
     http_weekly_rows = (await db.execute(http_weekly_query)).all()
+    agent_weekly_rows = (await db.execute(agent_weekly_query)).all()
 
     weeks_data: Dict[str, int] = defaultdict(int)
     for i in range(8):
@@ -687,6 +798,10 @@ async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
         key = str(row.week_monday)
         if key in weeks_data:
             weeks_data[key] += row.cnt
+    for row in agent_weekly_rows:
+        key = str(row.week_monday)
+        if key in weeks_data:
+            weeks_data[key] += row.cnt
 
     return [
         {"week": week, "count": count} for week, count in sorted(weeks_data.items())
@@ -695,7 +810,8 @@ async def _get_weekly_stats(db: AsyncSession) -> List[Dict[str, Any]]:
 
 async def _get_running_tasks(
     db: AsyncSession,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    from model.agent_task import AgentTask
     from model.http_task import HttpTask
     from model.llm_task import Task
     from service.http_task_service import _map_status as map_http_status
@@ -743,7 +859,31 @@ async def _get_running_tasks(
         for t in running_http_res.scalars().all()
     ]
 
-    return running_llm_tasks, running_http_tasks
+    running_agent_query = (
+        select(AgentTask)
+        .where(
+            AgentTask.is_deleted == 0,
+            AgentTask.status == "running",
+            AgentTask.protocol.in_(["a2a", "mcp"]),
+        )
+        .order_by(AgentTask.created_at.desc())
+    )
+    running_agent_res = await db.execute(running_agent_query)
+    running_agent_tasks = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "status": t.status,
+            "protocol": t.protocol,
+            "concurrent_users": t.concurrent_users,
+            "duration": t.duration,
+            "created_by": t.created_by or "-",
+            "created_at": t.created_at.isoformat() if t.created_at else "",
+        }
+        for t in running_agent_res.scalars().all()
+    ]
+
+    return running_llm_tasks, running_http_tasks, running_agent_tasks
 
 
 async def get_dashboard_stats_svc(request: Request) -> Dict[str, Any]:
@@ -763,33 +903,42 @@ async def get_dashboard_stats_svc(request: Request) -> Dict[str, Any]:
 
         weekly_stats = await _get_weekly_stats(db)
 
-        running_llm_tasks, running_http_tasks = await _get_running_tasks(db)
+        running_llm_tasks, running_http_tasks, running_agent_tasks = (
+            await _get_running_tasks(db)
+        )
+
+        def _sum_status(field: str) -> int:
+            return int(
+                (stats[f"llm_{field}"] or 0)
+                + (stats[f"http_{field}"] or 0)
+                + (stats[f"a2a_{field}"] or 0)
+                + (stats[f"mcp_{field}"] or 0)
+            )
 
         return {
             "status": "success",
             "stats": {
-                "totalTasks": stats["llm_total"] + stats["http_total"],
-                "pendingTasks": stats["llm_pending"] + stats["http_pending"],
-                "runningTasks": stats["llm_running"] + stats["http_running"],
-                "completedTasks": stats["llm_successed"] + stats["http_successed"],
-                "partialFailedTasks": stats["llm_partial_failed"]
-                + stats["http_partial_failed"],
-                "exceptionTasks": stats["llm_exception"] + stats["http_exception"],
-                "failedTasks": stats["llm_exception"]
-                + stats["http_exception"]
-                + stats["llm_partial_failed"]
-                + stats["http_partial_failed"],
+                "totalTasks": _sum_status("total"),
+                "pendingTasks": _sum_status("pending"),
+                "runningTasks": _sum_status("running"),
+                "completedTasks": _sum_status("successed"),
+                "partialFailedTasks": _sum_status("partial_failed"),
+                "exceptionTasks": _sum_status("exception"),
+                "failedTasks": _sum_status("exception") + _sum_status("partial_failed"),
                 "totalCollections": total_projects,
                 "totalProjects": total_projects,
                 "totalModels": stats["total_models"],
                 "llmTasksCount": stats["llm_total"],
                 "httpTasksCount": stats["http_total"],
+                "a2aTasksCount": stats["a2a_total"],
+                "mcpTasksCount": stats["mcp_total"],
                 "myTasksCount": stats["my_tasks_count"],
                 "totalUsers": total_users,
             },
             "weeklyStats": weekly_stats,
             "runningLlmTasks": running_llm_tasks,
             "runningHttpTasks": running_http_tasks,
+            "runningAgentTasks": running_agent_tasks,
         }
 
     except Exception as e:

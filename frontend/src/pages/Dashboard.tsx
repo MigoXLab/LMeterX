@@ -51,6 +51,8 @@ interface DashboardStats {
   totalModels: number;
   llmTasksCount: number;
   httpTasksCount: number;
+  a2aTasksCount: number;
+  mcpTasksCount: number;
   totalUsers?: number;
 }
 
@@ -77,12 +79,24 @@ const Dashboard: React.FC = () => {
     totalModels: 0,
     llmTasksCount: 0,
     httpTasksCount: 0,
+    a2aTasksCount: 0,
+    mcpTasksCount: 0,
     totalUsers: 0,
   });
 
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStat[]>([]);
   const [runningLlmTasks, setRunningLlmTasks] = useState<LlmTask[]>([]);
   const [runningHttpTasks, setRunningHttpTasks] = useState<HttpTask[]>([]);
+  const [runningAgentTasks, setRunningAgentTasks] = useState<
+    Array<{
+      id: string;
+      name: string;
+      protocol: 'a2a' | 'mcp';
+      concurrent_users: number;
+      duration: number;
+      created_by?: string;
+    }>
+  >([]);
 
   const fetchDashboardData = useCallback(async (showLoading = false) => {
     if (showLoading) {
@@ -92,10 +106,15 @@ const Dashboard: React.FC = () => {
       const response = await systemApi.getDashboardStats();
       if (response.data && response.data.status === 'success') {
         const payload = response.data;
-        setStats(payload.stats);
+        setStats({
+          ...payload.stats,
+          a2aTasksCount: payload.stats.a2aTasksCount ?? 0,
+          mcpTasksCount: payload.stats.mcpTasksCount ?? 0,
+        });
         setWeeklyStats(payload.weeklyStats || []);
         setRunningLlmTasks(payload.runningLlmTasks || []);
         setRunningHttpTasks(payload.runningHttpTasks || []);
+        setRunningAgentTasks(payload.runningAgentTasks || []);
       }
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -121,8 +140,12 @@ const Dashboard: React.FC = () => {
         bottom: '0%',
         left: 'center',
         icon: 'circle',
+        itemWidth: 8,
+        itemHeight: 8,
+        itemGap: 10,
         textStyle: {
           color: '#545983',
+          fontSize: 12,
         },
       },
       color: ['#667eea', '#00b4d8', '#764ba2', '#ffb703'],
@@ -130,7 +153,7 @@ const Dashboard: React.FC = () => {
         {
           name: 'Task Type Distribution',
           type: 'pie',
-          radius: ['50%', '75%'],
+          radius: ['42%', '64%'],
           avoidLabelOverlap: false,
           itemStyle: {
             borderRadius: 8,
@@ -151,14 +174,23 @@ const Dashboard: React.FC = () => {
           labelLine: {
             show: false,
           },
+          center: ['50%', '44%'],
           data: [
             { value: stats.llmTasksCount, name: t('pages.jobs.llmTab') },
             { value: stats.httpTasksCount, name: t('pages.jobs.httpApiTab') },
+            { value: stats.a2aTasksCount, name: t('pages.jobs.a2aTab') },
+            { value: stats.mcpTasksCount, name: t('pages.jobs.mcpTab') },
           ],
         },
       ],
     }),
-    [stats.llmTasksCount, stats.httpTasksCount, t]
+    [
+      stats.llmTasksCount,
+      stats.httpTasksCount,
+      stats.a2aTasksCount,
+      stats.mcpTasksCount,
+      t,
+    ]
   );
 
   // Task status summary bar chart
@@ -532,14 +564,30 @@ const Dashboard: React.FC = () => {
                     lineHeight: '20px',
                   }}
                 >
-                  {t('pages.jobs.llmTab')}:{' '}
-                  <strong style={{ color: '#475569' }}>
-                    {stats.llmTasksCount}
-                  </strong>{' '}
-                  | {t('pages.jobs.httpApiTab')}:{' '}
-                  <strong style={{ color: '#475569' }}>
-                    {stats.httpTasksCount}
-                  </strong>
+                  {[
+                    {
+                      label: t('pages.jobs.llmTab'),
+                      value: stats.llmTasksCount,
+                    },
+                    {
+                      label: t('pages.jobs.httpApiTab'),
+                      value: stats.httpTasksCount,
+                    },
+                    {
+                      label: t('pages.jobs.a2aTab'),
+                      value: stats.a2aTasksCount,
+                    },
+                    {
+                      label: t('pages.jobs.mcpTab'),
+                      value: stats.mcpTasksCount,
+                    },
+                  ].map((item, index) => (
+                    <span key={item.label}>
+                      {index > 0 ? ' | ' : ''}
+                      {item.label}:{' '}
+                      <strong style={{ color: '#475569' }}>{item.value}</strong>
+                    </span>
+                  ))}
                 </div>
               </Card>
             </Col>
@@ -773,7 +821,9 @@ const Dashboard: React.FC = () => {
           </Row>
 
           {/* Active Running Tasks */}
-          {(runningLlmTasks.length > 0 || runningHttpTasks.length > 0) && (
+          {(runningLlmTasks.length > 0 ||
+            runningHttpTasks.length > 0 ||
+            runningAgentTasks.length > 0) && (
             <Card
               title={
                 <Space>
@@ -800,6 +850,10 @@ const Dashboard: React.FC = () => {
                     ...task,
                     type: 'HTTP',
                   })),
+                  ...runningAgentTasks.map(task => ({
+                    ...task,
+                    type: task.protocol === 'a2a' ? 'A2A' : 'MCP',
+                  })),
                 ]}
                 renderItem={item => (
                   <List.Item
@@ -812,7 +866,9 @@ const Dashboard: React.FC = () => {
                           navigate(
                             item.type === 'LLM'
                               ? `/llm-results/${item.id}?tab=charts`
-                              : `/http-results/${item.id}?tab=charts`
+                              : item.type === 'HTTP'
+                                ? `/http-results/${item.id}?tab=charts`
+                                : `/agent-results/${item.id}`
                           )
                         }
                       >
@@ -825,7 +881,13 @@ const Dashboard: React.FC = () => {
                         <Avatar
                           style={{
                             backgroundColor:
-                              item.type === 'LLM' ? '#667eea' : '#00b4d8',
+                              item.type === 'LLM'
+                                ? '#667eea'
+                                : item.type === 'HTTP'
+                                  ? '#00b4d8'
+                                  : item.type === 'A2A'
+                                    ? '#764ba2'
+                                    : '#f59e0b',
                           }}
                         >
                           {item.type}

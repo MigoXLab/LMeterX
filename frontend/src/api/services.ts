@@ -465,6 +465,48 @@ export const comparisonApi = {
       status: string;
       error?: string;
     }>('/http-tasks/comparison', { selected_tasks: selectedTasks }),
+
+  getAvailableAgentTasks: (protocol: 'a2a' | 'mcp') =>
+    api.get<{
+      data: Array<{
+        task_id: string;
+        task_name: string;
+        protocol: 'a2a' | 'mcp';
+        target_url: string;
+        concurrent_users: number;
+        created_at: string;
+        duration: number;
+      }>;
+      status: string;
+      error?: string;
+    }>('/agent-tasks/comparison/available', { params: { protocol } }),
+
+  compareAgentPerformance: (selectedTasks: string[], protocol: 'a2a' | 'mcp') =>
+    api.post<{
+      data: Array<{
+        task_id: string;
+        task_name: string;
+        protocol: 'a2a' | 'mcp';
+        target_url: string;
+        concurrent_users: number;
+        duration: string;
+        created_at: string;
+        throughput: number;
+        latency_metrics: Array<{
+          metric_name: string;
+          avg_response_time: number;
+          min_response_time: number;
+          max_response_time: number;
+          p95_response_time: number;
+          median_response_time?: number | null;
+        }>;
+      }>;
+      status: string;
+      error?: string;
+    }>('/agent-tasks/comparison', {
+      selected_tasks: selectedTasks,
+      protocol,
+    }),
 };
 
 // Skills API (Web URL analysis)

@@ -20,8 +20,8 @@
   },
   "pages": {
     "dashboard": {
-      "welcomeTitle": "Welcome to LMeterX Performance Testing Platform",
-      "welcomeSubtitle": "High-performance load testing engine for LLM inference & business APIs, featuring real-time monitoring and smart analysis.",
+      "welcomeTitle": "Welcome to LMeterX",
+      "welcomeSubtitle": "Multi-scenario testing, real-time visibility, intelligent insight.",
       "totalTasks": "Total Tasks",
       "totalUsers": "Total Users",
       "uniqueHosts": "Unique Hosts / Domains",
@@ -289,9 +289,10 @@
       "spawnRate": "User Spawn Rate",
       "datasetFile": "Dataset File",
       "tokenCountPath": "Token Count Path",
-      "taskSubmissionRate": "Task Submission Rate (req/s)",
+      "taskSubmissionRate": "Task Submission Rate (events/s)",
       "taskAcceptanceRate": "Task Acceptance Rate",
       "terminalTaskThroughput": "Terminal Task Throughput (tasks/s)",
+      "completedTaskThroughput": "Completed Task Throughput (tasks/s)",
       "terminalTaskCompletionRate": "Terminal Task Completion Rate",
       "terminalTaskFailureRate": "Terminal Task Failure Rate",
       "compositeFailureRate": "A2A Composite Failure Rate",
@@ -344,8 +345,8 @@
         "Input_tokens": "Number of input tokens (prompt tokens) per request",
         "Completion_tokens": "Number of output tokens (completion tokens) per request",
         "Time_to_first_event": "Time from A2A task submit to the first protocol event",
-        "TTFE": "Latency from issuing tools/call to receiving the first parseable response event; for non-streaming JSON, this is when the complete response becomes parseable",
-        "End_to_end": "Total client-observed latency from issuing tools/call until the response is fully received and parsed"
+        "TTFE": "Latency from issuing tool call to receiving the first parseable response event; for non-streaming JSON, this is when the complete response becomes parseable",
+        "End_to_end": "Total client-observed latency from issuing tool call until the response is fully received and parsed"
       },
       "statisticExplanations": {
         "RPS": "Number of requests sent per second",
@@ -358,17 +359,18 @@
         "Task Submission Rate": "Total SendMessage and SendStreamingMessage submission requests divided by effective test duration in seconds",
         "Task Acceptance Rate": "Submissions returning a protocol-valid Task or direct Message divided by all submission attempts; indicates acceptance only, not task completion",
         "Terminal Task Throughput": "Tasks entering completed, failed, canceled, or rejected divided by effective test duration in seconds",
+        "Completed Task Throughput": "Tasks ending in completed divided by effective test duration in seconds; equals terminal task throughput times terminal task completion rate, counting only successfully completed tasks",
         "Terminal Task Completion Rate": "Tasks ending in completed divided by all terminal tasks; direct Message responses are excluded",
         "Terminal Task Failure Rate": "Tasks ending in failed divided by all terminal tasks; canceled and rejected remain distinct terminal outcomes",
         "Composite Failure Rate": "(failed A2A protocol requests + tasks ending in failed) / (all A2A protocol requests + all terminal tasks); a composite protocol-and-task reliability metric, not the complement of task acceptance rate",
         "Cascade Amplification": "Internal MCP calls observed per observable top-level task",
         "End-to-end Latency": "Average time from A2A task submit to a terminal state",
-        "Tool Call Success Rate": "Successful tools/call operations divided by all tools/call operations; success requires a valid transport and JSON-RPC response, no protocol error, and CallToolResult.isError not set to true",
-        "Tool Call Request Rate": "Total tools/call requests divided by effective test duration in seconds; represents offered load",
-        "Tool Call Throughput": "Completed tools/call requests divided by effective test duration in seconds; includes successful and failed calls",
-        "Successful Tool Call Throughput": "Successful tools/call requests divided by effective test duration in seconds",
+          "Tool Call Success Rate": "Successful tool call operations divided by all tool call operations; success requires a valid transport and JSON-RPC response, no protocol error, and CallToolResult.isError not set to true",
+        "Tool Call Request Rate": "Total tool call requests divided by effective test duration in seconds; represents offered load",
+        "Tool Call Throughput": "Completed tool call requests divided by effective test duration in seconds; includes successful and failed calls",
+        "Successful Tool Call Throughput": "Successful tool call requests divided by effective test duration in seconds",
         "TPS (tokens/s)": "Output tokens per second; calculated only when a token path is configured and observed",
-        "Content Throughput (B/s)": "Total MCP content bytes returned by successful tools/call operations divided by effective test duration in seconds"
+        "Content Throughput (B/s)": "Total MCP content bytes returned by successful tool call operations divided by effective test duration in seconds"
       }
     },
     "systemMonitor": {
@@ -427,6 +429,9 @@
       "title": "Perf Insight",
       "modelTasks": "Large Model Inference API",
       "httpTasks": "Regular business services API",
+      "a2aTasks": "A2A Call",
+      "mcpTasks": "MCP Call",
+      "agentLatencyDescription": "{{metric}} {{stat}}",
       "selectModels": "Select Models",
       "compare": "Compare",
       "addModel": "Add Model",
@@ -646,8 +651,12 @@
       "associatedTasks": "Associated Tasks",
       "llmTasks": "LLM Tasks ({{count}})",
       "httpTasks": "HTTP Tasks ({{count}})",
+      "a2aTasks": "A2A Tasks ({{count}})",
+      "mcpTasks": "MCP Tasks ({{count}})",
       "compareLlm": "Compare",
       "compareHttp": "Compare",
+      "compareA2a": "Compare",
+      "compareMcp": "Compare",
       "selectAtLeast2": "(Select at least 2 to compare)",
       "taskName": "Task Name",
       "status": "Status",
@@ -693,7 +702,7 @@
       "a2aBaseUrlTooltip": "The A2A service base URL (without route suffixes). The system auto-appends the actual request path (e.g. /message:send, /message:stream) based on Protocol Binding and Execution Mode.",
       "resolvedUrlLabel": "Actual request path:",
       "httpJsonUrlPlaceholder": "https://agent.example.com/a2a (base URL, do NOT include /message:send)",
-      "mcpTargetUrlTooltip": "The full MCP Streamable HTTP service URL used to discover tools and execute tools/call.",
+      "mcpTargetUrlTooltip": "The full MCP Streamable HTTP service URL used to discover tools and execute tool call.",
       "targetUrlRequired": "Please enter the target URL",
       "protocolVersion": "Protocol Version",
       "protocolVersionTooltip": "The protocol version implemented by the target service. It must be compatible with the server.",
@@ -1192,7 +1201,8 @@
       "failed": "{{count}} failed",
       "noNewAdded": "No new tasks were added",
       "addFailed": "Failed to add tasks to project",
-      "createNew": "Create new project \"{{name}}\""
+      "createNew": "Create new project \"{{name}}\"",
+      "nameAlreadyExists": "A project with this name already exists. Please select it."
     },
     "systemLogs": {
       "title": "System Logs",

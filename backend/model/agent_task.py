@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text, func
@@ -283,6 +283,68 @@ class AgentTaskResult(Base):
             "details": details,
             "created_at": self.created_at.isoformat() if self.created_at else "",
         }
+
+
+class AgentComparisonTaskInfo(BaseModel):
+    """Basic A2A/MCP task info used for comparison selection."""
+
+    task_id: str
+    task_name: str
+    protocol: Literal["a2a", "mcp"]
+    target_url: str
+    concurrent_users: int
+    created_at: str
+    duration: int
+
+
+class AgentComparisonRequest(BaseModel):
+    """Request model for A2A/MCP performance comparison."""
+
+    selected_tasks: List[str] = Field(
+        ..., min_length=2, max_length=10, description="Task IDs to compare"
+    )
+    protocol: Literal["a2a", "mcp"]
+
+
+class AgentLatencyMetric(BaseModel):
+    """One named response-latency row that can be compared across tasks."""
+
+    metric_name: str
+    avg_response_time: float
+    min_response_time: float
+    max_response_time: float
+    p95_response_time: float
+    median_response_time: Optional[float] = None
+
+
+class AgentComparisonMetrics(BaseModel):
+    """Aggregated metrics for comparing A2A or MCP tasks."""
+
+    task_id: str
+    task_name: str
+    protocol: Literal["a2a", "mcp"]
+    target_url: str
+    concurrent_users: int
+    duration: str
+    created_at: str
+    throughput: float
+    latency_metrics: List[AgentLatencyMetric] = Field(default_factory=list)
+
+
+class AgentComparisonResponse(BaseModel):
+    """Response model for A2A/MCP comparison."""
+
+    data: List[AgentComparisonMetrics]
+    status: str
+    error: Union[str, None]
+
+
+class AgentComparisonTasksResponse(BaseModel):
+    """Response model for available A2A/MCP tasks for comparison."""
+
+    data: List[AgentComparisonTaskInfo]
+    status: str
+    error: Union[str, None]
 
 
 def percentile(values: List[float], quantile: float) -> float:
